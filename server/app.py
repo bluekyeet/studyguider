@@ -25,6 +25,7 @@ from reviews import create_review_tables, review_router
 from lessons import create_lesson_tables, lesson_router
 from marking import marking_router
 from exams import create_exam_tables, exam_router
+from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
 
 
 def connect():
@@ -47,7 +48,13 @@ async def lifespan(app):
         create_review_tables(db)
         create_lesson_tables(db)
         create_exam_tables(db)
-    yield
+        create_scheduler_tables(db)
+    stop, thread = start_scheduler(connect, scheduled_generate)
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=2)
 
 
 app = FastAPI(title="StudyGuider", lifespan=lifespan)
@@ -128,6 +135,7 @@ def authorised(authorization: str = Header(default="")):
 
 app.include_router(review_router(connect, authorised))
 app.include_router(exam_router(connect, authorised))
+app.include_router(scheduler_router(connect, authorised))
 
 
 @app.get("/health")
@@ -500,6 +508,10 @@ def extract_resource(resource_id: uuid.UUID):
         path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
         warnings = []
         try:
+            if suffix in {".pptx", ".docx"}:
+                with ZipFile(path) as archive:
+                    if len(archive.infolist()) > 10000 or sum(item.file_size for item in archive.infolist()) > 100 * 1024 * 1024:
+                        raise HTTPException(422, "Document expands beyond the allowed size")
             if suffix == ".pdf":
                 with pymupdf.open(path) as document:
                     if document.needs_pass:
@@ -593,5 +605,11 @@ def delete_resource(resource_id: uuid.UUID):
     return {"status": "ok"}
 
 
-app.include_router(lesson_router(connect, authorised, model_reply, search_resources, topic_standards))
+lessons_router = lesson_router(connect, authorised, model_reply, search_resources, topic_standards)
+app.include_router(lessons_router)
 app.include_router(marking_router(connect, authorised, model_reply))
+
+
+def scheduled_generate(topic_id, body):
+    route = next(route for route in lessons_router.routes if route.path == "/topics/{topic_id}/lessons" and "POST" in route.methods)
+    return route.endpoint(topic_id, body)

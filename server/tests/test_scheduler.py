@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
 
-from scheduler import run_due
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.testclient import TestClient
+
+from scheduler import run_due, scheduler_router
 
 
 class Database:
@@ -65,3 +68,60 @@ def test_due_runs_are_at_most_once_and_failures_visible():
     assert db.runs[2, due.date()]["status"] == "failed"
     run_due(lambda: db, generate, due.replace(day=2))
     assert len(calls) == 4
+
+
+def test_schedule_endpoints():
+    class ApiDatabase:
+        schedule = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def execute(self, sql, params):
+            if "INSERT INTO lesson_schedules" in sql:
+                self.result = params[:3] if params[3] == 1 else None
+                if self.result:
+                    self.schedule = self.result
+            elif "SELECT 1 FROM topics" in sql:
+                self.result = (1,) if params[0] == 1 else None
+            elif "FROM lesson_schedules" in sql:
+                self.result = self.schedule
+            else:
+                self.result = [(datetime(2026, 1, 1).date(), "algebra", "failed", None,
+                                "gateway down", None, None)]
+            return self
+
+        def fetchone(self):
+            return self.result
+
+        def fetchall(self):
+            return self.result
+
+    db = ApiDatabase()
+
+    def authorised(authorization: str = Header(default="")):
+        if authorization != "Bearer valid":
+            raise HTTPException(401)
+
+    app = FastAPI()
+    app.include_router(scheduler_router(lambda: db, authorised))
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer valid"}
+    url = "/topics/1/schedule"
+    body = {"query": " algebra ", "hour_utc": 2, "enabled": True}
+    assert client.get(url).status_code == 401
+    assert client.put(url, json=body).status_code == 401
+    assert client.get(url + "/runs").status_code == 401
+    assert client.get(url, headers=headers).json() is None
+    assert client.put(url, headers=headers, json=body).json() == {
+        "topic_id": 1, "query": "algebra", "hour_utc": 2, "enabled": True}
+    assert client.get(url, headers=headers).json()["query"] == "algebra"
+    assert client.get(url + "/runs", headers=headers).json()[0]["error"] == "gateway down"
+    assert client.put(url, headers=headers, json={**body, "hour_utc": 24}).status_code == 422
+    assert client.put(url, headers=headers, json={**body, "query": "   "}).status_code == 422
+    assert client.put("/topics/2/schedule", headers=headers, json=body).status_code == 404
+    assert client.get("/topics/2/schedule", headers=headers).status_code == 404
+    assert client.get("/topics/2/schedule/runs", headers=headers).status_code == 404

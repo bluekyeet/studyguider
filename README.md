@@ -85,7 +85,15 @@ Delete a resource with `DELETE /resources/{id}`; if removal fails or is
 interrupted, its status remains `deleting` and the same request can be retried.
 Back up both the database and uploads volume together.
 See `deploy/BACKUP.md` for the proposed backup and fresh-project restore
-procedure; it has not yet been validated in a full restore drill.
+procedure. A disposable restore drill recovered synthetic database and upload
+data; repeat the drill in your own deployment before relying on it.
+
+Nightly lesson generation is opt-in via `PUT /topics/{id}/schedule` with
+`{"query":"waves","hour_utc":14,"enabled":true}`. The hour is UTC, not
+New Zealand local time, so daylight saving requires adjustment. Generation sends
+matching source excerpts to the configured model providers. Inspect
+`GET /topics/{id}/schedule/runs` for failures or interrupted runs; interrupted
+runs are not automatically retried.
 
 The API is bound to localhost. Do not expose it to the internet yet: TLS,
 deployment hardening and a security review remain outstanding. Upload requests

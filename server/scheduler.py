@@ -8,9 +8,54 @@ import logging
 import threading
 from datetime import datetime, timezone
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
 from lessons import LessonGeneration
 
 log = logging.getLogger(__name__)
+
+
+class Schedule(BaseModel):
+    query: str = Field(min_length=1, max_length=200, pattern=r"\S")
+    hour_utc: int = Field(ge=0, le=23, strict=True)
+    enabled: bool
+
+
+def scheduler_router(connect, authorised):
+    router = APIRouter(dependencies=[Depends(authorised)])
+
+    @router.put("/topics/{topic_id}/schedule")
+    def put_schedule(topic_id: int, body: Schedule):
+        with connect() as db:
+            row = db.execute("""INSERT INTO lesson_schedules (topic_id, query, hour_utc, enabled)
+                SELECT id, %s, %s, %s FROM topics WHERE id = %s
+                ON CONFLICT (topic_id) DO UPDATE SET query = EXCLUDED.query,
+                hour_utc = EXCLUDED.hour_utc, enabled = EXCLUDED.enabled
+                RETURNING query, hour_utc, enabled""",
+                (body.query.strip(), body.hour_utc, body.enabled, topic_id)).fetchone()
+            if row is None:
+                raise HTTPException(404, "Topic not found")
+        return {"topic_id": topic_id, "query": row[0], "hour_utc": row[1], "enabled": row[2]}
+
+    @router.get("/topics/{topic_id}/schedule")
+    def get_schedule(topic_id: int):
+        with connect() as db:
+            if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
+                raise HTTPException(404, "Topic not found")
+            row = db.execute("SELECT query, hour_utc, enabled FROM lesson_schedules WHERE topic_id = %s", (topic_id,)).fetchone()
+        return {"topic_id": topic_id, "query": row[0], "hour_utc": row[1], "enabled": row[2]} if row else None
+
+    @router.get("/topics/{topic_id}/schedule/runs")
+    def schedule_runs(topic_id: int):
+        with connect() as db:
+            if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
+                raise HTTPException(404, "Topic not found")
+            rows = db.execute("""SELECT run_date, query, status, lesson_id, error, started_at, finished_at
+                FROM lesson_schedule_runs WHERE topic_id = %s ORDER BY run_date DESC""", (topic_id,)).fetchall()
+        return [dict(zip(("run_date", "query", "status", "lesson_id", "error", "started_at", "finished_at"), row)) for row in rows]
+
+    return router
 
 
 def create_scheduler_tables(db):
