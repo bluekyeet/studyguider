@@ -10,6 +10,8 @@ COPY marking.py .
 COPY scheduler.py .
 COPY ocr.py .
 COPY worker.py .
+COPY explain.py .
+COPY review_generation.py .
 COPY set_password.py .
 COPY manage.html .
 RUN mkdir -p /data/uploads && chown nobody:nogroup /data/uploads

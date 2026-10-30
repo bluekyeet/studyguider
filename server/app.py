@@ -27,6 +27,8 @@ from marking import marking_router
 from exams import create_exam_tables, exam_router
 from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
 from worker import start_worker
+from explain import explain_router
+from review_generation import review_generation_router
 
 
 def connect():
@@ -615,6 +617,8 @@ def delete_resource(resource_id: uuid.UUID):
 lessons_router = lesson_router(connect, authorised, model_reply, search_resources, topic_standards)
 app.include_router(lessons_router)
 app.include_router(marking_router(connect, authorised, model_reply))
+app.include_router(explain_router(connect, authorised, model_reply))
+app.include_router(review_generation_router(authorised, model_reply, search_resources))
 
 
 def scheduled_generate(topic_id, body):

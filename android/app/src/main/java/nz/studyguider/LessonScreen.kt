@@ -45,6 +45,21 @@ private suspend fun requestLessonHistory(base: String, token: String, topicId: L
     } finally { connection.disconnect() }
 }
 
+private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String): String = withContext(Dispatchers.IO) {
+    val connection = URL(base.trimEnd('/') + "/lessons/$lessonId/explain").openConnection() as HttpURLConnection
+    try {
+        connection.connectTimeout = 10000; connection.readTimeout = 100000
+        connection.requestMethod = "POST"; connection.doOutput = true
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.outputStream.use { it.write(JSONObject().put("question", question).toString().toByteArray(Charsets.UTF_8)) }
+        val status = connection.responseCode
+        val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (status !in 200..299) throw IllegalStateException("Request failed ($status): $text")
+        JSONObject(text).getString("explanation")
+    } finally { connection.disconnect() }
+}
+
 /** Generates and saves an experimental lesson for the selected topic. */
 @Composable
 fun LessonScreen(base: String, token: String, topicId: Long) {
@@ -55,6 +70,8 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
     var history by remember(base, token, topicId) { mutableStateOf<List<JSONObject>>(emptyList()) }
     var historyError by remember(base, token, topicId) { mutableStateOf("") }
     var historyLoading by remember(base, token, topicId) { mutableStateOf(false) }
+    var followUp by remember(base, token, topicId) { mutableStateOf("") }
+    var explanation by remember(base, token, topicId) { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(base, token, topicId) {
@@ -98,7 +115,7 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
         else if (historyError.isNotEmpty()) Text("Could not load lesson history: $historyError", color = MaterialTheme.colorScheme.error)
         else if (history.isEmpty()) Text("No saved lessons yet.")
         history.take(50).forEach { draft ->
-            TextButton(onClick = { result = draft }, enabled = !busy) {
+            TextButton(onClick = { result = draft; explanation = "" }, enabled = !busy) {
                 Text("${draft.optString("query")} · ${draft.optString("created_at")}")
             }
         }
@@ -108,6 +125,16 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
             Text("AI review", style = MaterialTheme.typography.titleLarge)
             Text(if (draft.isNull("review")) "Review unavailable" else draft.optString("review"))
             Text(draft.optString("warning"), color = MaterialTheme.colorScheme.error)
+            OutlinedTextField(followUp, { followUp = it }, label = { Text("Ask for an explanation") }, modifier = Modifier.fillMaxWidth())
+            Button(enabled = !busy && followUp.isNotBlank() && followUp.length <= 2000, onClick = {
+                scope.launch {
+                    busy = true; error = ""; explanation = ""
+                    try { explanation = explainLesson(base, token, draft.getLong("id"), followUp) }
+                    catch (e: Exception) { error = e.message ?: "Explanation failed" }
+                    finally { busy = false }
+                }
+            }) { Text("Explain in detail") }
+            if (explanation.isNotEmpty()) Text(explanation)
             Text("Sources", style = MaterialTheme.typography.titleLarge)
             val sources = draft.optJSONArray("sources")
             if (sources != null) for (i in 0 until sources.length()) {

@@ -28,10 +28,25 @@ def process_one(connect, extract):
     return True
 
 
-def recover_interrupted(connect):
-    """Requeue interrupted claims only after every extraction worker has stopped."""
-    # ponytail: no claim leases exist; add owner IDs and expiry before online recovery.
+def recover_interrupted(connect, resource_ids=None):
+    """Requeue claims after all workers have stopped, optionally only for given IDs.
+
+    Stop and join workers on every instance before calling, and prevent new ones
+    starting until recovery completes. The caller must establish this externally;
+    neither a status nor a resource ID proves that an extraction has stopped.
+    Omit resource_ids to retain the original all-claims recovery behaviour.
+    """
+    # ponytail: status has no fencing; online recovery needs leases and fenced extraction writes.
+    if resource_ids is not None:
+        resource_ids = list(resource_ids)
+        if not resource_ids:
+            return 0
     with connect() as db:
+        if resource_ids is not None:
+            return db.execute(
+                "UPDATE resources SET status = 'pending' WHERE status = 'extracting' AND id = ANY(%s)",
+                (resource_ids,),
+            ).rowcount
         return db.execute("UPDATE resources SET status = 'pending' WHERE status = 'extracting'").rowcount
 
 

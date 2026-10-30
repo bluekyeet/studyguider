@@ -18,6 +18,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -100,6 +102,7 @@ private fun StudyApp() {
     var selected by remember { mutableStateOf(0L) }
     var selectedTopic by remember { mutableStateOf(0L) }
     var resources by remember { mutableStateOf(JSONArray()) }
+    var resourceRefreshError by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var subjectName by remember { mutableStateOf("") }
@@ -111,6 +114,22 @@ private fun StudyApp() {
     var topicTitle by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val processing = (0 until resources.length()).any { resources.getJSONObject(it).optString("status") in setOf("pending", "extracting") }
+    LaunchedEffect(selectedTopic, token, base, tab, processing) {
+        if (selectedTopic != 0L && token.isNotEmpty() && tab == 0 && processing) {
+            while (true) {
+                delay(5000)
+                try {
+                    resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
+                    resourceRefreshError = ""
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    resourceRefreshError = "Resource refresh failed: ${e.message ?: "Request failed"}"
+                }
+            }
+        }
+    }
     fun run(block: suspend () -> Unit) {
         scope.launch { busy = true; error = ""; try { block() } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false } }
     }
@@ -179,14 +198,20 @@ private fun StudyApp() {
                 }
             } else {
                 Text("$topicTitle · Resources", style = MaterialTheme.typography.titleLarge)
+                if (resourceRefreshError.isNotEmpty()) Text(resourceRefreshError, color = MaterialTheme.colorScheme.error)
+                OutlinedButton(enabled = !busy, onClick = { run {
+                    resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
+                    resourceRefreshError = ""
+                } }) { Text("Refresh resources") }
                 Button(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Upload file") }
                 for (i in 0 until resources.length()) {
                     val item = resources.getJSONObject(i)
                     Text("${item.getString("filename")} — ${item.getString("status")}")
+                    if (item.optString("status") == "failed") Text("Extraction failed. Retry to see the error.", color = MaterialTheme.colorScheme.error)
                     OutlinedButton(enabled = !busy, onClick = { run {
                         request(base, "/resources/${item.getString("id")}/extract", token, JSONObject())
                         resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
-                    } }) { Text("Extract text") }
+                    } }) { Text(if (item.optString("status") == "failed") "Retry extraction" else "Extract text") }
                 }
             }
           }
