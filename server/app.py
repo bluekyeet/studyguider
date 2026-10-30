@@ -26,6 +26,7 @@ from lessons import create_lesson_tables, lesson_router
 from marking import marking_router
 from exams import create_exam_tables, exam_router
 from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
+from worker import start_worker
 
 
 def connect():
@@ -50,11 +51,14 @@ async def lifespan(app):
         create_exam_tables(db)
         create_scheduler_tables(db)
     stop, thread = start_scheduler(connect, scheduled_generate)
+    extraction_stop, extraction_thread = start_worker(connect, extract_resource)
     try:
         yield
     finally:
         stop.set()
+        extraction_stop.set()
         thread.join(timeout=2)
+        extraction_thread.join(timeout=2)
 
 
 app = FastAPI(title="StudyGuider", lifespan=lifespan)
@@ -195,12 +199,15 @@ def login(body: Login):
     # Database lock serialises login attempts across API processes.
     with connect() as db:
         db.execute("SELECT pg_advisory_xact_lock(834729)")
-        rows = dict(db.execute("SELECT key, value FROM settings WHERE key IN ('password_hash', 'login_failures', 'locked_until')").fetchall())
+        # Hold the password row until the session is committed, so password
+        # resets cannot revoke sessions before an old-password login finishes.
+        password_row = db.execute("SELECT value FROM settings WHERE key = 'password_hash' FOR SHARE").fetchone()
+        rows = dict(db.execute("SELECT key, value FROM settings WHERE key IN ('login_failures', 'locked_until')").fetchall())
         now = datetime.now(timezone.utc)
         if rows.get("locked_until") and datetime.fromisoformat(rows["locked_until"]) > now:
             raise HTTPException(429, "Login temporarily locked")
         try:
-            valid = hasher.verify(rows.get("password_hash", ""), body.password)
+            valid = hasher.verify(password_row[0] if password_row else "", body.password)
         except (VerifyMismatchError, InvalidHashError):
             valid = False
         if not valid:

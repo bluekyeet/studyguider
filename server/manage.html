@@ -141,6 +141,12 @@
           <div class="section-heading"><span class="section-number">09</span><h2 id="exam-heading">Manual exam assembly</h2></div>
           <p class="hint">Select verified references in the order shown to create an exam. Consult the original uploads for the actual questions and schedules.</p>
           <form id="assemble-exam"><ul id="exam-questions"></ul><button>Create exam</button></form>
+          <h3>Automatic monthly selection</h3>
+          <p class="hint" id="monthly-help">Creates an exam now for the selected subject using verified questions, prioritising those least recently used. This does not schedule exams or limit creation to once a month. Consult the original uploads.</p>
+          <form id="monthly-exam">
+            <label for="monthly-count">Number of questions (1–100)</label><input id="monthly-count" type="number" min="1" max="100" step="1" value="1" required aria-describedby="monthly-help">
+            <button id="monthly-create">Create monthly exam</button>
+          </form>
           <form id="view-exam"><label for="exam-id">Exam ID</label><input id="exam-id" type="number" min="1" required><button>View exam</button></form>
           <div id="exam-view"></div>
         </section>
@@ -173,7 +179,8 @@
       const response = await fetch(path, { ...options, headers });
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(typeof error.detail === 'string' ? error.detail : `Request failed (${response.status})`);
+        const detail = error.detail;
+        throw new Error(typeof detail === 'string' ? detail : detail && typeof detail.message === 'string' ? `${detail.message} (requested ${detail.requested}, available ${detail.available})` : `Request failed (${response.status})`);
       }
       return response.json();
     }
@@ -339,6 +346,24 @@
       if (!question_ids.length || question_ids.length > 100) throw new Error('Select between 1 and 100 questions');
       const exam = await api('/exams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question_ids }) });
       $('exam-id').value = exam.id; await showExam(); message(`Exam ${exam.id} created. Record its ID to view it later.`);
+    });
+    let monthlyInFlight = false;
+    $('monthly-exam').onsubmit = run(async () => {
+      if (monthlyInFlight) return;
+      const subject = $('subjects');
+      if (!subject.value) throw new Error('Select a subject first');
+      const count = Number($('monthly-count').value);
+      if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error('Enter between 1 and 100 questions');
+      if (!confirm(`Create an exam with ${count} question(s) for ${subject.selectedOptions[0].textContent}? This creates a new exam each time.`)) return;
+      monthlyInFlight = true; $('monthly-create').disabled = true;
+      try {
+        const exam = await api('/exams/monthly', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject_id: Number(subject.value), question_count: count }) });
+        $('exam-id').value = exam.id;
+        message(`Exam ${exam.id} created. Record its ID to view it later.`);
+        try { await showExam(); } catch (error) { message(`Exam ${exam.id} created, but could not be displayed: ${error.message}. Record its ID.`); }
+      } catch (error) {
+        throw new Error(`${error.message}. If the request failed after submission, check existing exams before retrying; an exam may have been created.`);
+      } finally { monthlyInFlight = false; $('monthly-create').disabled = false; }
     });
     async function showExam() {
       const view = $('exam-view'); view.replaceChildren();

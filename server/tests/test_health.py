@@ -10,13 +10,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pydantic import ValidationError
 
-from fastapi import UploadFile
-from app import LessonRequest, Subject, Topic, delete_subject, health, lesson_draft, upload_resource
+from fastapi import HTTPException, UploadFile
+from app import Login, LessonRequest, Subject, Topic, delete_subject, health, lesson_draft, login, upload_resource
 
 
 class HealthTest(unittest.TestCase):
     def test_health(self):
         self.assertEqual(health(), {"status": "ok"})
+
+    def test_login_locks_password_and_commits_failed_attempt(self):
+        db = MagicMock()
+        db.execute.return_value.fetchone.return_value = ("invalid",)
+        db.execute.return_value.fetchall.return_value = []
+        with patch("app.connect") as connect:
+            connect.return_value.__enter__.return_value = db
+            with self.assertRaises(HTTPException) as error:
+                login(Login(password="wrong"))
+        self.assertEqual(error.exception.status_code, 401)
+        self.assertIn("FOR SHARE", db.execute.call_args_list[1].args[0])
+        db.commit.assert_called_once()
 
     def test_subject_deletion_locks_before_checking(self):
         db = MagicMock()

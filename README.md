@@ -51,7 +51,9 @@ passwords over HTTP. On the Android emulator, `10.0.2.2` refers to the host.
 Authenticated clients can upload files (up to 50 MiB) to
 `/topics/{id}/resources`, list them there and download them at
 `/resources/{id}/download`. Files are stored in a separate Docker volume and
-remain `pending` until explicitly processed. `POST /resources/{id}/extract`
+are automatically processed by a background worker; `POST /resources/{id}/extract`
+can also retry processing manually. Interrupted jobs may remain `extracting`
+and need administrative recovery after all workers are stopped. Extraction
 extracts UTF-8 TXT, Markdown, CSV, HTML, XLSX, text-based PDFs, PowerPoint slide
 text and Word paragraph text; scanned or empty PDF
 pages require OCR, which is not implemented. `GET /resources/{id}/text` returns
