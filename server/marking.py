@@ -24,11 +24,17 @@ class Feedback(BaseModel):
     evidence: list[Evidence] = Field(min_length=1, max_length=10)
 
 
+class ReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    second_review: bool = False
+    self_override: Literal["not_achieved", "achieved", "merit", "excellence", "uncertain"] | None = None
+
+
 def marking_router(connect, authorised, model_reply):
     router = APIRouter(dependencies=[Depends(authorised)])
 
     @router.post("/exams/{exam_id}/answers/{question_id}/feedback")
-    def answer_feedback(exam_id: int, question_id: int):
+    def answer_feedback(exam_id: int, question_id: int, request: ReviewRequest = ReviewRequest()):
         with connect() as db:
             row = db.execute("""SELECT i.answer, q.question_number, q.standard_number, q.year,
                 q.paper_resource_id, q.paper_page, paper.content,
@@ -54,18 +60,30 @@ def marking_router(connect, authorised, model_reply):
                   "Do not claim independent verification or official marking.")
         payload = {"question_number": number, "standard_number": standard, "year": year,
                    "paper_page_text": paper, "schedule_page_text": schedule, "answer": answer}
-        raw = model_reply("education", [{"role": "system", "content": system},
-                                        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
-        try:
-            result = Feedback.model_validate_json(raw, strict=True)
-            if any(item.quote not in schedule for item in result.evidence):
-                raise ValueError("Evidence is not an exact schedule quotation")
-        except (ValidationError, ValueError, TypeError):
-            raise HTTPException(502, "Model returned invalid feedback or schedule evidence")
-        return {"exam_id": exam_id, "question_id": question_id, "experimental": True,
+        def generate(data, model="education"):
+            raw = model_reply(model, [{"role": "system", "content": system},
+                                            {"role": "user", "content": json.dumps(data, ensure_ascii=False)}])
+            try:
+                result = Feedback.model_validate_json(raw, strict=True)
+                if any(item.quote not in schedule for item in result.evidence):
+                    raise ValueError("Evidence is not an exact schedule quotation")
+            except (ValidationError, ValueError, TypeError):
+                raise HTTPException(502, "Model returned invalid feedback or schedule evidence")
+            return result.model_dump()
+
+        result = generate(payload)
+        response = {"exam_id": exam_id, "question_id": question_id, "experimental": True,
                 "disclaimer": "AI-generated study feedback, not an official or verified grade. Check the original documents.",
                 "paper": {"resource_id": paper_id, "page": paper_page},
                 "schedule": {"resource_id": schedule_id, "page": schedule_page},
-                **result.model_dump()}
+                **result}
+        if request.second_review:
+            response["second_review"] = generate({**payload, "prior_ai_feedback": result,
+                "review_request": "Reconsider the answer and prior AI feedback; disagree if warranted."}, "education-reviewer")
+            response["second_review_disclaimer"] = "AI advisory second review; independence depends on gateway configuration and is not verified."
+        if request.self_override is not None:
+            response["self_override"] = request.self_override
+            response["self_override_disclaimer"] = "Your self-assessment, not an AI or official grade; not saved."
+        return response
 
     return router

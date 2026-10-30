@@ -106,6 +106,9 @@ private fun StudyApp() {
     var subjectLevel by remember { mutableStateOf("2") }
     var topicName by remember { mutableStateOf("") }
     var examId by remember { mutableStateOf("") }
+    var tab by remember { mutableIntStateOf(0) }
+    var subjectTitle by remember { mutableStateOf("") }
+    var topicTitle by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     fun run(block: suspend () -> Unit) {
@@ -117,7 +120,8 @@ private fun StudyApp() {
             resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize()) {
+      Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("STUDYGUIDER", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         Text(if (token.isEmpty()) "Make progress, one topic at a time." else "Your study space", style = MaterialTheme.typography.headlineMedium)
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
@@ -131,23 +135,39 @@ private fun StudyApp() {
                 subjects = JSONArray(request(base, "/subjects", token))
             } }) { Text("Sign in") }
         } else {
-            Button(enabled = !busy, onClick = { run { request(base, "/logout", token, JSONObject()); token = ""; subjects = JSONArray(); topics = JSONArray() } }) { Text("Sign out") }
+            TextButton(enabled = !busy, onClick = { run { request(base, "/logout", token, JSONObject()); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; tab = 0 } }) { Text("Sign out") }
+        }
+      }
+      if (token.isNotEmpty()) {
+        val tabs = listOf("Study", "Lessons", "Reviews", "Exams")
+        ScrollableTabRow(selectedTabIndex = tab) {
+            tabs.forEachIndexed { index, title -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) }) }
+        }
+        when (tab) {
+          0 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (selected != 0L) {
+                TextButton(enabled = !busy, onClick = {
+                    if (selectedTopic != 0L) { selectedTopic = 0; topicTitle = ""; resources = JSONArray() }
+                    else { selected = 0; subjectTitle = ""; topics = JSONArray() }
+                }) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
+            }
+            if (selected == 0L) {
             Text("Subjects", style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(subjectName, { subjectName = it }, label = { Text("New subject") }, singleLine = true)
             OutlinedTextField(subjectLevel, { subjectLevel = it }, label = { Text("NCEA level (1–3)") }, singleLine = true)
             OutlinedButton(enabled = !busy && subjectName.isNotBlank(), onClick = { run {
-                val level = subjectLevel.toIntOrNull() ?: throw IllegalArgumentException("Enter a level from 1 to 3")
+                val level = subjectLevel.toIntOrNull()?.takeIf { it in 1..3 } ?: throw IllegalArgumentException("Enter a level from 1 to 3")
                 request(base, "/subjects", token, JSONObject().put("name", subjectName).put("level", level))
                 subjectName = ""; subjects = JSONArray(request(base, "/subjects", token))
             } }) { Text("Add subject") }
             for (i in 0 until subjects.length()) {
                 val subject = subjects.getJSONObject(i)
-                TextButton(enabled = !busy, onClick = { run { selected = subject.getLong("id"); selectedTopic = 0; resources = JSONArray(); topics = JSONArray(request(base, "/subjects/$selected/topics", token)) } }) {
+                TextButton(enabled = !busy, onClick = { run { val id = subject.getLong("id"); val loaded = JSONArray(request(base, "/subjects/$id/topics", token)); selected = id; subjectTitle = subject.getString("name"); topics = loaded } }) {
                     Text("${subject.getString("name")} — Level ${subject.getInt("level")}")
                 }
             }
-            if (selected != 0L) {
-                Text("Topics", style = MaterialTheme.typography.titleLarge)
+            } else if (selectedTopic == 0L) {
+                Text("$subjectTitle · Topics", style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(topicName, { topicName = it }, label = { Text("New topic") }, singleLine = true)
                 OutlinedButton(enabled = !busy && topicName.isNotBlank(), onClick = { run {
                     request(base, "/subjects/$selected/topics", token, JSONObject().put("name", topicName))
@@ -155,21 +175,27 @@ private fun StudyApp() {
                 } }) { Text("Add topic") }
                 for (i in 0 until topics.length()) {
                     val topic = topics.getJSONObject(i)
-                    TextButton(enabled = !busy, onClick = { run { selectedTopic = topic.getLong("id"); resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token)) } }) { Text(topic.getString("name")) }
+                    TextButton(enabled = !busy, onClick = { run { val id = topic.getLong("id"); val loaded = JSONArray(request(base, "/topics/$id/resources", token)); selectedTopic = id; topicTitle = topic.getString("name"); resources = loaded } }) { Text(topic.getString("name")) }
                 }
-            }
-            if (selectedTopic != 0L) {
-                Text("Resources", style = MaterialTheme.typography.titleLarge)
+            } else {
+                Text("$topicTitle · Resources", style = MaterialTheme.typography.titleLarge)
                 Button(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Upload file") }
                 for (i in 0 until resources.length()) {
                     val item = resources.getJSONObject(i)
                     Text("${item.getString("filename")} — ${item.getString("status")}")
                 }
-                LessonScreen(base, token, selectedTopic)
             }
-            ReviewScreen(base, token)
+          }
+          1 -> if (selectedTopic != 0L) LessonScreen(base, token, selectedTopic) else Text("Choose a topic in Study to create a lesson.", Modifier.padding(20.dp))
+          2 -> ReviewScreen(base, token)
+          3 -> Column(Modifier.fillMaxSize()) {
+            Column(Modifier.padding(20.dp)) {
             OutlinedTextField(examId, { examId = it }, label = { Text("Open exam ID") }, singleLine = true)
+            if (examId.isNotEmpty() && (examId.toLongOrNull() ?: 0) <= 0) Text("Enter a positive exam ID", color = MaterialTheme.colorScheme.error)
+            }
             examId.toLongOrNull()?.takeIf { it > 0 }?.let { ExamScreen(base, token, it) }
+          }
+        }
         }
     }
 }

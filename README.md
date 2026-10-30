@@ -84,6 +84,8 @@ not page numbers. Images, PowerPoint tables and Word tables are not extracted.
 Delete a resource with `DELETE /resources/{id}`; if removal fails or is
 interrupted, its status remains `deleting` and the same request can be retried.
 Back up both the database and uploads volume together.
+See `deploy/BACKUP.md` for the proposed backup and fresh-project restore
+procedure; it has not yet been validated in a full restore drill.
 
 The API is bound to localhost. Do not expose it to the internet yet: TLS,
 deployment hardening and a security review remain outstanding. Upload requests

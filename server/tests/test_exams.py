@@ -93,6 +93,9 @@ class WorkflowDatabase(Database):
         self.exams = {}
 
     def execute(self, sql, params=()):
+        if "FROM exams e LEFT JOIN exam_items" in sql:
+            return Result([(exam_id, "2026-01-01T00:00:00Z", len(items))
+                           for exam_id, items in sorted(self.exams.items())])
         if "SELECT id FROM exam_questions WHERE id = ANY" in sql:
             return Result([(i,) for i in params[0] if i in self.questions])
         if "INSERT INTO exams" in sql:
@@ -119,11 +122,13 @@ def test_exam_workflow_and_missing_questions():
     app = FastAPI()
     app.include_router(exam_router(lambda: db, lambda: None))
     client = TestClient(app)
+    assert client.get("/exams").json() == []
     assert client.post("/exams", json={"question_ids": []}).status_code == 422
     assert client.post("/exams", json={"question_ids": [1, 1]}).status_code == 422
     assert client.post("/exams", json={"question_ids": [1, 999]}).status_code == 404
     assert not db.exams
     assert client.post("/exams", json={"question_ids": [1]}).status_code == 201
+    assert client.get("/exams").json() == [{"id": 1, "created_at": "2026-01-01T00:00:00Z", "question_count": 1}]
     assert client.put("/exams/1/answers/999", json={"answer": "x"}).status_code == 404
     assert client.put("/exams/1/answers/1", json={"answer": "My answer"}).status_code == 200
     question = client.get("/exams/1").json()["questions"][0]
@@ -136,5 +141,6 @@ def test_exam_workflow_and_missing_questions():
 def test_workflow_requires_authentication():
     _, _, _, client = setup_client()
     assert client.post("/exams", json={"question_ids": [1]}).status_code == 401
+    assert client.get("/exams").status_code == 401
     assert client.put("/exams/1/answers/1", json={"answer": "x"}).status_code == 401
     assert client.get("/exams/1").status_code == 401

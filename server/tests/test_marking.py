@@ -77,3 +77,39 @@ def test_authentication_is_required():
     client, calls = make_client(auth=deny)
     assert client.post('/exams/1/answers/2/feedback').status_code == 401
     assert not calls
+
+
+def test_second_review_and_override_are_advisory_and_unsaved():
+    client, calls = make_client()
+    response = client.post('/exams/1/answers/2/feedback', json={
+        'second_review': True, 'self_override': 'merit'})
+    assert response.status_code == 200
+    result = response.json()
+    assert result['outcome'] == 'achieved'
+    assert result['second_review']['outcome'] == 'achieved'
+    assert 'not verified' in result['second_review_disclaimer']
+    assert result['self_override'] == 'merit'
+    assert 'not saved' in result['self_override_disclaimer']
+    assert json.loads(calls[2][1][1]['content'])['prior_ai_feedback']['outcome'] == 'achieved'
+    assert calls[2][0] == 'education-reviewer'
+    assert len(calls) == 3 and calls[0][0].lstrip().startswith('SELECT')
+
+
+def test_second_review_rejects_invented_evidence_and_invalid_requests():
+    client, calls = make_client()
+    assert client.post('/exams/1/answers/2/feedback', json={'self_override': 'official'}).status_code == 422
+    assert not calls
+
+    valid = json.dumps({'outcome': 'achieved', 'feedback': 'ok', 'evidence': [
+        {'quote': 'explains the idea', 'explanation': 'criterion'}]})
+    invalid = valid.replace('explains the idea', 'invented')
+    replies = iter([valid, invalid])
+    # Replace the model through a fresh router so only the second response is invalid.
+    class DB:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, *args): return self
+        def fetchone(self): return ROW
+    app = FastAPI()
+    app.include_router(marking_router(DB, lambda: None, lambda *args: next(replies)))
+    assert TestClient(app).post('/exams/1/answers/2/feedback', json={'second_review': True}).status_code == 502

@@ -101,6 +101,14 @@ def exam_router(connect, authorised):
         keys = ("id", "topic_id", "standard_number", "year", "question_number", "paper_resource_id", "paper_page", "schedule_resource_id", "schedule_page", "verified_at")
         return [dict(zip(keys, row)) for row in rows]
 
+    @router.get("/exams")
+    def list_exams():
+        with connect() as db:
+            rows = db.execute("""SELECT e.id, e.created_at, COUNT(i.question_id)
+                FROM exams e LEFT JOIN exam_items i ON i.exam_id = e.id
+                GROUP BY e.id ORDER BY e.id""").fetchall()
+        return [dict(zip(("id", "created_at", "question_count"), row)) for row in rows]
+
     @router.post("/exams", status_code=201)
     def assemble_exam(body: ExamAssembly):
         with connect() as db:

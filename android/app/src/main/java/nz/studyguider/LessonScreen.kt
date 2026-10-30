@@ -15,7 +15,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 private suspend fun requestLesson(base: String, token: String, topicId: Long, query: String): JSONObject = withContext(Dispatchers.IO) {
-    val connection = URL(base.trimEnd('/') + "/topics/$topicId/lesson-draft").openConnection() as HttpURLConnection
+    val connection = URL(base.trimEnd('/') + "/topics/$topicId/lessons").openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000
         connection.readTimeout = 200000
@@ -31,7 +31,7 @@ private suspend fun requestLesson(base: String, token: String, topicId: Long, qu
     } finally { connection.disconnect() }
 }
 
-/** Generates an experimental, unsaved lesson for the selected topic. */
+/** Generates and saves an experimental lesson for the selected topic. */
 @Composable
 fun LessonScreen(base: String, token: String, topicId: Long) {
     var query by remember(base, token, topicId) { mutableStateOf("") }
@@ -40,10 +40,10 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
     var busy by remember(base, token, topicId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Experimental lesson draft", style = MaterialTheme.typography.headlineMedium)
         Text("Generating sends your query, up to five matching source excerpts and linked standards to the configured education and education-reviewer model providers.")
-        Text("This lesson is an unsaved draft. AI review is not verification; check claims and citations against the original sources.", color = MaterialTheme.colorScheme.error)
+        Text("This lesson is saved as a draft. AI review is not verification; check claims and citations against the original sources.", color = MaterialTheme.colorScheme.error)
         OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Lesson topic or search") }, enabled = !busy, supportingText = { Text("1–200 characters") })
         Button(enabled = !busy && query.isNotBlank() && query.length <= 200 && topicId > 0, onClick = {
             val submittedQuery = query.trim()
