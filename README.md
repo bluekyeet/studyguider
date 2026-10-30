@@ -90,7 +90,9 @@ data; repeat the drill in your own deployment before relying on it.
 
 Nightly lesson generation is opt-in via `PUT /topics/{id}/schedule` with
 `{"query":"waves","hour_utc":14,"enabled":true}`. The hour is UTC, not
-New Zealand local time, so daylight saving requires adjustment. Generation sends
+New Zealand local time by default. For NZ local time and automatic daylight-saving
+adjustment, include `"timezone":"Pacific/Auckland"` and set `hour_utc` to the
+desired local hour (the field keeps its original name for compatibility). Generation sends
 matching source excerpts to the configured model providers. Inspect
 `GET /topics/{id}/schedule/runs` for failures or interrupted runs; interrupted
 runs are not automatically retried.

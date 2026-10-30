@@ -7,6 +7,8 @@ after a crash rather than retrying a potentially already-created lesson.
 import logging
 import threading
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -20,6 +22,7 @@ class Schedule(BaseModel):
     query: str = Field(min_length=1, max_length=200, pattern=r"\S")
     hour_utc: int = Field(ge=0, le=23, strict=True)
     enabled: bool
+    timezone: Literal["UTC", "Pacific/Auckland"] = "UTC"
 
 
 def scheduler_router(connect, authorised):
@@ -28,23 +31,23 @@ def scheduler_router(connect, authorised):
     @router.put("/topics/{topic_id}/schedule")
     def put_schedule(topic_id: int, body: Schedule):
         with connect() as db:
-            row = db.execute("""INSERT INTO lesson_schedules (topic_id, query, hour_utc, enabled)
-                SELECT id, %s, %s, %s FROM topics WHERE id = %s
+            row = db.execute("""INSERT INTO lesson_schedules (topic_id, query, hour_utc, enabled, timezone)
+                SELECT id, %s, %s, %s, %s FROM topics WHERE id = %s
                 ON CONFLICT (topic_id) DO UPDATE SET query = EXCLUDED.query,
-                hour_utc = EXCLUDED.hour_utc, enabled = EXCLUDED.enabled
-                RETURNING query, hour_utc, enabled""",
-                (body.query.strip(), body.hour_utc, body.enabled, topic_id)).fetchone()
+                hour_utc = EXCLUDED.hour_utc, enabled = EXCLUDED.enabled, timezone = EXCLUDED.timezone
+                RETURNING query, hour_utc, enabled, timezone""",
+                (body.query.strip(), body.hour_utc, body.enabled, body.timezone, topic_id)).fetchone()
             if row is None:
                 raise HTTPException(404, "Topic not found")
-        return {"topic_id": topic_id, "query": row[0], "hour_utc": row[1], "enabled": row[2]}
+        return {"topic_id": topic_id, "query": row[0], "hour_utc": row[1], "enabled": row[2], "timezone": row[3]}
 
     @router.get("/topics/{topic_id}/schedule")
     def get_schedule(topic_id: int):
         with connect() as db:
             if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
                 raise HTTPException(404, "Topic not found")
-            row = db.execute("SELECT query, hour_utc, enabled FROM lesson_schedules WHERE topic_id = %s", (topic_id,)).fetchone()
-        return {"topic_id": topic_id, "query": row[0], "hour_utc": row[1], "enabled": row[2]} if row else None
+            row = db.execute("SELECT query, hour_utc, enabled, timezone FROM lesson_schedules WHERE topic_id = %s", (topic_id,)).fetchone()
+        return {"topic_id": topic_id, "query": row[0], "hour_utc": row[1], "enabled": row[2], "timezone": row[3]} if row else None
 
     @router.get("/topics/{topic_id}/schedule/runs")
     def schedule_runs(topic_id: int):
@@ -73,6 +76,7 @@ def create_scheduler_tables(db):
         error text, started_at timestamptz NOT NULL DEFAULT now(),
         finished_at timestamptz, PRIMARY KEY (topic_id, run_date)
     )""")
+    db.execute("ALTER TABLE lesson_schedules ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'UTC'")
 
 
 def run_due(connect, generate, now=None):
@@ -82,9 +86,10 @@ def run_due(connect, generate, now=None):
         raise ValueError("now must be timezone-aware")
     now = now.astimezone(timezone.utc)
     with connect() as db:
-        schedules = db.execute("""SELECT topic_id FROM lesson_schedules
-            WHERE enabled AND hour_utc <= %s ORDER BY topic_id""", (now.hour,)).fetchall()
-    for (topic_id,) in schedules:
+        schedules = db.execute("""SELECT topic_id, timezone FROM lesson_schedules
+            WHERE enabled ORDER BY topic_id""").fetchall()
+    for topic_id, zone in schedules:
+        local = now.astimezone(ZoneInfo(zone))
         # Commit the claim before calling external services. The primary key also
         # prevents duplicate work across processes and concurrent scheduler ticks.
         with connect() as db:
@@ -92,23 +97,23 @@ def run_due(connect, generate, now=None):
                 SELECT topic_id, %s, query, 'running' FROM lesson_schedules
                 WHERE topic_id = %s AND enabled AND hour_utc <= %s
                 ON CONFLICT (topic_id, run_date) DO NOTHING RETURNING query""",
-                (now.date(), topic_id, now.hour)).fetchone()
+                (local.date(), topic_id, local.hour)).fetchone()
         if not claim:
             continue
         try:
             lesson = generate(topic_id, LessonGeneration(query=claim[0]))
             lesson_id = lesson["id"]
         except Exception as exc:
-            log.exception("Scheduled lesson failed for topic %s on %s", topic_id, now.date())
+            log.exception("Scheduled lesson failed for topic %s on %s", topic_id, local.date())
             with connect() as db:
                 db.execute("""UPDATE lesson_schedule_runs SET status = 'failed', error = %s,
                     finished_at = now() WHERE topic_id = %s AND run_date = %s""",
-                    (str(exc)[:2000] or type(exc).__name__, topic_id, now.date()))
+                    (str(exc)[:2000] or type(exc).__name__, topic_id, local.date()))
             continue
         with connect() as db:
             db.execute("""UPDATE lesson_schedule_runs SET status = 'completed', lesson_id = %s,
                 finished_at = now() WHERE topic_id = %s AND run_date = %s""",
-                (lesson_id, topic_id, now.date()))
+                (lesson_id, topic_id, local.date()))
 
 
 def start_scheduler(connect, generate, interval=60):
