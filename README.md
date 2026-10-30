@@ -79,6 +79,9 @@ and schedule pages, and assembles exams from selected questions. Experimental
 feedback requires extracted text on both referenced pages and checks that its
 quoted evidence appears in the schedule. It is not an official mark and is not
 saved; independently check the original assessment schedule.
+`POST /exams/monthly` can select verified questions for a subject, preferring
+unused questions. It does not schedule exams automatically or guarantee a
+realistic balance of standards, topics or marks.
 PowerPoint references are slide numbers; Word text is returned as one section,
 not page numbers. Images, PowerPoint tables and Word tables are not extracted.
 Delete a resource with `DELETE /resources/{id}`; if removal fails or is

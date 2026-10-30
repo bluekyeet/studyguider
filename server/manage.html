@@ -144,6 +144,22 @@
           <form id="view-exam"><label for="exam-id">Exam ID</label><input id="exam-id" type="number" min="1" required><button>View exam</button></form>
           <div id="exam-view"></div>
         </section>
+        <section class="card wide" aria-labelledby="scheduler-heading">
+          <div class="section-heading"><span class="section-number">10</span><h2 id="scheduler-heading">Scheduled lessons</h2></div>
+          <p class="hint">Settings apply to the selected topic. Scheduled generation sends matching resource excerpts to both configured external model providers. Review generated lessons against the originals.</p>
+          <p class="hint" id="schedule-time-help">The hour is in the selected timezone. Pacific/Auckland follows New Zealand daylight saving; UTC does not. Runs are attempted once per local date, with no catch-up for earlier dates.</p>
+          <form id="schedule-form">
+            <label for="schedule-query">Search terms</label><input id="schedule-query" maxlength="200" required>
+            <label for="schedule-zone">Timezone</label><select id="schedule-zone" aria-describedby="schedule-time-help"><option value="Pacific/Auckland">New Zealand (Pacific/Auckland)</option><option value="UTC">UTC</option></select>
+            <label for="schedule-hour">Hour (0–23)</label><input id="schedule-hour" type="number" min="0" max="23" step="1" value="0" required aria-describedby="schedule-time-help">
+            <label><input id="schedule-enabled" type="checkbox">Enable daily generation</label>
+            <button>Save schedule</button>
+          </form>
+          <h3>Run history</h3>
+          <p class="hint">Running or failed runs are not automatically retried; inspect them before taking further action.</p>
+          <button id="refresh-runs" class="secondary" type="button">Reload saved settings and run status</button>
+          <p id="schedule-status" role="status" aria-live="polite"></p><ul id="schedule-runs"></ul>
+        </section>
       </div>
     </main>
   </div>
@@ -201,6 +217,7 @@
       await loadResources();
       await loadTopicStandards();
       await loadNotes();
+      await loadSchedule();
     }
     async function loadNotes() {
       const list = $('notes'); list.replaceChildren();
@@ -248,7 +265,7 @@
     $('add-subject').onsubmit = run(async () => { await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; await loadSubjects(); });
     $('subjects').onchange = run(loadTopics);
     $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; await loadTopics(); });
-    $('topics').onchange = run(async () => { $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); });
+    $('topics').onchange = run(async () => { $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); await loadSchedule(); });
     $('add-note').onsubmit = run(async () => {
       if (!$('topics').value) throw new Error('Select a topic first');
       await api(`/topics/${$('topics').value}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: $('note').value }) });
@@ -337,6 +354,33 @@
       view.append(list);
     }
     $('view-exam').onsubmit = run(showExam);
+    async function loadSchedule() {
+      const id = $('topics').value;
+      $('schedule-form').reset(); $('schedule-runs').replaceChildren();
+      $('schedule-status').textContent = id ? 'Loading schedule…' : 'Select a topic to manage its schedule.';
+      if (!id) return;
+      const [schedule, runs] = await Promise.all([api(`/topics/${id}/schedule`), api(`/topics/${id}/schedule/runs`)]);
+      if (id !== $('topics').value) return;
+      if (schedule) {
+        $('schedule-query').value = schedule.query; $('schedule-hour').value = schedule.hour_utc;
+        $('schedule-zone').value = schedule.timezone; $('schedule-enabled').checked = schedule.enabled;
+      }
+      $('schedule-status').textContent = runs.length ? `${runs.length} run(s) recorded.` : 'No runs recorded.';
+      for (const item of runs) {
+        const li = document.createElement('li');
+        li.textContent = `${item.run_date} — ${item.status}; search: ${item.query}; started: ${item.started_at}${item.finished_at ? `; finished: ${item.finished_at}` : ''}${item.lesson_id !== null ? `; lesson ID: ${item.lesson_id}` : ''}${item.error ? `; error: ${item.error}` : ''}`;
+        $('schedule-runs').append(li);
+      }
+    }
+    $('schedule-form').onsubmit = run(async () => {
+      const id = $('topics').value;
+      if (!id) throw new Error('Select a topic first');
+      if (!$('schedule-query').value.trim()) throw new Error('Enter search terms');
+      if ($('schedule-enabled').checked && !confirm('Enable daily generation and send matching resource excerpts to both configured external model providers?')) return;
+      await api(`/topics/${id}/schedule`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: $('schedule-query').value, hour_utc: Number($('schedule-hour').value), timezone: $('schedule-zone').value, enabled: $('schedule-enabled').checked }) });
+      await loadSchedule(); message('Schedule saved.');
+    });
+    $('refresh-runs').onclick = run(loadSchedule);
   </script>
 </body>
 </html>

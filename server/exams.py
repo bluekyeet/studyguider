@@ -39,6 +39,11 @@ class ExamAssembly(BaseModel):
         return self
 
 
+class MonthlyExam(BaseModel):
+    subject_id: int = Field(gt=0)
+    question_count: int = Field(gt=0, le=100)
+
+
 class ExamAnswer(BaseModel):
     answer: str = Field(max_length=100000)
 
@@ -112,6 +117,7 @@ def exam_router(connect, authorised):
     @router.post("/exams", status_code=201)
     def assemble_exam(body: ExamAssembly):
         with connect() as db:
+            db.execute("LOCK TABLE exam_items IN SHARE ROW EXCLUSIVE MODE")
             rows = db.execute("SELECT id FROM exam_questions WHERE id = ANY(%s) ORDER BY id FOR KEY SHARE", (body.question_ids,)).fetchall()
             if len(rows) != len(body.question_ids):
                 raise HTTPException(404, "One or more verified questions not found")
@@ -119,6 +125,27 @@ def exam_router(connect, authorised):
             for position, question_id in enumerate(body.question_ids, 1):
                 db.execute("INSERT INTO exam_items (exam_id, question_id, position) VALUES (%s, %s, %s)", (exam[0], question_id, position))
         return {"id": exam[0], "created_at": exam[1], "question_ids": body.question_ids}
+
+    @router.post("/exams/monthly", status_code=201)
+    def assemble_monthly_exam(body: MonthlyExam):
+        with connect() as db:
+            # Serialise selection with all exam assembly, including manual exams.
+            db.execute("LOCK TABLE exam_items IN SHARE ROW EXCLUSIVE MODE")
+            if not db.execute("SELECT 1 FROM subjects WHERE id = %s FOR KEY SHARE", (body.subject_id,)).fetchone():
+                raise HTTPException(404, "Subject not found")
+            rows = db.execute("""SELECT q.id FROM exam_questions q
+                JOIN topics t ON t.id = q.topic_id
+                WHERE t.subject_id = %s AND q.verified_at IS NOT NULL
+                ORDER BY (SELECT MAX(i.exam_id) FROM exam_items i WHERE i.question_id = q.id)
+                    ASC NULLS FIRST, q.id
+                FOR KEY SHARE OF q""", (body.subject_id,)).fetchall()
+            if len(rows) < body.question_count:
+                raise HTTPException(409, detail={"message": "Insufficient verified questions", "requested": body.question_count, "available": len(rows)})
+            question_ids = [row[0] for row in rows[:body.question_count]]
+            exam = db.execute("INSERT INTO exams DEFAULT VALUES RETURNING id, created_at").fetchone()
+            for position, question_id in enumerate(question_ids, 1):
+                db.execute("INSERT INTO exam_items (exam_id, question_id, position) VALUES (%s, %s, %s)", (exam[0], question_id, position))
+        return {"id": exam[0], "created_at": exam[1], "subject_id": body.subject_id, "question_ids": question_ids}
 
     @router.put("/exams/{exam_id}/answers/{question_id}")
     def answer_question(exam_id: int, question_id: int, body: ExamAnswer):

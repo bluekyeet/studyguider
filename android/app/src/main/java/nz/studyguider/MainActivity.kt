@@ -183,6 +183,10 @@ private fun StudyApp() {
                 for (i in 0 until resources.length()) {
                     val item = resources.getJSONObject(i)
                     Text("${item.getString("filename")} — ${item.getString("status")}")
+                    OutlinedButton(enabled = !busy, onClick = { run {
+                        request(base, "/resources/${item.getString("id")}/extract", token, JSONObject())
+                        resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
+                    } }) { Text("Extract text") }
                 }
             }
           }
