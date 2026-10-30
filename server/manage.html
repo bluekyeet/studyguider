@@ -35,6 +35,7 @@
     input, select, textarea { display: block; width: 100%; min-width: 0; border: 1px solid #b8cbc8; border-radius: .5rem; background: #fff; color: #172c35; padding: .65rem .75rem; }
     textarea { resize: vertical; }
     input[type=file] { padding: .5rem; font-size: .875rem; }
+    input[type=checkbox] { display: inline-block; width: auto; margin-right: .5rem; }
     input[type=file]::file-selector-button { border: 0; border-radius: .35rem; padding: .4rem .65rem; margin-right: .75rem; background: #e6f1ee; color: #194f48; font: inherit; cursor: pointer; }
     button { border: 1px solid #176b5a; border-radius: .5rem; padding: .6rem .9rem; background: #176b5a; color: white; font-weight: 650; cursor: pointer; margin-top: .85rem; }
     button:hover { background: #105447; }
@@ -121,6 +122,28 @@
           <h3>Draft</h3><pre id="lesson"></pre>
           <h3>Reviewer notes</h3><pre id="review"></pre>
         </section>
+        <section class="card" aria-labelledby="question-heading">
+          <div class="section-heading"><span class="section-number">08</span><h2 id="question-heading">Register exam question</h2></div>
+          <p class="hint">Select a topic above. Compare the question number and page references with both original uploads. Originals remain authoritative for wording, figures and schedules; this saves references only.</p>
+          <form id="register-question">
+            <label for="question-standard">Linked standard</label><select id="question-standard" required></select>
+            <label for="question-year">Year</label><input id="question-year" type="number" min="1900" max="2100" required>
+            <label for="question-number">Question number</label><input id="question-number" maxlength="100" required>
+            <label for="paper-resource">Original paper resource</label><select id="paper-resource" required></select>
+            <label for="paper-page">Paper page</label><input id="paper-page" type="number" min="1" required>
+            <label for="schedule-resource">Original schedule resource (separate upload)</label><select id="schedule-resource" required></select>
+            <label for="schedule-page">Schedule page</label><input id="schedule-page" type="number" min="1" required>
+            <label><input id="verified" type="checkbox" required>I have compared the question number and both page references against the original paper and schedule.</label>
+            <button>Register question</button>
+          </form>
+        </section>
+        <section class="card" aria-labelledby="exam-heading">
+          <div class="section-heading"><span class="section-number">09</span><h2 id="exam-heading">Manual exam assembly</h2></div>
+          <p class="hint">Select verified references in the order shown to create an exam. Consult the original uploads for the actual questions and schedules.</p>
+          <form id="assemble-exam"><ul id="exam-questions"></ul><button>Create exam</button></form>
+          <form id="view-exam"><label for="exam-id">Exam ID</label><input id="exam-id" type="number" min="1" required><button>View exam</button></form>
+          <div id="exam-view"></div>
+        </section>
       </div>
     </main>
   </div>
@@ -154,9 +177,13 @@
     async function loadTopicStandards() {
       const list = $('topic-standards');
       list.replaceChildren();
+      options($('question-standard'), [], item => item.title);
       const id = $('topics').value;
       if (!id) return;
-      for (const standard of await api(`/topics/${id}/standards`)) {
+      const standards = await api(`/topics/${id}/standards`);
+      $('question-standard').replaceChildren();
+      for (const standard of standards) {
+        $('question-standard').add(new Option(`${standard.number} — ${standard.title}`, standard.number));
         const item = document.createElement('li');
         item.textContent = `${standard.number} — ${standard.title} `;
         const unlink = document.createElement('button');
@@ -168,6 +195,7 @@
       }
     }
     async function loadTopics() {
+      $('verified').checked = false;
       const id = $('subjects').value;
       options($('topics'), id ? await api(`/subjects/${id}/topics`) : [], item => item.name);
       await loadResources();
@@ -190,9 +218,15 @@
       const id = $('topics').value;
       const list = $('resources');
       list.replaceChildren();
+      options($('paper-resource'), [], item => item.filename);
+      options($('schedule-resource'), [], item => item.filename);
       $('results').replaceChildren();
       if (!id) return;
       for (const item of await api(`/topics/${id}/resources`)) {
+        if (item.status !== 'deleting') {
+          $('paper-resource').add(new Option(item.filename, item.id));
+          $('schedule-resource').add(new Option(item.filename, item.id));
+        }
         const li = document.createElement('li');
         li.textContent = `${item.filename} — ${item.status} `;
         const extract = document.createElement('button');
@@ -208,13 +242,13 @@
     $('login').onsubmit = run(async () => {
       const result = await api('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('password').value }) });
       token = result.token; $('password').value = ''; $('login').hidden = true; $('manager').hidden = false;
-      await loadSubjects(); await loadStandards();
+      await loadSubjects(); await loadStandards(); await loadExamQuestions();
     });
-    $('logout').onclick = run(async () => { await api('/logout', { method: 'POST' }); token = ''; $('manager').hidden = true; $('login').hidden = false; });
+    $('logout').onclick = run(async () => { await api('/logout', { method: 'POST' }); token = ''; $('manager').hidden = true; $('login').hidden = false; $('verified').checked = false; $('exam-view').replaceChildren(); $('exam-questions').replaceChildren(); });
     $('add-subject').onsubmit = run(async () => { await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; await loadSubjects(); });
     $('subjects').onchange = run(loadTopics);
     $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; await loadTopics(); });
-    $('topics').onchange = run(async () => { await loadResources(); await loadTopicStandards(); await loadNotes(); });
+    $('topics').onchange = run(async () => { $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); });
     $('add-note').onsubmit = run(async () => {
       if (!$('topics').value) throw new Error('Select a topic first');
       await api(`/topics/${$('topics').value}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: $('note').value }) });
@@ -260,6 +294,49 @@
       $('review').textContent = result.review;
       message(result.warning);
     });
+    function questionDescription(q) {
+      return `Question ${q.id}: ${q.year}, standard ${q.standard_number}, question ${q.question_number}; topic ${q.topic_id}. Paper ${q.paper_resource_id}, page ${q.paper_page}; schedule ${q.schedule_resource_id}, page ${q.schedule_page}. Verified ${q.verified_at}.`;
+    }
+    async function loadExamQuestions() {
+      const list = $('exam-questions'); list.replaceChildren();
+      for (const q of await api('/exam-questions')) {
+        const item = document.createElement('li');
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = q.id;
+        label.append(checkbox, document.createTextNode(questionDescription(q)));
+        item.append(label); list.append(item);
+      }
+    }
+    $('register-question').addEventListener('input', event => { if (event.target.id !== 'verified') $('verified').checked = false; });
+    $('register-question').addEventListener('change', event => { if (event.target.id !== 'verified') $('verified').checked = false; });
+    $('register-question').onsubmit = run(async () => {
+      if (!$('topics').value || !$('question-standard').value || !$('paper-resource').value || !$('schedule-resource').value) throw new Error('Select a topic with a linked standard and both original resources first');
+      if ($('paper-resource').value === $('schedule-resource').value) throw new Error('Paper and schedule must be separate resources');
+      if (!$('question-number').value.trim() || !$('verified').checked) throw new Error('Enter a question number and verify both originals');
+      await api('/exam-questions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic_id: Number($('topics').value), standard_number: Number($('question-standard').value), year: Number($('question-year').value), question_number: $('question-number').value, paper_resource_id: $('paper-resource').value, paper_page: Number($('paper-page').value), schedule_resource_id: $('schedule-resource').value, schedule_page: Number($('schedule-page').value), verified_against_originals: $('verified').checked }) });
+      $('verified').checked = false;
+      await loadExamQuestions(); message('Question reference registered. The original uploads remain authoritative.');
+    });
+    $('assemble-exam').onsubmit = run(async () => {
+      const question_ids = [...$('exam-questions').querySelectorAll('input:checked')].map(input => Number(input.value));
+      if (!question_ids.length || question_ids.length > 100) throw new Error('Select between 1 and 100 questions');
+      const exam = await api('/exams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question_ids }) });
+      $('exam-id').value = exam.id; await showExam(); message(`Exam ${exam.id} created. Record its ID to view it later.`);
+    });
+    async function showExam() {
+      const view = $('exam-view'); view.replaceChildren();
+      const exam = await api(`/exams/${encodeURIComponent($('exam-id').value)}`);
+      const heading = document.createElement('h3'); heading.textContent = `Exam ${exam.id} — created ${exam.created_at}`; view.append(heading);
+      const list = document.createElement('ul');
+      for (const q of exam.questions) {
+        const item = document.createElement('li');
+        const text = document.createElement('p'); text.textContent = `${q.position}. ${questionDescription(q)}`; item.append(text);
+        if (q.answer !== null) { const answer = document.createElement('p'); answer.textContent = `Saved answer: ${q.answer}`; answer.style.whiteSpace = 'pre-wrap'; item.append(answer); }
+        list.append(item);
+      }
+      view.append(list);
+    }
+    $('view-exam').onsubmit = run(showExam);
   </script>
 </body>
 </html>

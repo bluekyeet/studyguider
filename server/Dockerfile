@@ -5,6 +5,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY reviews.py .
 COPY exams.py .
+COPY lessons.py .
+COPY marking.py .
 COPY set_password.py .
 COPY manage.html .
 RUN mkdir -p /data/uploads && chown nobody:nogroup /data/uploads

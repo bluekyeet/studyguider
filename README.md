@@ -69,6 +69,16 @@ five matching source excerpts and linked standards to `education` and
 `education-reviewer`. Both calls send your material to those model providers.
 The result is always a draft: citations and reviewer claims are not verified,
 and no lesson is saved. The calls can take up to 90 seconds each.
+Alternatively, `POST /topics/{id}/lessons` generates and saves a draft with
+snapshots of the supplied evidence, and `GET /topics/{id}/lessons` lists saved
+drafts. A reviewer failure is recorded; neither review nor source citations
+are automatically verified.
+
+The exam manager registers questions by verified references to uploaded paper
+and schedule pages, and assembles exams from selected questions. Experimental
+feedback requires extracted text on both referenced pages and checks that its
+quoted evidence appears in the schedule. It is not an official mark and is not
+saved; independently check the original assessment schedule.
 PowerPoint references are slide numbers; Word text is returned as one section,
 not page numbers. Images, PowerPoint tables and Word tables are not extracted.
 Delete a resource with `DELETE /resources/{id}`; if removal fails or is

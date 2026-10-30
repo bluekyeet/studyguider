@@ -13,6 +13,7 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: false
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - name: Build Android debug APK
         working-directory: android
         run: bash ./gradlew --no-daemon assembleDebug

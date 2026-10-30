@@ -22,6 +22,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from reviews import create_review_tables, review_router
+from lessons import create_lesson_tables, lesson_router
+from marking import marking_router
 from exams import create_exam_tables, exam_router
 
 
@@ -43,6 +45,7 @@ async def lifespan(app):
         db.execute("CREATE TABLE IF NOT EXISTS topic_standards (topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE CASCADE, standard_number integer NOT NULL REFERENCES standards(number) ON DELETE RESTRICT, PRIMARY KEY (topic_id, standard_number))")
         db.execute("CREATE TABLE IF NOT EXISTS notes (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT, content text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())")
         create_review_tables(db)
+        create_lesson_tables(db)
         create_exam_tables(db)
     yield
 
@@ -285,6 +288,8 @@ def delete_topic(subject_id: int, topic_id: int):
             raise HTTPException(409, "Delete notes before deleting this topic")
         if db.execute("SELECT 1 FROM review_questions WHERE topic_id = %s", (topic_id,)).fetchone():
             raise HTTPException(409, "Topic has review history and cannot be deleted")
+        if db.execute("SELECT 1 FROM lessons WHERE topic_id = %s", (topic_id,)).fetchone():
+            raise HTTPException(409, "Topic has saved lessons and cannot be deleted")
         row = db.execute("DELETE FROM topics WHERE id = %s AND subject_id = %s RETURNING id", (topic_id, subject_id)).fetchone()
         if row is None:
             raise HTTPException(404, "Topic not found")
@@ -586,3 +591,7 @@ def delete_resource(resource_id: uuid.UUID):
     with connect() as db:
         db.execute("DELETE FROM resources WHERE id = %s AND status = 'deleting'", (resource_id,))
     return {"status": "ok"}
+
+
+app.include_router(lesson_router(connect, authorised, model_reply, search_resources, topic_standards))
+app.include_router(marking_router(connect, authorised, model_reply))

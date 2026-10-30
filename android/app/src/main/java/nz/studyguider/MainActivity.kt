@@ -105,6 +105,7 @@ private fun StudyApp() {
     var subjectName by remember { mutableStateOf("") }
     var subjectLevel by remember { mutableStateOf("2") }
     var topicName by remember { mutableStateOf("") }
+    var examId by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     fun run(block: suspend () -> Unit) {
@@ -167,6 +168,8 @@ private fun StudyApp() {
                 LessonScreen(base, token, selectedTopic)
             }
             ReviewScreen(base, token)
+            OutlinedTextField(examId, { examId = it }, label = { Text("Open exam ID") }, singleLine = true)
+            examId.toLongOrNull()?.takeIf { it > 0 }?.let { ExamScreen(base, token, it) }
         }
     }
 }
