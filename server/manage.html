@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyGuider resources</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; color: #172c35; background: #f3f7f6; line-height: 1.5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    [hidden] { display: none !important; }
+    .shell { max-width: 76rem; margin: auto; padding: 0 1.5rem 4rem; }
+    .hero { background: #123d43; color: #fff; padding: 2.5rem 0 2.25rem; }
+    .hero .shell { padding-bottom: 0; }
+    .eyebrow { color: #a9dfcd; font-size: .75rem; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; margin: 0 0 .5rem; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.04em; line-height: 1.1; margin-bottom: .65rem; }
+    .hero p:last-child { color: #d0e6e1; max-width: 42rem; margin-bottom: 0; }
+    .content { padding-top: 1.5rem; }
+    #message:not(:empty) { padding: .85rem 1rem; margin: 0 0 1rem; background: #fff8e6; border: 1px solid #e9d49c; border-radius: .65rem; color: #614913; overflow-wrap: anywhere; }
+    #message:empty { margin: 0; }
+    .card { background: #fff; border: 1px solid #dce8e5; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 8px 24px rgba(20, 62, 59, .04); min-width: 0; }
+    .login-card { max-width: 30rem; margin: 2rem auto; }
+    .manager-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: .25rem 0 1.25rem; }
+    .manager-top p { margin: 0; color: #526b70; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+    .wide { grid-column: 1 / -1; }
+    .section-heading { display: flex; gap: .75rem; align-items: baseline; margin-bottom: .35rem; }
+    .section-number { font-size: .75rem; font-weight: 750; color: #368272; letter-spacing: .08em; }
+    h2 { font-size: 1.25rem; line-height: 1.25; letter-spacing: -.02em; margin-bottom: 0; }
+    h3 { font-size: 1rem; margin: 1.25rem 0 .5rem; }
+    .hint { color: #5e7376; font-size: .9rem; margin: .5rem 0 1rem; }
+    label { display: block; font-size: .875rem; font-weight: 650; margin: .85rem 0 .35rem; }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea { display: block; width: 100%; min-width: 0; border: 1px solid #b8cbc8; border-radius: .5rem; background: #fff; color: #172c35; padding: .65rem .75rem; }
+    textarea { resize: vertical; }
+    input[type=file] { padding: .5rem; font-size: .875rem; }
+    input[type=file]::file-selector-button { border: 0; border-radius: .35rem; padding: .4rem .65rem; margin-right: .75rem; background: #e6f1ee; color: #194f48; font: inherit; cursor: pointer; }
+    button { border: 1px solid #176b5a; border-radius: .5rem; padding: .6rem .9rem; background: #176b5a; color: white; font-weight: 650; cursor: pointer; margin-top: .85rem; }
+    button:hover { background: #105447; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #e3a934; outline-offset: 2px; }
+    .secondary, li button { background: #fff; color: #175e51; border-color: #a7c9bf; }
+    .secondary:hover, li button:hover { background: #edf7f3; }
+    .manager-top button { margin: 0; }
+    .divider { border-top: 1px solid #e5eeeb; margin-top: 1.25rem; padding-top: .2rem; }
+    ul { list-style: none; padding: 0; margin: 1rem 0 0; }
+    li { border: 1px solid #e2ece9; background: #f8fbfa; border-radius: .6rem; padding: .8rem; margin-top: .6rem; overflow-wrap: anywhere; }
+    li p { margin: .5rem 0; }
+    li button { font-size: .85rem; padding: .4rem .65rem; margin: .5rem .35rem 0 0; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: #f8fbfa; border: 1px solid #e2ece9; border-radius: .6rem; padding: .85rem; min-height: 3rem; margin: 0; }
+    @media (max-width: 650px) { .shell { padding-left: 1rem; padding-right: 1rem; } .hero { padding: 2rem 0; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 1.15rem; } }
+  </style>
+</head>
+<body>
+  <header class="hero"><div class="shell">
+    <p class="eyebrow">StudyGuider ? Resource manager</p>
+    <h1>Make space for learning.</h1>
+    <p>Organise subjects, connect standards and bring your teaching resources together.</p>
+  </div></header>
+  <div class="shell content">
+    <p id="message" role="status" aria-live="polite"></p>
+    <form id="login" class="card login-card">
+      <div class="section-heading"><h2>Welcome back</h2></div>
+      <p class="hint">Sign in to manage your resources.</p>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button>Sign in</button>
+    </form>
+    <main id="manager" hidden>
+      <div class="manager-top"><p>Manage your learning content below.</p><button id="logout" class="secondary" type="button">Sign out</button></div>
+      <div class="grid">
+        <section class="card" aria-labelledby="subjects-heading">
+          <div class="section-heading"><span class="section-number">01</span><h2 id="subjects-heading">Subjects</h2></div>
+          <p class="hint">Create a subject, then select it to manage its topics.</p>
+          <form id="add-subject">
+            <label for="subject-name">Subject name</label><input id="subject-name" maxlength="200" required>
+            <label for="level">NCEA level</label><select id="level"><option>1</option><option selected>2</option><option>3</option></select>
+            <button>Add subject</button>
+          </form>
+          <div class="divider"><label for="subjects">Select subject</label><select id="subjects"></select></div>
+        </section>
+        <section class="card" aria-labelledby="topics-heading">
+          <div class="section-heading"><span class="section-number">02</span><h2 id="topics-heading">Topics</h2></div>
+          <p class="hint">Choose a topic to manage its standards, resources and notes.</p>
+          <form id="add-topic"><label for="topic-name">Topic name</label><input id="topic-name" maxlength="200" required><button>Add topic</button></form>
+          <div class="divider"><label for="topics">Select topic</label><select id="topics"></select></div>
+        </section>
+        <section class="card" aria-labelledby="standards-heading">
+          <div class="section-heading"><span class="section-number">03</span><h2 id="standards-heading">NZQA standards</h2></div>
+          <p class="hint">Save a standard and link it to the selected topic.</p>
+          <form id="save-standard">
+            <label for="standard-number">Standard number</label><input id="standard-number" type="number" min="1" max="2147483647" required>
+            <label for="standard-title">Title</label><input id="standard-title" maxlength="200" required>
+            <label for="standard-description">Criteria or notes</label><textarea id="standard-description" maxlength="50000" rows="4" cols="40"></textarea>
+            <button>Save standard</button>
+          </form>
+          <div class="divider"><label for="standards">Standard to link to this topic</label><select id="standards"></select><button id="link-standard" class="secondary" type="button">Link standard</button><ul id="topic-standards"></ul></div>
+        </section>
+        <section class="card" aria-labelledby="resources-heading">
+          <div class="section-heading"><span class="section-number">04</span><h2 id="resources-heading">Resources</h2></div>
+          <p class="hint">Upload files to the selected topic and extract their text for searching.</p>
+          <form id="upload"><label for="file">File (maximum 50 MiB)</label><input id="file" type="file" accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.png,.jpg,.jpeg" required><button>Upload</button></form>
+          <ul id="resources"></ul>
+        </section>
+        <section class="card" aria-labelledby="search-heading">
+          <div class="section-heading"><span class="section-number">05</span><h2 id="search-heading">Search extracted resources</h2></div>
+          <p class="hint">Find relevant excerpts within the selected topic.</p>
+          <form id="search"><label for="query">Search this topic</label><input id="query" maxlength="200" required><button>Search</button></form>
+          <ul id="results"></ul>
+        </section>
+        <section class="card" aria-labelledby="notes-heading">
+          <div class="section-heading"><span class="section-number">06</span><h2 id="notes-heading">Topic notes</h2></div>
+          <p class="hint">Keep notes alongside the selected topic.</p>
+          <form id="add-note"><label for="note">Note</label><textarea id="note" rows="5" cols="40" maxlength="50000" required></textarea><button>Save note</button></form>
+          <ul id="notes"></ul>
+        </section>
+        <section class="card wide" aria-labelledby="draft-heading">
+          <div class="section-heading"><span class="section-number">07</span><h2 id="draft-heading">Experimental lesson draft</h2></div>
+          <p class="hint">Uses the selected topic and search terms above. Both configured model providers receive the matched resource excerpts. Check every claim and citation against the original; drafts are not saved.</p>
+          <button id="generate-lesson" type="button">Generate lesson draft</button>
+          <h3>Draft</h3><pre id="lesson"></pre>
+          <h3>Reviewer notes</h3><pre id="review"></pre>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script>
+    let token = '';
+    const $ = id => document.getElementById(id);
+    function message(text) { $('message').textContent = text; }
+    async function api(path, options = {}) {
+      const headers = { ...options.headers };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(path, { ...options, headers });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(typeof error.detail === 'string' ? error.detail : `Request failed (${response.status})`);
+      }
+      return response.json();
+    }
+    function run(action) { return async event => { event.preventDefault(); message(''); try { await action(); } catch (error) { message(error.message); } }; }
+    function options(select, items, label) {
+      select.replaceChildren();
+      for (const item of items) select.add(new Option(label(item), item.id));
+    }
+    async function loadSubjects() {
+      options($('subjects'), await api('/subjects'), item => `${item.name} (Level ${item.level})`);
+      await loadTopics();
+    }
+    async function loadStandards() {
+      options($('standards'), await api('/standards'), item => `${item.number} — ${item.title}`);
+      await loadTopicStandards();
+    }
+    async function loadTopicStandards() {
+      const list = $('topic-standards');
+      list.replaceChildren();
+      const id = $('topics').value;
+      if (!id) return;
+      for (const standard of await api(`/topics/${id}/standards`)) {
+        const item = document.createElement('li');
+        item.textContent = `${standard.number} — ${standard.title} `;
+        const unlink = document.createElement('button');
+        unlink.type = 'button';
+        unlink.textContent = 'Unlink';
+        unlink.onclick = run(async () => { await api(`/topics/${id}/standards/${standard.number}`, { method: 'DELETE' }); await loadTopicStandards(); });
+        item.append(unlink);
+        list.append(item);
+      }
+    }
+    async function loadTopics() {
+      const id = $('subjects').value;
+      options($('topics'), id ? await api(`/subjects/${id}/topics`) : [], item => item.name);
+      await loadResources();
+      await loadTopicStandards();
+      await loadNotes();
+    }
+    async function loadNotes() {
+      const list = $('notes'); list.replaceChildren();
+      const id = $('topics').value;
+      if (!id) return;
+      for (const note of await api(`/topics/${id}/notes`)) {
+        const item = document.createElement('li');
+        const text = document.createElement('p'); text.textContent = note.content; text.style.whiteSpace = 'pre-wrap';
+        const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Delete note';
+        remove.onclick = run(async () => { if (confirm('Delete this note?')) { await api(`/topics/${id}/notes/${note.id}`, { method: 'DELETE' }); await loadNotes(); } });
+        item.append(text, remove); list.append(item);
+      }
+    }
+    async function loadResources() {
+      const id = $('topics').value;
+      const list = $('resources');
+      list.replaceChildren();
+      $('results').replaceChildren();
+      if (!id) return;
+      for (const item of await api(`/topics/${id}/resources`)) {
+        const li = document.createElement('li');
+        li.textContent = `${item.filename} — ${item.status} `;
+        const extract = document.createElement('button');
+        extract.textContent = 'Extract text';
+        extract.onclick = run(async () => { await api(`/resources/${item.id}/extract`, { method: 'POST' }); await loadResources(); });
+        const remove = document.createElement('button');
+        remove.textContent = 'Delete';
+        remove.onclick = run(async () => { if (confirm(`Delete ${item.filename} and its extracted data?`)) { await api(`/resources/${item.id}`, { method: 'DELETE' }); await loadResources(); } });
+        li.append(extract, ' ', remove);
+        list.append(li);
+      }
+    }
+    $('login').onsubmit = run(async () => {
+      const result = await api('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('password').value }) });
+      token = result.token; $('password').value = ''; $('login').hidden = true; $('manager').hidden = false;
+      await loadSubjects(); await loadStandards();
+    });
+    $('logout').onclick = run(async () => { await api('/logout', { method: 'POST' }); token = ''; $('manager').hidden = true; $('login').hidden = false; });
+    $('add-subject').onsubmit = run(async () => { await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; await loadSubjects(); });
+    $('subjects').onchange = run(loadTopics);
+    $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; await loadTopics(); });
+    $('topics').onchange = run(async () => { await loadResources(); await loadTopicStandards(); await loadNotes(); });
+    $('add-note').onsubmit = run(async () => {
+      if (!$('topics').value) throw new Error('Select a topic first');
+      await api(`/topics/${$('topics').value}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: $('note').value }) });
+      $('note').value = ''; await loadNotes();
+    });
+    $('save-standard').onsubmit = run(async () => {
+      const number = $('standard-number').value;
+      if (!number || Number(number) < 1 || Number(number) > 2147483647) throw new Error('Enter a valid standard number');
+      if ([...$('standards').options].some(option => option.value === number) && !confirm(`Replace the title and notes for standard ${number}?`)) return;
+      await api(`/standards/${number}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: $('standard-title').value, description: $('standard-description').value }) });
+      await loadStandards();
+      message('Standard saved. Verify its details against NZQA.');
+    });
+    $('link-standard').onclick = run(async () => {
+      if (!$('topics').value || !$('standards').value) throw new Error('Select a topic and standard first');
+      await api(`/topics/${$('topics').value}/standards/${$('standards').value}`, { method: 'PUT' });
+      await loadTopicStandards();
+    });
+    $('upload').onsubmit = run(async () => { if (!$('topics').value) throw new Error('Select a topic first'); const data = new FormData(); data.append('file', $('file').files[0]); await api(`/topics/${$('topics').value}/resources`, { method: 'POST', body: data }); $('file').value = ''; await loadResources(); });
+    $('search').onsubmit = run(async () => {
+      if (!$('topics').value) throw new Error('Select a topic first');
+      const results = await api(`/topics/${$('topics').value}/search?q=${encodeURIComponent($('query').value)}`);
+      const list = $('results');
+      list.replaceChildren();
+      for (const result of results) {
+        const item = document.createElement('li');
+        const title = document.createElement('strong');
+        title.textContent = `${result.filename}, reference ${result.page}`;
+        const text = document.createElement('p');
+        text.textContent = result.content;
+        item.append(title, text);
+        list.append(item);
+      }
+      if (!results.length) message('No matching resources found.');
+    });
+    $('generate-lesson').onclick = run(async () => {
+      if (!$('topics').value || !$('query').value.trim()) throw new Error('Select a topic and enter search terms first');
+      if (!confirm('Send matching resource excerpts to the configured model providers?')) return;
+      $('lesson').textContent = ''; $('review').textContent = '';
+      message('Generating and reviewing; this may take several minutes.');
+      const result = await api(`/topics/${$('topics').value}/lesson-draft`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: $('query').value }) });
+      $('lesson').textContent = result.lesson;
+      $('review').textContent = result.review;
+      message(result.warning);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+# StudyGuider
+
+A personal NCEA study companion. See `writeup.md` for the product design and
+`DESIGN.md` for the current implementation scope.
+
+## Run locally
+
+Install Docker and Docker Compose, copy `.env.example` to `.env`, and set
+`POSTGRES_PASSWORD` to a strong, unique password. Set
+`POSTGRES_PASSWORD_URLENCODED` to the URL-encoded version of the same password
+(for a password containing only letters and digits, the values are identical).
+Then run:
+
+```sh
+docker compose up --build
+```
+
+Visit http://localhost:8000/health. This initial endpoint checks that the API
+process is running; it does not check database connectivity. Stop the services
+with `docker compose down`; the database volume is retained.
+
+Set the login password interactively with `docker compose exec api python
+set_password.py` (at least 12 characters). The API provides `/login`, `/logout`,
+`/subjects`, and `/subjects/{id}/topics`; use the login token as a Bearer token.
+Changing the password revokes existing sessions. Five failed logins lock login
+for 15 minutes. The health endpoint only checks the API process.
+Open `http://localhost:8000/manage` for the basic resource manager. Its token is
+held in memory and is discarded when the page is closed or refreshed.
+Subjects and topics can be created, listed, renamed and deleted through the API.
+Delete a subject's topics first; subject deletion will not silently remove them.
+Standards can be added or updated with `PUT /standards/{number}`, listed at
+`/standards`, and linked or unlinked with `PUT` or `DELETE` at
+`/topics/{id}/standards/{number}`. Official standard text is not preloaded;
+verify any entered criteria against NZQA.
+The resource manager can save standard records and link or unlink them from a
+topic. Saving an existing number replaces its title and notes.
+
+The API also supports manually created review questions and recorded answers
+with confidence. This is not AI marking or spaced repetition yet; review history
+prevents topic deletion.
+
+## Android preview
+
+Open `android/` in Android Studio, or run `gradlew.bat assembleDebug` there
+with JDK 17 or 21 and Android SDK 36 installed. The debug APK supports login
+and browsing subjects and topics. Sessions are kept only in memory; uploads,
+lessons and reviews are not implemented in the app yet. The debug build permits
+HTTP for local emulator testing; release builds require HTTPS. Never use real
+passwords over HTTP. On the Android emulator, `10.0.2.2` refers to the host.
+Authenticated clients can upload files (up to 50 MiB) to
+`/topics/{id}/resources`, list them there and download them at
+`/resources/{id}/download`. Files are stored in a separate Docker volume and
+remain `pending` until explicitly processed. `POST /resources/{id}/extract`
+extracts UTF-8 TXT, Markdown, CSV, text-based PDFs, PowerPoint slide text and
+Word paragraph text; scanned or empty PDF
+pages require OCR, which is not implemented. `GET /resources/{id}/text` returns
+the text and `/resources/{id}/pages` returns page references. Extracted text is
+not yet used for lessons. Other file formats are not implemented yet.
+`GET /topics/{id}/search?q=...` searches extracted text within one topic using
+PostgreSQL full-text search and returns up to 20 matching source pages or slides.
+The resource manager also provides a search form for the selected topic.
+Topic notes can be saved and deleted in the resource manager; topics containing
+notes cannot be deleted until those notes have been removed.
+For an experimental, unsaved lesson draft, set `ROUTER_BASE_URL` to the
+9Router OpenAI-compatible base URL and `ROUTER_API_KEY` in `.env`, then call
+`POST /topics/{id}/lesson-draft` with JSON `{"query":"..."}`. It sends up to
+five matching source excerpts and linked standards to `education` and
+`education-reviewer`. Both calls send your material to those model providers.
+The result is always a draft: citations and reviewer claims are not verified,
+and no lesson is saved. The calls can take up to 90 seconds each.
+PowerPoint references are slide numbers; Word text is returned as one section,
+not page numbers. Images, PowerPoint tables and Word tables are not extracted.
+Delete a resource with `DELETE /resources/{id}`; if removal fails or is
+interrupted, its status remains `deleting` and the same request can be retried.
+Back up both the database and uploads volume together.
+
+The API is bound to localhost. Do not expose it to the internet yet: TLS,
+deployment hardening and a security review remain outstanding. Upload requests
+require Content-Length and have an application-level size check; enforce a
+streaming request-body limit at the proxy before any public deployment.
+
+## Test
+
+With Python and the dependencies from `server/requirements.txt` installed:
+
+```sh
+python -m unittest discover -s server/tests
+```
+
+`server/tests/integration.py` is an HTTP integration check for a **disposable**
+Compose database only: it replaces the configured password and revokes sessions.

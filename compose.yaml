@@ -1,0 +1,32 @@
+services:
+  api:
+    build: ./server
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      DATABASE_URL: postgresql://studyguider:${POSTGRES_PASSWORD_URLENCODED:?Set POSTGRES_PASSWORD_URLENCODED in .env}@db:5432/studyguider
+      UPLOAD_DIR: /data/uploads
+      ROUTER_BASE_URL: ${ROUTER_BASE_URL:-}
+      ROUTER_API_KEY: ${ROUTER_API_KEY:-}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: studyguider
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment or .env}
+      POSTGRES_DB: studyguider
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studyguider -d studyguider"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  postgres_data:
+  uploads:
