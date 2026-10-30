@@ -164,6 +164,7 @@ private fun StudyApp() {
                     val item = resources.getJSONObject(i)
                     Text("${item.getString("filename")} — ${item.getString("status")}")
                 }
+                LessonScreen(base, token, selectedTopic)
             }
             ReviewScreen(base, token)
         }

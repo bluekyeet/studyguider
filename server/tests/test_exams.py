@@ -29,7 +29,7 @@ class Database:
     def __exit__(self, *args):
         pass
 
-    def execute(self, sql, params):
+    def execute(self, sql, params=()):
         if "FROM topic_standards" in sql:
             return Result([(1,)] if self.link else [])
         if "FROM resources" in sql:
@@ -84,3 +84,57 @@ def test_verification_and_resource_checks():
     db.resources = False
     assert client.post("/exam-questions", json=body).status_code == 404
     assert not db.inserts
+
+
+class WorkflowDatabase(Database):
+    def __init__(self):
+        super().__init__()
+        self.questions = {1: (1, 1, 12345, 2020, "1(a)", str(uuid4()), 2, str(uuid4()), 1, "2026-01-01T00:00:00Z")}
+        self.exams = {}
+
+    def execute(self, sql, params=()):
+        if "SELECT id FROM exam_questions WHERE id = ANY" in sql:
+            return Result([(i,) for i in params[0] if i in self.questions])
+        if "INSERT INTO exams" in sql:
+            self.exams[1] = []
+            return Result([(1, "2026-01-01T00:00:00Z")])
+        if "INSERT INTO exam_items" in sql:
+            self.exams[params[0]].append([params[1], params[2], None])
+            return Result([])
+        if "UPDATE exam_items" in sql:
+            for item in self.exams.get(params[1], []):
+                if item[0] == params[2]:
+                    item[2] = params[0]
+                    return Result([(item[0],)])
+            return Result([])
+        if "SELECT id, created_at FROM exams" in sql:
+            return Result([(params[0], "2026-01-01T00:00:00Z")] if params[0] in self.exams else [])
+        if "FROM exam_items i JOIN exam_questions" in sql:
+            return Result([self.questions[item[0]] + (item[1], item[2]) for item in self.exams[params[0]]])
+        return super().execute(sql, params)
+
+
+def test_exam_workflow_and_missing_questions():
+    db = WorkflowDatabase()
+    app = FastAPI()
+    app.include_router(exam_router(lambda: db, lambda: None))
+    client = TestClient(app)
+    assert client.post("/exams", json={"question_ids": []}).status_code == 422
+    assert client.post("/exams", json={"question_ids": [1, 1]}).status_code == 422
+    assert client.post("/exams", json={"question_ids": [1, 999]}).status_code == 404
+    assert not db.exams
+    assert client.post("/exams", json={"question_ids": [1]}).status_code == 201
+    assert client.put("/exams/1/answers/999", json={"answer": "x"}).status_code == 404
+    assert client.put("/exams/1/answers/1", json={"answer": "My answer"}).status_code == 200
+    question = client.get("/exams/1").json()["questions"][0]
+    assert question["answer"] == "My answer"
+    assert question["paper_page"] == 2 and question["schedule_page"] == 1
+    assert "mark" not in question
+    assert client.get("/exams/2").status_code == 404
+
+
+def test_workflow_requires_authentication():
+    _, _, _, client = setup_client()
+    assert client.post("/exams", json={"question_ids": [1]}).status_code == 401
+    assert client.put("/exams/1/answers/1", json={"answer": "x"}).status_code == 401
+    assert client.get("/exams/1").status_code == 401

@@ -59,7 +59,7 @@ fun ReviewScreen(base: String, token: String) {
         try { load() } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Due reviews", style = MaterialTheme.typography.headlineMedium)
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())

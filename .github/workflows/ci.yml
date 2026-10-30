@@ -11,6 +11,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: false
       - name: Build Android debug APK
         working-directory: android
         run: bash ./gradlew --no-daemon assembleDebug
@@ -23,6 +25,8 @@ jobs:
           python-version: '3.13'
       - run: pip install -r server/requirements.txt pytest httpx
       - run: python -m pytest server/tests -q
+        env:
+          PYTHONPATH: server
       - name: Check resource manager JavaScript
         run: node -e "const fs=require('fs'); new Function(fs.readFileSync('server/manage.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1])"
   integration:

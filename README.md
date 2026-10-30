@@ -36,26 +36,27 @@ The resource manager can save standard records and link or unlink them from a
 topic. Saving an existing number replaces its title and notes.
 
 The API also supports manually created review questions and recorded answers
-with confidence. This is not AI marking or spaced repetition yet; review history
-prevents topic deletion.
+with confidence-based rescheduling. Confidence is self-assessed, not AI marking;
+review history prevents topic deletion.
 
 ## Android preview
 
 Open `android/` in Android Studio, or run `gradlew.bat assembleDebug` there
 with JDK 17 or 21 and Android SDK 36 installed. The debug APK supports login
-and browsing subjects and topics. Sessions are kept only in memory; uploads,
-lessons and reviews are not implemented in the app yet. The debug build permits
+and creating and browsing subjects and topics, uploading resources, answering
+review questions and generating experimental lesson drafts. Sessions are kept
+only in memory. The debug build permits
 HTTP for local emulator testing; release builds require HTTPS. Never use real
 passwords over HTTP. On the Android emulator, `10.0.2.2` refers to the host.
 Authenticated clients can upload files (up to 50 MiB) to
 `/topics/{id}/resources`, list them there and download them at
 `/resources/{id}/download`. Files are stored in a separate Docker volume and
 remain `pending` until explicitly processed. `POST /resources/{id}/extract`
-extracts UTF-8 TXT, Markdown, CSV, text-based PDFs, PowerPoint slide text and
-Word paragraph text; scanned or empty PDF
+extracts UTF-8 TXT, Markdown, CSV, HTML, XLSX, text-based PDFs, PowerPoint slide
+text and Word paragraph text; scanned or empty PDF
 pages require OCR, which is not implemented. `GET /resources/{id}/text` returns
 the text and `/resources/{id}/pages` returns page references. Extracted text is
-not yet used for lessons. Other file formats are not implemented yet.
+can be used for experimental lesson drafts. Other file formats are not implemented yet.
 `GET /topics/{id}/search?q=...` searches extracted text within one topic using
 PostgreSQL full-text search and returns up to 20 matching source pages or slides.
 The resource manager also provides a search form for the selected topic.
@@ -81,10 +82,10 @@ streaming request-body limit at the proxy before any public deployment.
 
 ## Test
 
-With Python and the dependencies from `server/requirements.txt` installed:
+With Python, the dependencies from `server/requirements.txt`, pytest and httpx installed:
 
 ```sh
-python -m unittest discover -s server/tests
+python -m pytest server/tests -q
 ```
 
 `server/tests/integration.py` is an HTTP integration check for a **disposable**

@@ -5,10 +5,12 @@ import secrets
 import urllib.error
 import urllib.request
 import uuid
-from zipfile import BadZipFile
+from zipfile import BadZipFile, ZipFile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from pathlib import Path
+from xml.etree import ElementTree
 
 import psycopg
 import pymupdf
@@ -403,6 +405,84 @@ def download_resource(resource_id: uuid.UUID):
     return FileResponse(path, filename=row[0], media_type="application/octet-stream")
 
 
+class TextHTMLParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.hidden = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style", "template", "noscript"}:
+            self.hidden.append(tag)
+        elif not self.hidden and tag in {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if self.hidden and tag == self.hidden[-1]:
+            self.hidden.pop()
+        elif not self.hidden and tag in {"p", "div", "li", "tr"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def extract_xlsx(path):
+    # Bound decompression before parsing; never resolve external relationships.
+    with ZipFile(path) as archive:
+        infos = archive.infolist()
+        if len(infos) > 2000 or sum(info.file_size for info in infos) > 50 * 1024 * 1024:
+            raise HTTPException(422, "XLSX exceeds archive extraction limits")
+        if len({info.filename for info in infos}) != len(infos):
+            raise HTTPException(422, "Invalid XLSX: duplicate archive entries")
+
+        def xml(name):
+            data = archive.read(name)
+            if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper() or b"\x00" in data:
+                raise ValueError("Unsafe XML")
+            return ElementTree.fromstring(data)
+
+        ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main", "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships", "p": "http://schemas.openxmlformats.org/package/2006/relationships"}
+        workbook = xml("xl/workbook.xml")
+        relationships = xml("xl/_rels/workbook.xml.rels")
+        targets = {r.get("Id"): r.get("Target", "") for r in relationships if r.get("TargetMode") != "External" and r.get("Type", "").endswith("/worksheet")}
+        shared = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared = ["".join(node.itertext()) for node in xml("xl/sharedStrings.xml").findall("m:si", ns)]
+        pages = []
+        cells = 0
+        for sheet in workbook.findall("m:sheets/m:sheet", ns):
+            target = targets.get(sheet.get("{" + ns["r"] + "}id"), "")
+            # Only normal worksheet members are accepted, not arbitrary paths.
+            target = target.removeprefix("/xl/").removeprefix("worksheets/")
+            if not target or "/" in target or "\\" in target or target in {".", ".."}:
+                raise ValueError("Invalid worksheet target")
+            root = xml("xl/worksheets/" + target)
+            lines = ["Sheet: " + (sheet.get("name") or "Unnamed")]
+            for cell in root.findall(".//m:sheetData/m:row/m:c", ns):
+                cells += 1
+                if cells > 100000:
+                    raise HTTPException(422, "XLSX exceeds 100,000 cells")
+                ref = cell.get("r", "?")
+                value = cell.findtext("m:v", default="", namespaces=ns)
+                if cell.get("t") == "s":
+                    index = int(value)
+                    if index < 0:
+                        raise ValueError("Invalid shared string index")
+                    value = shared[index]
+                elif cell.get("t") == "inlineStr":
+                    value = "".join(cell.find("m:is", ns).itertext()) if cell.find("m:is", ns) is not None else ""
+                if cell.find("m:f", ns) is not None:
+                    value = "[formula; cached value] " + value
+                if value:
+                    lines.append(f"{ref}: {value}")
+            pages.append((len(pages) + 1, "\n".join(lines)))
+        if not pages:
+            raise ValueError("No sheets")
+        return pages
+
+
 @app.post("/resources/{resource_id}/extract", dependencies=[Depends(authorised)])
 def extract_resource(resource_id: uuid.UUID):
     with connect() as db:
@@ -410,9 +490,10 @@ def extract_resource(resource_id: uuid.UUID):
         if not row:
             raise HTTPException(404, "Resource not found")
         suffix = Path(row[0]).suffix.lower()
-        if suffix not in {".txt", ".md", ".csv", ".pdf", ".pptx", ".docx"}:
+        if suffix not in {".txt", ".md", ".csv", ".pdf", ".pptx", ".docx", ".html", ".xlsx"}:
             raise HTTPException(422, "Extraction is not available for this file type")
         path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
+        warnings = []
         try:
             if suffix == ".pdf":
                 with pymupdf.open(path) as document:
@@ -434,6 +515,19 @@ def extract_resource(resource_id: uuid.UUID):
                 if not content.strip():
                     raise HTTPException(422, "Document has no paragraph text")
                 pages = [(1, content)]
+            elif suffix == ".xlsx":
+                pages = extract_xlsx(path)
+                content = "\n\n".join(text for _, text in pages)
+                warnings.append("Pages correspond to sheets; formulas are not evaluated and cached values may be missing or stale. Formatting, charts and images are not extracted.")
+            elif suffix == ".html":
+                parser = TextHTMLParser()
+                parser.feed(path.read_bytes().decode("utf-8-sig"))
+                parser.close()
+                content = "".join(parser.parts).strip()
+                if not content:
+                    raise HTTPException(422, "HTML has no extractable text")
+                pages = [(1, content)]
+                warnings.append("HTML scripts, styles and embedded content are not extracted; no external resources are fetched.")
             else:
                 content = path.read_bytes().decode("utf-8-sig")
                 pages = [(1, content)]
@@ -443,7 +537,7 @@ def extract_resource(resource_id: uuid.UUID):
             raise HTTPException(422, "Text must be UTF-8 encoded")
         except (pymupdf.FileDataError, pymupdf.EmptyFileError):
             raise HTTPException(422, "Invalid PDF")
-        except (BadZipFile, KeyError, ValueError):
+        except (BadZipFile, KeyError, ValueError, IndexError, ElementTree.ParseError):
             raise HTTPException(422, "Invalid document")
         if "\x00" in content:
             raise HTTPException(422, "Text cannot contain null characters")
@@ -452,7 +546,7 @@ def extract_resource(resource_id: uuid.UUID):
         for number, text in pages:
             db.execute("INSERT INTO resource_pages VALUES (%s, %s, %s)", (resource_id, number, text))
         db.execute("UPDATE resources SET status = 'extracted' WHERE id = %s", (resource_id,))
-    return {"status": "extracted", "characters": len(content)}
+    return {"status": "extracted", "characters": len(content), "warnings": warnings}
 
 
 @app.get("/resources/{resource_id}/text", dependencies=[Depends(authorised)])

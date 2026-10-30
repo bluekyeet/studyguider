@@ -17,6 +17,18 @@ class ReviewAnswer(BaseModel):
 def create_review_tables(db):
     db.execute("CREATE TABLE IF NOT EXISTS review_questions (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT, question text NOT NULL, due_date date NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS review_answers (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, question_id bigint NOT NULL REFERENCES review_questions(id) ON DELETE RESTRICT, answer text NOT NULL, confidence integer NOT NULL CHECK (confidence BETWEEN 1 AND 5), answered_at timestamptz NOT NULL DEFAULT now())")
+    db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS interval_days integer NOT NULL DEFAULT 0")
+
+
+def next_interval(interval_days, confidence):
+    """Schedule from self-reported confidence, not an assessment of correctness."""
+    if confidence <= 2:
+        return 1
+    if confidence == 3:
+        return max(1, interval_days)
+    if confidence == 4:
+        return min(36500, max(2, interval_days * 2))
+    return min(36500, max(4, interval_days * 3))
 
 
 def review_router(connect, authorised):
@@ -34,15 +46,18 @@ def review_router(connect, authorised):
     def due_questions(as_of: date):
         # ponytail: caller supplies the local date; add a user timezone when accounts exist.
         with connect() as db:
-            rows = db.execute("SELECT id, topic_id, question, due_date FROM review_questions WHERE due_date <= %s AND NOT EXISTS (SELECT 1 FROM review_answers WHERE question_id = review_questions.id) ORDER BY due_date, id", (as_of,)).fetchall()
+            rows = db.execute("SELECT id, topic_id, question, due_date FROM review_questions WHERE due_date <= %s ORDER BY due_date, id", (as_of,)).fetchall()
         return [{"id": row[0], "topic_id": row[1], "question": row[2], "due_date": row[3]} for row in rows]
 
     @router.post("/review-questions/{question_id}/answers", status_code=201)
     def answer_question(question_id: int, body: ReviewAnswer):
         with connect() as db:
-            row = db.execute("INSERT INTO review_answers (question_id, answer, confidence) SELECT id, %s, %s FROM review_questions WHERE id = %s RETURNING id, answered_at", (body.answer.strip(), body.confidence, question_id)).fetchone()
-            if row is None:
+            question = db.execute("SELECT interval_days FROM review_questions WHERE id = %s FOR UPDATE", (question_id,)).fetchone()
+            if question is None:
                 raise HTTPException(404, "Review question not found")
+            row = db.execute("INSERT INTO review_answers (question_id, answer, confidence) VALUES (%s, %s, %s) RETURNING id, answered_at", (question_id, body.answer.strip(), body.confidence)).fetchone()
+            interval = next_interval(question[0], body.confidence)
+            db.execute("UPDATE review_questions SET interval_days = %s, due_date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date + %s WHERE id = %s", (interval, interval, question_id))
         return {"id": row[0], "question_id": question_id, "answer": body.answer.strip(), "confidence": body.confidence, "answered_at": row[1]}
 
     @router.get("/review-questions/{question_id}/answers")

@@ -68,7 +68,7 @@ with urllib.request.urlopen(upload) as response:
 with urllib.request.urlopen(urllib.request.Request(f'http://api:8000/resources/{resource["id"]}/download', headers={"Authorization": "Bearer " + token})) as response:
     assert response.read() == b"hello"
 assert request("GET", f'/topics/{topic["id"]}/resources', token=token)[1][0]["filename"] == "sample.txt"
-assert request("POST", f'/resources/{resource["id"]}/extract', token=token)[1] == {"status": "extracted", "characters": 5}
+assert request("POST", f'/resources/{resource["id"]}/extract', token=token)[1] == {"status": "extracted", "characters": 5, "warnings": []}
 assert request("GET", f'/resources/{resource["id"]}/text', token=token)[1] == {"content": "hello"}
 assert request("GET", f'/resources/{resource["id"]}/pages', token=token)[1] == [{"page": 1, "content": "hello"}]
 assert request("GET", f'/topics/{topic["id"]}/resources', token=token)[1][0]["status"] == "extracted"
