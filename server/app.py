@@ -117,7 +117,7 @@ def model_reply(model, messages):
         raise HTTPException(503, "Model gateway is not configured")
     request = urllib.request.Request(
         base + "/chat/completions",
-        data=json.dumps({"model": model, "messages": messages, "temperature": 0}).encode(),
+        data=json.dumps({"model": model, "messages": messages, "temperature": 0, "stream": False}).encode(),
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
     )
     try:

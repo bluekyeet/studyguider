@@ -59,6 +59,11 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
   `education-reviewer` text requests each timed out after 90 seconds and became
   HTTP 502; no model output or acceptance pass was obtained. The fresh project
   contains the configured database password and is not production data.
+- Retry: the gateway returned HTTP 200 `text/event-stream` when `stream` was
+  omitted, which the JSON client could not parse. Explicitly requesting
+  `stream: false` returned a non-empty response for each of `education` and
+  `education-reviewer`. This verifies only small text calls, not the full AI
+  acceptance tests or image support.
 - `AGENTS.md` is absent; `DESIGN.md` and `writeup.md` were read.
 - The existing application is a prototype; its advisory model feedback does not
   establish deterministic marking or official NZQA grades. Low temperature alone
