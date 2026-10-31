@@ -109,6 +109,9 @@ private fun StudyApp() {
     var subjectLevel by remember { mutableStateOf("2") }
     var topicName by remember { mutableStateOf("") }
     var examId by remember { mutableStateOf("") }
+    var examDirty by remember { mutableStateOf(false) }
+    var pendingTab by remember { mutableStateOf<Int?>(null) }
+    var confirmExamExit by remember { mutableStateOf(false) }
     var tab by remember { mutableIntStateOf(0) }
     var subjectTitle by remember { mutableStateOf("") }
     var topicTitle by remember { mutableStateOf("") }
@@ -154,13 +157,13 @@ private fun StudyApp() {
                 subjects = JSONArray(request(base, "/subjects", token))
             } }) { Text("Sign in") }
         } else {
-            TextButton(enabled = !busy, onClick = { run { request(base, "/logout", token, JSONObject()); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; tab = 0 } }) { Text("Sign out") }
+            TextButton(enabled = !busy && !examDirty, onClick = { run { request(base, "/logout", token, JSONObject()); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; tab = 0 } }) { Text("Sign out") }
         }
       }
       if (token.isNotEmpty()) {
         val tabs = listOf("Study", "Lessons", "Reviews", "Exams")
         ScrollableTabRow(selectedTabIndex = tab) {
-            tabs.forEachIndexed { index, title -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) }) }
+            tabs.forEachIndexed { index, title -> Tab(selected = tab == index, onClick = { if (examDirty && index != tab) { pendingTab = index; confirmExamExit = true } else tab = index }, text = { Text(title) }) }
         }
         when (tab) {
           0 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -215,20 +218,29 @@ private fun StudyApp() {
                 }
             }
           }
-          1 -> if (selectedTopic != 0L) LessonScreen(base, token, selectedTopic) else Text("Choose a topic in Study to create a lesson.", Modifier.padding(20.dp))
+          1 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+              if (selectedTopic != 0L) LessonScreen(base, token, selectedTopic) else Text("Choose a topic in Study to create a lesson.", Modifier.padding(vertical = 20.dp))
+          }
           2 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp)) {
               if (selectedTopic != 0L) ReviewDraftScreen(base, token, selectedTopic)
               else Text("Choose a topic in Study to generate review questions.")
               ReviewScreen(base, token)
           }
-          3 -> Column(Modifier.fillMaxSize()) {
-            Column(Modifier.padding(20.dp)) {
-            OutlinedTextField(examId, { examId = it }, label = { Text("Open exam ID") }, singleLine = true)
-            if (examId.isNotEmpty() && (examId.toLongOrNull() ?: 0) <= 0) Text("Enter a positive exam ID", color = MaterialTheme.colorScheme.error)
+          3 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+            if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString() }
+            else {
+                TextButton(onClick = { if (examDirty) { pendingTab = null; confirmExamExit = true } else examId = "" }) { Text("‹ All exams") }
+                ExamScreen(base, token, examId.toLong()) { examDirty = it }
             }
-            examId.toLongOrNull()?.takeIf { it > 0 }?.let { ExamScreen(base, token, it) }
           }
         }
         }
     }
+    if (confirmExamExit) AlertDialog(
+        onDismissRequest = { confirmExamExit = false },
+        title = { Text("Discard unsaved answers?") },
+        text = { Text("Changes not saved to the server will be lost.") },
+        confirmButton = { TextButton(onClick = { examDirty = false; examId = ""; pendingTab?.let { tab = it }; pendingTab = null; confirmExamExit = false }) { Text("Discard") } },
+        dismissButton = { TextButton(onClick = { confirmExamExit = false }) { Text("Keep editing") } }
+    )
 }

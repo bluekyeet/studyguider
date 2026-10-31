@@ -3,6 +3,7 @@ package nz.studyguider
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -121,7 +122,8 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
         }
         result?.let { draft ->
             Text("Draft lesson", style = MaterialTheme.typography.titleLarge)
-            Text(draft.optString("lesson"))
+            // ponytail: plain text preserves all content; add audited offline KaTeX rendering for formulas.
+            SelectionContainer { Text(draft.optString("lesson")) }
             Text("AI review", style = MaterialTheme.typography.titleLarge)
             Text(if (draft.isNull("review")) "Review unavailable" else draft.optString("review"))
             Text(draft.optString("warning"), color = MaterialTheme.colorScheme.error)

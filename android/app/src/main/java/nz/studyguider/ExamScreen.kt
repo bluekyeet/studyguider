@@ -3,6 +3,11 @@ package nz.studyguider
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -33,20 +38,49 @@ private suspend fun examRequest(base: String, token: String, path: String, answe
     } finally { connection.disconnect() }
 }
 
-/** Displays an existing exam. The caller supplies scrolling and an authenticated server session. */
+private val answerMapSaver = Saver<SnapshotStateMap<Long, String>, ArrayList<String>>(
+    save = { map -> ArrayList(map.flatMap { listOf(it.key.toString(), it.value) }) },
+    restore = { values -> mutableStateMapOf<Long, String>().apply {
+        values.chunked(2).forEach { put(it[0].toLong(), it[1]) }
+    } }
+)
+
+/** The host must guard its own navigation when [onDirtyChange] reports unsaved answers. */
 @Composable
-fun ExamScreen(base: String, token: String, examId: Long) {
+fun ExamScreen(base: String, token: String, examId: Long, onDirtyChange: (Boolean) -> Unit = {}) {
     var exam by remember(base, token, examId) { mutableStateOf<JSONObject?>(null) }
     var error by remember(base, token, examId) { mutableStateOf("") }
     var busy by remember(base, token, examId) { mutableStateOf(false) }
-    val answers = remember(base, token, examId) { mutableStateMapOf<Long, String>() }
-    val saved = remember(base, token, examId) { mutableStateMapOf<Long, String>() }
+    val answers = rememberSaveable(base, token, examId, saver = answerMapSaver) { mutableStateMapOf<Long, String>() }
+    val saved = rememberSaveable(base, token, examId, saver = answerMapSaver) { mutableStateMapOf<Long, String>() }
     val feedback = remember(base, token, examId) { mutableStateMapOf<Long, JSONObject>() }
     val scope = rememberCoroutineScope()
+    val dirty = answers.any { (id, answer) -> answer != saved[id] }
+    var confirmLeave by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
+    val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    val currentOnDirtyChange by rememberUpdatedState(onDirtyChange)
+    LaunchedEffect(dirty) { currentOnDirtyChange(dirty) }
+    DisposableEffect(Unit) { onDispose { currentOnDirtyChange(false) } }
+    BackHandler(enabled = dirty && !leaving && dispatcher != null) { confirmLeave = true }
+    if (confirmLeave) {
+        AlertDialog(
+            onDismissRequest = { confirmLeave = false },
+            title = { Text("Discard unsaved answers?") },
+            text = { Text("Your unsaved changes will be lost.") },
+            confirmButton = { TextButton(onClick = {
+                confirmLeave = false
+                leaving = true
+            }) { Text("Discard") } },
+            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Keep editing") } }
+        )
+    }
+    LaunchedEffect(leaving) { if (leaving) { dispatcher?.onBackPressed(); leaving = false } }
 
     suspend fun load() {
         val result = JSONObject(examRequest(base, token, "/exams/$examId"))
         val questions = result.getJSONArray("questions")
+        val drafts = answers.filter { (id, answer) -> answer != saved[id] }
         answers.clear()
         saved.clear()
         feedback.clear()
@@ -54,9 +88,11 @@ fun ExamScreen(base: String, token: String, examId: Long) {
             val question = questions.getJSONObject(i)
             val id = question.getLong("id")
             val answer = if (question.isNull("answer")) "" else question.getString("answer")
-            answers[id] = answer
+            answers[id] = drafts[id] ?: answer
             saved[id] = answer
         }
+        // ponytail: retain drafts for removed questions; add a recovery UI if exams become editable.
+        drafts.forEach { (id, answer) -> if (id !in answers) answers[id] = answer }
         exam = result
     }
 

@@ -32,6 +32,22 @@ def request(method, path, data=None, token=None):
         return response.code, json.load(response)
 
 
+def wait_for_extraction(topic_id, resource_id, token):
+    deadline = time.monotonic() + 60
+    while True:
+        status, resources = request("GET", f'/topics/{topic_id}/resources', token=token)
+        assert status == 200
+        matches = [item for item in resources if item["id"] == resource_id]
+        assert len(matches) == 1, f"Resource {resource_id} disappeared"
+        state = matches[0]["status"]
+        assert state in ("pending", "extracting", "extracted"), f"Extraction of {resource_id} ended in {state}"
+        if state == "extracted":
+            return
+        remaining = deadline - time.monotonic()
+        assert remaining > 0, f"Extraction of {resource_id} timed out in {state}"
+        time.sleep(min(0.25, remaining))
+
+
 assert request("GET", "/subjects")[0] == 401
 connection = http.client.HTTPConnection("api", 8000)
 connection.putrequest("POST", "/topics/1/resources")
@@ -69,6 +85,7 @@ with urllib.request.urlopen(upload) as response:
 with urllib.request.urlopen(urllib.request.Request(f'http://api:8000/resources/{resource["id"]}/download', headers={"Authorization": "Bearer " + token})) as response:
     assert response.read() == b"hello"
 assert request("GET", f'/topics/{topic["id"]}/resources', token=token)[1][0]["filename"] == "sample.txt"
+wait_for_extraction(topic["id"], resource["id"], token)
 assert request("POST", f'/resources/{resource["id"]}/extract', token=token)[1] == {"status": "extracted", "characters": 5, "warnings": []}
 assert request("GET", f'/resources/{resource["id"]}/text', token=token)[1] == {"content": "hello"}
 assert request("GET", f'/resources/{resource["id"]}/pages', token=token)[1] == [{"page": 1, "content": "hello"}]
@@ -80,6 +97,7 @@ pdf_payload = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; fi
 pdf_upload = urllib.request.Request(f'http://api:8000/topics/{topic["id"]}/resources', data=pdf_payload, headers={"Authorization": "Bearer " + token, "Content-Type": "multipart/form-data; boundary=" + boundary}, method="POST")
 with urllib.request.urlopen(pdf_upload) as response:
     pdf_resource = json.load(response)
+wait_for_extraction(topic["id"], pdf_resource["id"], token)
 assert request("POST", f'/resources/{pdf_resource["id"]}/extract', token=token)[0] == 200
 assert "Physics example" in request("GET", f'/resources/{pdf_resource["id"]}/pages', token=token)[1][0]["content"]
 status, results = request("GET", f'/topics/{topic["id"]}/search?q=physics', token=token)
@@ -98,6 +116,7 @@ for filename, content, expected in [("sample.docx", doc_bytes.getvalue(), "Chemi
     upload = urllib.request.Request(f'http://api:8000/topics/{topic["id"]}/resources', data=payload, headers={"Authorization": "Bearer " + token, "Content-Type": "multipart/form-data; boundary=" + boundary}, method="POST")
     with urllib.request.urlopen(upload) as response:
         doc_resource = json.load(response)
+    wait_for_extraction(topic["id"], doc_resource["id"], token)
     assert request("POST", f'/resources/{doc_resource["id"]}/extract', token=token)[0] == 200
     assert expected in request("GET", f'/resources/{doc_resource["id"]}/pages', token=token)[1][0]["content"]
     assert request("DELETE", f'/resources/{doc_resource["id"]}', token=token)[0] == 200
@@ -107,19 +126,7 @@ with urllib.request.urlopen(upload, timeout=5) as response:
     automatic_resource = json.load(response)
     assert response.status == 201
 automatic_id = automatic_resource["id"]
-deadline = time.monotonic() + 30
-while True:
-    status, resources = request("GET", f'/topics/{topic["id"]}/resources', token=token)
-    assert status == 200
-    matches = [item for item in resources if item["id"] == automatic_id]
-    assert len(matches) == 1, f"Automatic resource {automatic_id} disappeared"
-    state = matches[0]["status"]
-    assert state in ("pending", "extracting", "extracted"), f"Automatic extraction ended in {state}"
-    if state == "extracted":
-        break
-    remaining = deadline - time.monotonic()
-    assert remaining > 0, f"Automatic extraction timed out in {state}"
-    time.sleep(min(0.25, remaining))
+wait_for_extraction(topic["id"], automatic_id, token)
 assert request("GET", f'/resources/{automatic_id}/text', token=token) == (200, {"content": "automatic worker example"})
 assert request("GET", f'/resources/{automatic_id}/pages', token=token) == (200, [{"page": 1, "content": "automatic worker example"}])
 assert request("DELETE", f'/resources/{automatic_id}', token=token)[0] == 200
