@@ -35,6 +35,7 @@ def create_lesson_tables(db):
     db.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1")
     db.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS course_id bigint")
     db.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS stage integer NOT NULL DEFAULT 1")
+    db.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS completed_at timestamptz")
     # A course is a topic the learner has chosen to study, which builds from
     # basics to exam standard. Lessons belong to it when course_id is set.
     db.execute("""CREATE TABLE IF NOT EXISTS courses (
@@ -95,11 +96,19 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
     @router.get("/lessons")
     def lesson_feed():
         with connect() as db:
-            rows = db.execute("""SELECT l.id, l.topic_id, l.query, l.created_at, t.name, s.name
+            rows = db.execute("""SELECT l.id, l.topic_id, l.query, l.created_at, t.name, s.name, l.completed_at
                 FROM lessons l JOIN topics t ON t.id = l.topic_id
                 JOIN subjects s ON s.id = t.subject_id
                 ORDER BY l.created_at DESC, l.id DESC LIMIT 200""").fetchall()
-        return [dict(zip(("id", "topic_id", "query", "created_at", "topic", "subject"), row)) for row in rows]
+        return [dict(zip(("id", "topic_id", "query", "created_at", "topic", "subject", "completed_at"), row)) for row in rows]
+
+    @router.post("/lessons/{lesson_id}/complete")
+    def complete_lesson(lesson_id: int):
+        with connect() as db:
+            row = db.execute("UPDATE lessons SET completed_at = COALESCE(completed_at, now()) WHERE id = %s RETURNING completed_at", (lesson_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Lesson not found")
+        return {"completed_at": row[0]}
 
     @router.post("/topics/{topic_id}/lessons/automatic", status_code=201)
     def automatic_lesson(topic_id: int):
@@ -134,6 +143,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             course = db.execute("""SELECT c.id, count(l.id), coalesce(max(l.stage), 0)
                 FROM courses c LEFT JOIN lessons l ON l.course_id = c.id
                 WHERE c.topic_id = %s AND c.active GROUP BY c.id""", (topic_id,)).fetchone()
+            completed = db.execute("SELECT query FROM lessons WHERE topic_id = %s AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 20", (topic_id,)).fetchall()
         review_focus = [{"question": row[0][:1000], "concept": row[1], "mastery": row[2],
                          "due_date": str(row[3])} for row in review_rows]
         evidence = {"sources": sources, "standards": standards}
@@ -156,7 +166,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
         lesson = model_reply("education", [
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps({"query": query, "evidence": evidence,
-                "review_focus": review_focus, "teaching_style": style,
+                "review_focus": review_focus, "completed_lessons": [r[0] for r in completed], "teaching_style": style,
                 "course": {"goal": "Ace the external exam", "lessons_completed": done, "this_is_stage": stage}},
                 ensure_ascii=False)},
         ], task="lesson-generate")

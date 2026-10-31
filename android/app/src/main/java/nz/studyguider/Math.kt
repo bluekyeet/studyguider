@@ -40,6 +40,8 @@ object KaTeX {
     fun head(): String = """
         <style>
           html, body { margin:0; padding:0; background:transparent; }
+          #content { position:absolute; top:0; left:0; width:100%; }
+          #content > div { display:flow-root; }
           body { color:#1A1B22; font-family:system-ui, sans-serif; font-size:16px; line-height:1.55;
                  overflow-wrap:anywhere; word-break:normal; }
           b { font-weight:600; }
@@ -65,7 +67,6 @@ object KaTeX {
         inlineRuns(text).map { run ->
             if (!seenText && run.text.isNotBlank()) { seenText = true; run.copy(text = run.text.trimStart()) } else run
         }.forEachIndexed { position, run ->
-            if (position > 0 && run.text.isNotEmpty()) builder.append(' ')
             if (run.bold) builder.append("<b>")
             if (run.italic) builder.append("<i>")
             if (run.code) builder.append("<code>")
@@ -101,7 +102,7 @@ object KaTeX {
     fun script(): String = """
         (function(){
           function report(){
-            var height = Math.ceil(document.body.getBoundingClientRect().height);
+            var height = Math.ceil(document.getElementById('content').getBoundingClientRect().height);
             if (window.Native && window.Native.onHeight) { window.Native.onHeight(height); }
           }
           document.querySelectorAll('span[data-tex]').forEach(function(node){
@@ -118,6 +119,7 @@ object KaTeX {
               node.replaceWith(fallback);
             }
           });
+          if (window.ResizeObserver) { new ResizeObserver(report).observe(document.getElementById('content')); }
           if (document.fonts && document.fonts.ready) { document.fonts.ready.then(report); }
           report();
           setTimeout(report, 120);
@@ -126,14 +128,14 @@ object KaTeX {
     """
 
     fun fullPage(body: String, colour: String): String =
-        "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\">${head()}</head><body style=\"color:$colour\"><div>$body</div><script>${script()}</script></body></html>"
+        "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\">${head()}</head><body style=\"color:$colour\"><div id=\"content\">$body</div><script>${script()}</script></body></html>"
 }
 
 /** Receives the measured content height from the KaTeX page. */
-class KaTeXBridge(private val onHeight: (Int) -> Unit) {
+class KaTeXBridge(private val updateHeight: (Int) -> Unit) {
     @JavascriptInterface
     fun onHeight(px: Int) {
-        onHeight(px)
+        updateHeight(px)
     }
 }
 
@@ -158,7 +160,6 @@ fun MathText(
     }
     // Start with a small estimate, then use the measured height; the estimate only avoids a jump.
     var height by remember(text) { mutableIntStateOf(estimateMathHeight(text)) }
-    val density = LocalContext.current.resources.displayMetrics.density
     val colours = LocalStudyColours.current
     Box(
         modifier
@@ -166,7 +167,7 @@ fun MathText(
             .then(if (formulaStyle) Modifier.clip(RoundedCornerShape(8.dp)).background(colours.formulaBackground).border(1.dp, colours.formulaBorder, RoundedCornerShape(8.dp)).padding(10.dp).fillMaxWidth() else Modifier)
             .heightIn(min = 20.dp)
     ) {
-        AndroidView(
+        key(text) { AndroidView(
             modifier = Modifier.fillMaxWidth().height(height.dp),
             factory = { context ->
                 WebView(context).apply {
@@ -185,7 +186,7 @@ fun MathText(
                     isNestedScrollingEnabled = false
                     addJavascriptInterface(KaTeXBridge { px ->
                         post {
-                            val measured = (px / density).toInt()
+                            val measured = px
                             if (measured > 0) height = measured.coerceIn(20, 20000)
                         }
                     }, "Native")
@@ -205,7 +206,7 @@ fun MathText(
                     view.loadDataWithBaseURL("file:///android_asset/", page, "text/html", "utf-8", null)
                 }
             }
-        )
+        ) }
     }
 }
 
@@ -233,7 +234,7 @@ fun FormulaPreview(latex: String) {
 @Composable
 fun LatexSheet(onDismiss: () -> Unit, onInsert: (String) -> Unit, initial: String = "") {
     var draft by remember { mutableStateOf(initial) }
-    val symbols = listOf("\\frac{a}{b}", "x^{2}", "\\sqrt{x}", "\\int", "\\sum", "\\Delta", "\\theta", "\\pi", "\\vec{v}", "\\ce{H2O}", "\\times", "\\approx", "\\rightarrow")
+    val symbols = listOf("a⁄b" to "\\frac{a}{b}", "x²" to "x^{2}", "√x" to "\\sqrt{x}", "∫" to "\\int", "∑" to "\\sum", "Δ" to "\\Delta", "θ" to "\\theta", "π" to "\\pi", "v⃗" to "\\vec{v}", "H₂O" to "\\ce{H2O}", "×" to "\\times", "≈" to "\\approx", "→" to "\\rightarrow")
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Type maths") },
@@ -243,10 +244,10 @@ fun LatexSheet(onDismiss: () -> Unit, onInsert: (String) -> Unit, initial: Strin
                 if (draft.isBlank()) Text("Start typing LaTeX below.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FormulaPreview(draft)
                 Text("LaTeX", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
-                OutlinedTextField(draft, { draft = it }, modifier = Modifier.fillMaxWidth(), minLines = 2, textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontSize = 14.sp))
+                OutlinedTextField(draft, { draft = it }, modifier = Modifier.fillMaxWidth(), minLines = 2, textStyle = MaterialTheme.typography.bodyMedium)
                 @OptIn(ExperimentalLayoutApi::class)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    symbols.forEach { symbol -> AssistChip(onClick = { draft += symbol }, label = { Text(symbol, fontFamily = FontFamily.Monospace) }) }
+                    symbols.forEach { (label, latex) -> AssistChip(onClick = { draft += latex }, label = { Text(label, style = MaterialTheme.typography.titleMedium) }) }
                 }
                 Text("Inserted as display maths with double dollar signs.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

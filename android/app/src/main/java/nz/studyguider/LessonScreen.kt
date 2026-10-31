@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -97,8 +99,17 @@ fun lessonChunks(lesson: String): List<LessonChunk> {
         if (trim.startsWith("# ") || trim.startsWith("## ") || trim.startsWith("### ")) {
             flush()
             title = trim.dropWhile { it == '#' }.trim().ifBlank { "Overview" }
-        } else if (trim.isNotEmpty()) {
-            current.add("text" to trim)
+        } else if (trim.isNotEmpty() && trim !in setOf("---", "***", "___")) {
+            val blocks = markdownBlocks(line)
+            blocks.forEach { (kind, _) ->
+                val content = when (kind) {
+                    "bullet", "bullet2" -> trim.drop(2).trim()
+                    "number", "number2" -> trim
+                    "quote" -> trim.drop(2).trim()
+                    else -> trim
+                }
+                current.add(kind to content)
+            }
         }
     }
     flush()
@@ -117,6 +128,7 @@ fun LessonScreen(
     onSwitchTopic: (Long, String) -> Unit,
     onOpenResources: () -> Unit,
     lessonId: Long = 0,
+    onExit: () -> Unit = {},
 ) {
     var query by remember(base, token, topicId) { mutableStateOf("") }
     var result by remember(base, token, topicId) { mutableStateOf<JSONObject?>(null) }
@@ -149,7 +161,7 @@ fun LessonScreen(
         }
     }
 
-    Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxSize().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Always reachable: change topic or subject without hunting through Resources.
         if (lessonId == 0L) TopicSwitcher(
             topicId = topicId, topicName = topicName, subjectName = subjectName,
@@ -158,7 +170,7 @@ fun LessonScreen(
         if (lessonId > 0 && result == null) {
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error) else LinearProgressIndicator(Modifier.fillMaxWidth())
         } else {
-        result?.let { draft -> LessonArticle(base, token, draft) } ?: LessonEmptyState(
+        result?.let { draft -> LessonArticle(base, token, draft, onExit) } ?: LessonEmptyState(
             query = query,
             onQueryChange = { query = it },
             busy = busy,
@@ -177,9 +189,9 @@ fun LessonScreen(
                 }
             },
         )
-        result?.let { draft -> SourcesCard(draft, citedResourceIds(draft)) { deleteId = draft.getLong("id") } }
+        if (lessonId == 0L) result?.let { draft -> SourcesCard(draft, citedResourceIds(draft)) { deleteId = draft.getLong("id") } }
         if (error.isNotEmpty() && result != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        SavedLessons(
+        if (lessonId == 0L) SavedLessons(
             history = history,
             loading = historyLoading,
             error = historyError,
@@ -248,7 +260,7 @@ private fun LessonEmptyState(
  * "Reveal the model answer" (the lesson's own worked answer).
  */
 @Composable
-private fun LessonArticle(base: String, token: String, draft: JSONObject) {
+private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONObject, onExit: () -> Unit) {
     val standards = draft.optJSONArray("standards")
     val standardText = remember(draft) {
         if (standards == null || standards.length() == 0) "NCEA STANDARD"
@@ -259,35 +271,50 @@ private fun LessonArticle(base: String, token: String, draft: JSONObject) {
     // Citations become S1, S2… so the prose stays readable and still points at a source.
     val citedIds = remember(draft) { citedResourceIds(draft) }
     val chunks = remember(draft) { lessonChunks(shortCitations(draft.optString("lesson"), citedIds)) }
-    var openIndex by remember(draft) { mutableIntStateOf(0) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val progressPrefs = remember { context.getSharedPreferences("lesson_progress", android.content.Context.MODE_PRIVATE) }
+    val progressKey = "${base}:${draft.optLong("id")}"
+    var openIndex by remember(draft) { mutableIntStateOf(progressPrefs.getInt(progressKey, 0).coerceIn(0, (chunks.size - 1).coerceAtLeast(0))) }
+    LaunchedEffect(openIndex, draft) { progressPrefs.edit().putInt(progressKey, openIndex).apply() }
     val progress = animateFloatAsState(if (chunks.isEmpty()) 0f else (openIndex + 1).toFloat() / chunks.size, label = "lesson progress")
     val colours = LocalStudyColours.current
+    var showHelp by remember(draft) { mutableStateOf(false) }
+    var helpQuestion by remember(draft) { mutableStateOf("") }
+    var helpAnswer by remember(draft) { mutableStateOf("") }
+    var helpBusy by remember(draft) { mutableStateOf(false) }
+    val helpScope = rememberCoroutineScope()
+    var finishBusy by remember(draft) { mutableStateOf(false) }
+    var finishError by remember(draft) { mutableStateOf("") }
+    val scroll = rememberScrollState()
+    LaunchedEffect(openIndex) { scroll.scrollTo(0) }
 
     Surface(shape = RoundedCornerShape(20.dp), color = colours.container, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(standardText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                StudyChip("Draft", MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.errorContainer)
+                TextButton(onClick = onExit, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("‹ Save & exit") }
+                Text(standardText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
-            Text(draft.optString("query"), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(draft.optString("query"), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
             Text("Section ${openIndex + 1} of ${chunks.size} · ${if (sources == null) 0 else sources.length()} grounded source(s)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             LinearProgressIndicator(progress = { progress.value }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)), color = MaterialTheme.colorScheme.primary, trackColor = colours.containerHigh)
         }
     }
 
+    Box(Modifier.weight(1f)) {
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 80.dp)) {
     chunks.forEachIndexed { index, chunk ->
+        if (index != openIndex) return@forEachIndexed
         val expanded = openIndex == index
         val practice = chunk.isPractice
         Surface(shape = RoundedCornerShape(16.dp), color = if (practice) colours.containerLow else colours.container, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
-                    Modifier.fillMaxWidth().clickable { openIndex = if (expanded) -1 else index },
+                    Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(chunk.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                     if (practice) StudyChip("Your turn", MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer)
-                    Text("⌄", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.rotate(if (expanded) 180f else 0f))
                 }
                 AnimatedVisibility(visible = expanded) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -320,23 +347,57 @@ private fun LessonArticle(base: String, token: String, draft: JSONObject) {
                         if (practice) PracticePanel(base, token, draft, chunk)
                         if (!practice) SectionQuestion(base, token, draft, chunk)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            if (index > 0) TextButton(onClick = { openIndex = index - 1 }) { Text("Previous") }
                             if (index < chunks.size - 1) Button(shape = RoundedCornerShape(50), onClick = { openIndex = index + 1 }) { Text("Next section") }
-                            else if (index > 0) OutlinedButton(shape = RoundedCornerShape(50), onClick = { openIndex = index - 1 }) { Text("Previous") }
+                            else Button(enabled = !finishBusy, onClick = {
+                                helpScope.launch {
+                                    finishBusy = true; finishError = ""
+                                    try {
+                                        withContext(Dispatchers.IO) {
+                                            val c = URL(base.trimEnd('/') + "/lessons/${draft.getLong("id")}/complete").openConnection() as HttpURLConnection
+                                            try {
+                                                c.connectTimeout = 10000; c.readTimeout = 20000; c.requestMethod = "POST"
+                                                c.setRequestProperty("Authorization", "Bearer $token")
+                                                if (c.responseCode !in 200..299) throw IllegalStateException("Could not save completion (${c.responseCode})")
+                                            } finally { c.disconnect() }
+                                        }
+                                        onExit()
+                                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                                    catch (e: Exception) { finishError = e.message ?: "Could not save completion" }
+                                    finally { finishBusy = false }
+                                }
+                            }) { Text("Finish lesson") }
                         }
+                        if (finishError.isNotEmpty()) Text(finishError, color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         }
     }
+    }
+    ExtendedFloatingActionButton(onClick = { showHelp = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
+    }
+    if (showHelp) AlertDialog(
+        onDismissRequest = { showHelp = false },
+        title = { Text("Ask about this lesson") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            OutlinedTextField(helpQuestion, { helpQuestion = it }, label = { Text("What would you like explained?") }, enabled = !helpBusy)
+            if (helpBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (helpAnswer.isNotBlank()) MathText(shortCitations(helpAnswer, citedIds))
+        } },
+        confirmButton = { TextButton(enabled = !helpBusy && helpQuestion.isNotBlank() && helpQuestion.length <= 2000, onClick = {
+            helpScope.launch {
+                helpBusy = true
+                try { helpAnswer = explainLesson(base, token, draft.getLong("id"), helpQuestion) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) { helpAnswer = e.message ?: "Could not get an explanation" }
+                finally { helpBusy = false }
+            }
+        }) { Text("Ask AI") } },
+        dismissButton = { TextButton(onClick = { showHelp = false }) { Text("Close") } },
+    )
 
     // Reviewer output stays on the server; the learner only sees the draft warning.
-    val warning = draft.optString("warning")
-    if (warning.isNotBlank()) {
-        StudyCard(tone = CardTone.Low) {
-            SectionLabel("Check before you rely on this", "DRAFT")
-            Text(warning, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        }
-    }
 }
 
 /**
@@ -363,7 +424,13 @@ private fun SectionQuestion(base: String, token: String, draft: JSONObject, chun
         if (questions.size > 1) Text("${index + 1} of ${questions.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     MathText(question.prompt)
-    MathField(answer, { answer = it; feedback = "" }, label = "Your answer", minLines = 3, maxLines = 12, enabled = !busy)
+    if (question.choices.isEmpty()) MathField(answer, { answer = it; feedback = "" }, label = "Your answer", minLines = 3, maxLines = 12, enabled = !busy)
+    else question.choices.forEach { choice ->
+        Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { answer = choice; feedback = "" }, verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = answer == choice, onClick = { answer = choice; feedback = "" }, enabled = !busy)
+            Text(choice, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Button(shape = RoundedCornerShape(50), enabled = !busy && answer.isNotBlank() && answer.length <= 2000, onClick = {
             scope.launch {
@@ -376,8 +443,8 @@ private fun SectionQuestion(base: String, token: String, draft: JSONObject, chun
             }
         }) { Text("Check my answer") }
         TextButton(onClick = { revealed = !revealed }) { Text(if (revealed) "Hide answer" else question.revealLabel) }
-        if (questions.size > 1) TextButton(onClick = { index = (index + 1) % questions.size }) { Text("Another") }
     }
+    if (questions.size > 1) TextButton(onClick = { index = (index + 1) % questions.size }) { Text("Another question") }
     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     if (feedback.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = colours.containerHigh, modifier = Modifier.fillMaxWidth()) {

@@ -36,6 +36,8 @@ class Database:
             self.result = ("Use worked examples", "") if params[0] == 1 else None
         elif "FROM courses c" in sql:
             self.result = (7, 0, 0) if params[0] == 1 else None
+        elif "UPDATE lessons SET completed_at" in sql:
+            self.result = ("2026-11-01T00:00:00Z",) if any(r[0] == params[0] for r in self.rows) else None
         elif "FROM review_questions" in sql:
             self.result = []
         elif "FROM resources WHERE id = ANY" in sql:
@@ -49,6 +51,8 @@ class Database:
             self.result = self.rows[-1]
         elif "SELECT 1 FROM topics" in sql:
             self.result = (1,) if params[0] == 1 else None
+        elif "completed_at IS NOT NULL" in sql:
+            self.result = []
         elif "FROM lessons WHERE topic_id" in sql:
             self.result = [r for r in reversed(self.rows) if r[1] == params[0]][params[2]:params[2] + params[1]]
         elif "UPDATE lesson_schedule_runs" in sql:
@@ -106,6 +110,9 @@ def test_generation_snapshot_and_history():
     source["content"] = "changed"
     assert client.get("/lessons/1").json() == item
     assert client.get("/topics/1/lessons").json() == [item]
+    assert client.post("/lessons/1/complete").status_code == 200
+    assert client.post("/lessons/1/complete").json() == {"completed_at": "2026-11-01T00:00:00Z"}
+    assert client.post("/lessons/999/complete").status_code == 404
     assert client.get("/lessons/2").status_code == 404
     assert client.get("/topics/2/lessons").status_code == 404
     assert client.get("/topics/1/lessons?limit=101").status_code == 422

@@ -59,13 +59,12 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
     // ponytail: creation date is the available-day proxy; add completion tracking when supported.
     fun date(item: JSONObject): LocalDate? = runCatching { Instant.parse(item.getString("created_at")).atZone(ZoneId.of("Pacific/Auckland")).toLocalDate() }.getOrNull()
     val today = LocalDate.now(ZoneId.of("Pacific/Auckland"))
-    val latest = lessons.mapNotNull { date(it) }.filter { !it.isAfter(today) }.maxOrNull()
-    val current = lessons.filter { date(it) == latest }
+    val pending = lessons.filter { it.isNull("completed_at") }
+    val latest = pending.mapNotNull { date(it) }.filter { !it.isAfter(today) }.maxOrNull()
+    val current = pending.filter { latest != null && date(it) == latest }
     val history = lessons.filterNot { it in current }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("YOUR LEARNING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-            Text("Your lessons", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
             if (loading || generating) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (generating) "Generating your lesson…" else "Loading lessons…") }
             if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); OutlinedButton(onClick = { reload++ }) { Text("Try again") } }
             if (!loading && lessons.isEmpty() && error.isEmpty()) StudyCard(tone = CardTone.Low) {
@@ -73,9 +72,10 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
                 Text(if (courses.isEmpty()) "Choose your topics in Settings to get started." else "Use New lesson to create one from your resources.")
             }
             if (current.isNotEmpty()) {
-                SectionLabel(if (latest == today) "Today's lessons" else "Latest available lessons", if (latest == today) "TODAY" else latest.toString())
+                Text(if (latest == today) "Today's lessons" else "Latest available lessons · $latest", style = MaterialTheme.typography.titleLarge)
                 current.forEach { item -> LessonRow(item, onOpenLesson) }
             }
+            if (lessons.isNotEmpty() && current.isEmpty()) Text("No lessons to do right now.")
             if (history.isNotEmpty()) {
                 SectionLabel("Lesson history", "PREVIOUS")
                 history.forEach { item -> LessonRow(item, onOpenLesson) }

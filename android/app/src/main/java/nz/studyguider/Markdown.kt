@@ -63,6 +63,12 @@ fun inlineRuns(text: String): List<InlineRun> {
     fun push() { if (plain.isNotEmpty()) { runs.add(InlineRun(plain.toString())); plain.clear() } }
     while (index < text.length) {
         when {
+            text[index] == '$' -> {
+                val delimiter = if (text.startsWith("$$", index)) "$$" else "$"
+                val end = text.indexOf(delimiter, index + delimiter.length)
+                if (end < 0) { plain.append(text.substring(index)); index = text.length }
+                else { plain.append(text.substring(index, end + delimiter.length)); index = end + delimiter.length }
+            }
             text.startsWith("**", index) -> {
                 val end = text.indexOf("**", index + 2)
                 if (end < 0) { plain.append(text.substring(index)); index = text.length }

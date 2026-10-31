@@ -6,6 +6,35 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Roadmap and features
 
+- Follow-up verification: full server suite 97 passed, six warnings and six
+  subtests passed. FormattingCheck main compiled and ran with exit 0, covering
+  Markdown, formula handling, multiple-choice definitions and typed explanations.
+  Android build succeeded. The teacher-method action now allows a longer model
+  timeout and Settings scrolls to reach the editor. Live Physics slide analysis
+  returned 422: "Upload and extract slides for this subject first"; actual
+  teacher-method output is therefore not verified. No existing resources were
+  recategorised or fabricated for this check. Completed lessons persist on the
+  server; completion endpoint success/repeat/missing cases have fixture coverage.
+  The second height bug was a WebView callback holding the previous text's state;
+  keying the view by text addresses page transitions, but every page has not been
+  runtime-checked. Compact reader header and multiple choice require further
+  emulator interaction; no visual acceptance claim is made.
+
+- Text-height root cause found: `KaTeXBridge.onHeight` recursively called itself
+  instead of its callback. After renaming the callback, emulator DevTools measured
+  the worked-example viewport and content both at 93 CSS px (previously 246 and
+  93); no bridge recursion appeared in fresh logcat. Screenshot
+  `shots/lesson-height-fixed.png` captured, not visually inspected. Completion
+  now persists server-side and feeds completed lesson titles into manual lesson
+  and review generation; automatic daily review creation remains unverified.
+
+- Lesson reader update: one section at a time, locally saved section index,
+  exit and finish controls, fixed progress header and an Explain dialog using
+  the existing explanation endpoint. Android debug build succeeded; emulator
+  UI Automator confirmed the reader and Explain dialog open. Completion is
+  device-local and is not connected to the daily feed; answer drafts are not
+  persisted. Explain submission and finish flow were not exercised.
+
 - 2026-11-01 Lessons feed prototype: Android groups saved lessons by their
   Auckland creation date, with earlier dates in history; the topic-only button
   requests generation using the topic name. Emulator showed the feed, topic

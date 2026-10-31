@@ -71,7 +71,7 @@ val DarkStudyColours = StudyColours(
 
 val LocalStudyColours = staticCompositionLocalOf { LightStudyColours }
 
-private val Mono = FontFamily.Monospace
+private val Mono = FontFamily.SansSerif
 
 private val StudyTypography = Typography(
     headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),

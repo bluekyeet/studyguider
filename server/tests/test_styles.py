@@ -47,6 +47,10 @@ class StyleTests(unittest.TestCase):
         analyse = next(route.endpoint for route in router.routes if route.path.endswith("/analyse"))
         self.assertEqual(analyse(2, StyleAnalysis())["profile"], "Worked examples")
         self.assertIn("A sample slide", model.call_args.args[1][1]["content"])
+        instructions = model.call_args.args[1][0]["content"]
+        self.assertIn("not a summary of the subject content", instructions)
+        self.assertIn("teach NEW material using that same method", instructions)
+        self.assertIn("cannot be inferred", instructions)
 
     def db_context(self):
         context = MagicMock()

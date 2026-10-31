@@ -76,7 +76,7 @@ private suspend fun request(base: String, path: String, token: String = "", body
     val connection = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000
-        connection.readTimeout = 20000
+        connection.readTimeout = if (path.endsWith("/analyse")) 200000 else 20000
         if (token.isNotEmpty()) connection.setRequestProperty("Authorization", "Bearer $token")
         if (body != null) {
             connection.requestMethod = method
@@ -375,6 +375,7 @@ private fun StudyApp() {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
+            if (!(token.isNotEmpty() && tab == 1 && selectedLesson > 0)) {
             // One compact row: the screen title plus settings. Account actions live in Settings.
             Surface(color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxWidth().statusBarsPadding()) {
@@ -409,6 +410,7 @@ private fun StudyApp() {
                     }
                     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.secondary)
                 }
+            }
             }
         },
         bottomBar = {
@@ -478,7 +480,7 @@ private fun StudyApp() {
                     onOpenPdf = { topicSourceId = it }, onClosePdf = { topicSourceId = "" },
                 )
                 1 -> when {
-                    selectedTopic != 0L -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                    selectedTopic != 0L -> Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                         LessonScreen(
                             base = base, token = token, topicId = selectedTopic,
                             topicName = topicTitle, subjectName = subjectTitle,
@@ -486,6 +488,7 @@ private fun StudyApp() {
                             onSwitchTopic = { id, title -> openTopic(id, title); subjectTitle = findSubject(id) },
                             onOpenResources = { tab = 0 },
                             lessonId = selectedLesson,
+                            onExit = { selectedTopic = 0; selectedLesson = 0; topicTitle = "" },
                         )
                     }
                     else -> LessonsHome(
@@ -806,7 +809,20 @@ private fun TeachingStyleEditor(base: String, token: String) {
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 if (savedNotice.isNotEmpty()) Text(savedNotice, style = MaterialTheme.typography.bodySmall, color = LocalStudyColours.current.teal)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(enabled = !busy, onClick = {
+                        scope.launch {
+                            busy = true; error = ""
+                            try {
+                                val id = subjects.getJSONObject(subjectIndex).getLong("id")
+                                val result = JSONObject(request(base, "/subjects/$id/style-profile/analyse", token, JSONObject()))
+                                draft = result.getString("profile")
+                                savedNotice = "Teaching method written from your slides. Read how your teacher teaches below, then Save to use it in lessons."
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { error = e.message ?: "Could not analyse slides" }
+                            finally { busy = false }
+                        }
+                    }) { Text("Analyse teaching method") }
                     Button(
                         enabled = !busy && draft != saved && draft.length <= 50000,
                         shape = RoundedCornerShape(50),
@@ -868,7 +884,7 @@ private fun SettingsSheet(
     onManageCourses: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
             StudyCard(tone = CardTone.Container) {
                 SectionLabel("Account", if (signedIn) "SIGNED IN" else "SIGNED OUT")

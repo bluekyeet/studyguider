@@ -1053,7 +1053,7 @@ lessons_router = lesson_router(connect, authorised, model_reply, search_resource
 app.include_router(lessons_router)
 app.include_router(marking_router(connect, authorised, model_reply))
 app.include_router(explain_router(connect, authorised, model_reply))
-app.include_router(review_generation_router(authorised, model_reply, search_resources))
+app.include_router(review_generation_router(authorised, model_reply, search_resources, connect))
 
 
 def scheduled_generate(topic_id, body):

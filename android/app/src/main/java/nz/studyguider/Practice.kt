@@ -14,6 +14,7 @@ data class PracticeQuestion(
     /** How "reveal" is worded, e.g. "Reveal the model answer". */
     val revealLabel: String,
     val kind: Kind,
+    val choices: List<String> = emptyList(),
 ) {
     enum class Kind { BlankFormula, ShortAnswer, Explain }
 }
@@ -24,10 +25,20 @@ private val inlineMath = Regex("\\$\\$[^$]+\\$\\$|\\$[^$]+\\$")
 /** Returns practice questions for one lesson section, most useful first. */
 fun practiceQuestions(section: String, limit: Int = 2): List<PracticeQuestion> {
     val found = mutableListOf<PracticeQuestion>()
+    val definitions = Regex("\\*\\*([^*:$\\n]{2,60}):?\\*\\*:?\\s*([^\\n]+)").findAll(section).toList()
+    if (definitions.size >= 3) {
+        val definition = definitions.first()
+        val description = definition.groupValues[2]
+        if (!description.contains('$') && !questionStart.containsMatchIn(description)) {
+            found.add(PracticeQuestion("Which term matches this description?\n\n$description",
+                definition.groupValues[1].trimEnd(':'), "Show answer", PracticeQuestion.Kind.ShortAnswer,
+                definitions.take(4).map { it.groupValues[1].trimEnd(':') }.distinct().sorted()))
+        }
+    }
     val sentences = section
         .replace(Regex("\n+"), " ")
         .split(Regex("(?<=[.!?])\\s+"))
-        .map { it.trim() }
+        .map { it.trim().replace(Regex("^(?:\\d+[.)]|[-+*](?=\\s))\\s*"), "") }
         .filter { it.length in 20..400 }
 
     // 1. Sentences the lesson already phrases as a task.
@@ -41,9 +52,11 @@ fun practiceQuestions(section: String, limit: Int = 2): List<PracticeQuestion> {
     }
 
     // 2. Blank out a formula or a number so the learner has to reconstruct it.
-    val formulaSentence = sentences.firstOrNull { inlineMath.containsMatchIn(it) && !questionStart.containsMatchIn(it) }
+    val formulaSentence = sentences.firstOrNull { sentence ->
+        inlineMath.findAll(sentence).any { it.value.trim('$').contains('=') } && !questionStart.containsMatchIn(sentence)
+    }
     if (formulaSentence != null) {
-        val match = inlineMath.find(formulaSentence)
+        val match = inlineMath.findAll(formulaSentence).firstOrNull { it.value.trim('$').contains('=') }
         if (match != null) {
             val formula = match.value
             val blanked = formulaSentence.replaceRange(match.range, "______")
