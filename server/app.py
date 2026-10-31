@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import secrets
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -189,6 +190,24 @@ def model_reply(model, messages, task="general", timeout=120):
     return _gateway_request(model, messages, task, timeout)
 
 
+def model_reply_reliable(model, messages, task="general", attempts=4, timeout=120):
+    """Retry a transient gateway failure (busy upstream) with growing backoff.
+
+    Use this where a failure would cost the learner real work, such as question
+    parsing or marking. Configuration errors are never retried.
+    """
+    last = None
+    for attempt in range(attempts):
+        try:
+            return _gateway_request(model, messages, task, timeout)
+        except HTTPException as exc:
+            if exc.status_code != 502:
+                raise
+            last = exc
+            time.sleep(5 * (attempt + 1))
+    raise last
+
+
 def model_reply_vision(model, prompt, image_bytes, mime="image/png", task="vision"):
     import base64
     if not isinstance(image_bytes, bytes) or not image_bytes or len(image_bytes) > 10 * 1024 * 1024:
@@ -213,7 +232,7 @@ def authorised(authorization: str = Header(default="")):
 
 app.include_router(review_router(connect, authorised, model_reply))
 app.include_router(exam_router(connect, authorised))
-app.include_router(parsing_router(connect, authorised, model_reply))
+app.include_router(parsing_router(connect, authorised, model_reply_reliable))
 app.include_router(scheduler_router(connect, authorised))
 app.include_router(worker_router(connect, authorised))
 app.include_router(style_router(connect, authorised, model_reply))
@@ -648,7 +667,21 @@ def _ocr_png(data):
         return ""
 
 
+def _readable_text(text):
+    """Replace private-use glyphs from symbol fonts with plain, searchable text."""
+    # Word, PowerPoint and PDF symbol fonts store bullets and ticks in these ranges.
+    return (text.replace("\uf0cc", "")
+                .replace("\uf06c", "")
+                .replace("\uf0cb", "")
+                .replace("\uf0b7", "•")
+                .replace("\uf0a7", "•")
+                .replace("\uf0fc", "✔")
+                .replace("\uf0a8", "☐")
+                .replace("\u00a0", " "))
+
+
 def _chunk_text(text, size=1200):
+    text = _readable_text(text)
     paragraphs = [part.strip() for part in text.replace("\r\n", "\n").split("\n\n") if part.strip()]
     chunks = []
     current = ""
@@ -819,6 +852,7 @@ def _extract_into_database(resource_id: uuid.UUID):
         db.execute("DELETE FROM resource_pages WHERE resource_id = %s", (resource_id,))
         db.execute("DELETE FROM resource_chunks WHERE resource_id = %s", (resource_id,))
         for number, text in pages:
+            text = _readable_text(text)
             db.execute("INSERT INTO resource_pages VALUES (%s, %s, %s)", (resource_id, number, text))
             for ordinal, chunk in enumerate(_chunk_text(text), 1):
                 db.execute("INSERT INTO resource_chunks (resource_id, topic_id, standard_number, page, ordinal, content) VALUES (%s, %s, %s, %s, %s, %s)",
