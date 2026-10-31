@@ -6,6 +6,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Roadmap and features
 
+- 2026-11-01 Lessons feed prototype: Android groups saved lessons by their
+  Auckland creation date, with earlier dates in history; the topic-only button
+  requests generation using the topic name. Emulator showed the feed, topic
+  picker, loading state and a generated draft. This is not a due/completion
+  system: automatic daily generation for enrolled courses, completion tracking,
+  full history pagination and catch-up scheduling are not implemented. Topic-name
+  search can fail even when relevant resources exist. Screenshots:
+  `shots/lessons-redo-home.png`, `shots/lessons-redo-loading.png`,
+  `shots/lessons-redo-generated.png`; visual inspection not verified.
+
 - [ ] Foundation — local Compose API/database, single-user login and lockout,
   Android and web shells, subjects/topics/standards, migrations and seed data,
   GitHub CI, 9Router gateway, Cloudflare Tunnel, Proxmox deployment and backups.

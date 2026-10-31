@@ -116,6 +116,7 @@ fun LessonScreen(
     allTopics: List<Pair<String, JSONObject>>,
     onSwitchTopic: (Long, String) -> Unit,
     onOpenResources: () -> Unit,
+    lessonId: Long = 0,
 ) {
     var query by remember(base, token, topicId) { mutableStateOf("") }
     var result by remember(base, token, topicId) { mutableStateOf<JSONObject?>(null) }
@@ -126,6 +127,16 @@ fun LessonScreen(
     var historyLoading by remember(base, token, topicId) { mutableStateOf(false) }
     var deleteId by remember(base, token, topicId) { mutableStateOf<Long?>(null) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(lessonId) {
+        if (lessonId > 0) {
+            try {
+                val items = requestLessonHistory(base, token, topicId)
+                result = (0 until items.length()).map { items.getJSONObject(it) }.firstOrNull { it.optLong("id") == lessonId }
+                if (result == null) error = "Lesson not found"
+            } catch (e: Exception) { error = e.message ?: "Could not load lesson" }
+        }
+    }
 
     LaunchedEffect(base, token, topicId) {
         if (topicId > 0) {
@@ -140,10 +151,13 @@ fun LessonScreen(
 
     Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // Always reachable: change topic or subject without hunting through Resources.
-        TopicSwitcher(
+        if (lessonId == 0L) TopicSwitcher(
             topicId = topicId, topicName = topicName, subjectName = subjectName,
             allTopics = allTopics, onSwitchTopic = onSwitchTopic, onOpenResources = onOpenResources,
         )
+        if (lessonId > 0 && result == null) {
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error) else LinearProgressIndicator(Modifier.fillMaxWidth())
+        } else {
         result?.let { draft -> LessonArticle(base, token, draft) } ?: LessonEmptyState(
             query = query,
             onQueryChange = { query = it },
@@ -174,6 +188,7 @@ fun LessonScreen(
             onClose = { result = null },
             openId = result?.optLong("id"),
         )
+        }
     }
     deleteId?.let { id ->
         AlertDialog(

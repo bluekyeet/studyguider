@@ -92,6 +92,24 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             raise HTTPException(404, "Course not found")
         return {"status": "removed"}
 
+    @router.get("/lessons")
+    def lesson_feed():
+        with connect() as db:
+            rows = db.execute("""SELECT l.id, l.topic_id, l.query, l.created_at, t.name, s.name
+                FROM lessons l JOIN topics t ON t.id = l.topic_id
+                JOIN subjects s ON s.id = t.subject_id
+                ORDER BY l.created_at DESC, l.id DESC LIMIT 200""").fetchall()
+        return [dict(zip(("id", "topic_id", "query", "created_at", "topic", "subject"), row)) for row in rows]
+
+    @router.post("/topics/{topic_id}/lessons/automatic", status_code=201)
+    def automatic_lesson(topic_id: int):
+        with connect() as db:
+            row = db.execute("""SELECT t.name FROM topics t JOIN courses c ON c.topic_id = t.id
+                WHERE t.id = %s AND c.active""", (topic_id,)).fetchone()
+            if not row:
+                raise HTTPException(404, "Choose this topic in Settings first")
+        return generate(topic_id, LessonGeneration(query=row[0][:200]))
+
     @router.post("/topics/{topic_id}/lessons", status_code=201)
     def generate(topic_id: int, body: LessonGeneration):
         query = body.query.strip()

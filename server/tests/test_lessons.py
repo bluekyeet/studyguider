@@ -6,6 +6,19 @@ from fastapi.testclient import TestClient
 from lessons import lesson_router
 
 
+def test_automatic_lesson_requires_an_enrolled_topic():
+    class EmptyDatabase:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, *args): return self
+        def fetchone(self): return None
+
+    app = FastAPI()
+    app.include_router(lesson_router(EmptyDatabase, lambda: None, None, None, None))
+    response = TestClient(app).post("/topics/42/lessons/automatic")
+    assert response.status_code == 404
+
+
 class Database:
     def __init__(self):
         self.rows = []

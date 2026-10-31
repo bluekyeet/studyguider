@@ -210,6 +210,7 @@ private fun StudyApp() {
     var topics by remember { mutableStateOf(JSONArray()) }
     var selected by remember { mutableStateOf(0L) }
     var selectedTopic by remember { mutableStateOf(0L) }
+    var selectedLesson by remember { mutableLongStateOf(0L) }
     var resources by remember { mutableStateOf(JSONArray()) }
     var resourceRefreshError by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
@@ -260,7 +261,7 @@ private fun StudyApp() {
      */
     fun goBack(): Boolean {
         if (topicSourceId.isNotEmpty()) { topicSourceId = ""; return true }
-        if (selectedTopic != 0L) { selectedTopic = 0; topicTitle = ""; resources = JSONArray(); return true }
+        if (selectedTopic != 0L) { selectedTopic = 0; selectedLesson = 0; topicTitle = ""; resources = JSONArray(); return true }
         if (selected != 0L) { selected = 0; subjectTitle = ""; topics = JSONArray(); return true }
         if (tab != 0) { tab = 0; return true }
         return false
@@ -484,12 +485,12 @@ private fun StudyApp() {
                             allTopics = allTopics,
                             onSwitchTopic = { id, title -> openTopic(id, title); subjectTitle = findSubject(id) },
                             onOpenResources = { tab = 0 },
+                            lessonId = selectedLesson,
                         )
                     }
                     else -> LessonsHome(
                         base = base, token = token,
-                        onOpenCourse = { id, title -> openTopic(id, title); subjectTitle = findSubject(id) },
-                        onAddCourse = { showTopicPicker = true },
+                        onOpenLesson = { id, title, lessonId -> selectedLesson = lessonId; openTopic(id, title); subjectTitle = findSubject(id) },
                     )
                 }
                 2 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
