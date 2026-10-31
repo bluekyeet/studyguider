@@ -51,6 +51,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
   rather than outside the repository. Keep its contents untracked and private.
 - The user will enter the 9Router endpoint and key in the ignored `.env` file.
   The tunnel/domain acceptance test is explicitly deferred by the user.
+- 2026-10-31: all four `.env` entries were non-empty. The existing default
+  Compose database volume rejected the configured password (`FATAL: password
+  authentication failed for user "studyguider"`); it was not modified or
+  deleted. A separate fresh `studyguider-verify` project started and its health
+  endpoint returned `{"status":"ok"}`. Real `education` and
+  `education-reviewer` text requests each timed out after 90 seconds and became
+  HTTP 502; no model output or acceptance pass was obtained. The fresh project
+  contains the configured database password and is not production data.
 - `AGENTS.md` is absent; `DESIGN.md` and `writeup.md` were read.
 - The existing application is a prototype; its advisory model feedback does not
   establish deterministic marking or official NZQA grades. Low temperature alone
