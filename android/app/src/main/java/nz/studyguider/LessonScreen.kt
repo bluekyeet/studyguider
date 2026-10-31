@@ -102,12 +102,13 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
     }
 
     Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("TODAY’S LESSON", style = MaterialTheme.typography.labelSmall, color = Color(0xFF001C64))
-        Text("Experimental lesson draft", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("LESSON LIBRARY", style = MaterialTheme.typography.labelSmall, color = Color(0xFF001C64))
+        Text("Learn at your own pace", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         HorizontalDivider(color = Color(0xFF001C64), thickness = 3.dp)
         LessonCard {
-        Text("Generating sends your query, up to five matching source excerpts and linked standards to the configured education and education-reviewer model providers.")
-        Text("This lesson is saved as a draft. AI review is not verification; check claims and citations against the original sources.", color = MaterialTheme.colorScheme.error)
+        Text("Create a lesson", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text("Your search, matching excerpts and linked standards are sent to your configured model providers.", style = MaterialTheme.typography.bodyMedium)
+        Text("Lessons are drafts. Check claims and citations against the original sources.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Lesson topic or search") }, enabled = !busy, supportingText = { Text("1–200 characters") })
         Button(enabled = !busy && !historyLoading && query.isNotBlank() && query.length <= 200 && topicId > 0, onClick = {
             val submittedQuery = query.trim()
@@ -133,7 +134,7 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
             Text("DRAFT LESSON", style = MaterialTheme.typography.labelSmall, color = Color(0xFF001C64))
             LessonCard {
                 // ponytail: plain text preserves all content; add audited offline KaTeX rendering for formulas.
-                SelectionContainer { Text(draft.optString("lesson")) }
+                SelectionContainer { Text(draft.optString("lesson"), style = MaterialTheme.typography.bodyLarge) }
             }
             LessonCard {
                 Text("AI REVIEW", style = MaterialTheme.typography.labelMedium, color = Color(0xFF001C64))
