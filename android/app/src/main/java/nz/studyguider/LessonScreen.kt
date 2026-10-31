@@ -64,6 +64,17 @@ private suspend fun explainLesson(base: String, token: String, lessonId: Long, q
     } finally { connection.disconnect() }
 }
 
+private suspend fun deleteLesson(base: String, token: String, lessonId: Long) = withContext(Dispatchers.IO) {
+    val connection = URL(base.trimEnd('/') + "/lessons/$lessonId").openConnection() as HttpURLConnection
+    try {
+        connection.connectTimeout = 10000; connection.readTimeout = 20000
+        connection.requestMethod = "DELETE"
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        val status = connection.responseCode
+        if (status !in 200..299) throw IllegalStateException("Deletion failed ($status)")
+    } finally { connection.disconnect() }
+}
+
 /** Generates and saves an experimental lesson for the selected topic. */
 @Composable
 fun LessonScreen(base: String, token: String, topicId: Long) {
@@ -76,6 +87,7 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
     var historyLoading by remember(base, token, topicId) { mutableStateOf(false) }
     var followUp by remember(base, token, topicId) { mutableStateOf("") }
     var explanation by remember(base, token, topicId) { mutableStateOf("") }
+    var deleteId by remember(base, token, topicId) { mutableStateOf<Long?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(base, token, topicId) {
@@ -147,6 +159,7 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
                     val source = sources.getJSONObject(i)
                     Text("${source.optString("filename")} · Resource ${source.optString("resource_id")} · Page/slide/section ${source.optInt("page")}")
                 }
+                OutlinedButton(enabled = !busy, onClick = { deleteId = draft.getLong("id") }) { Text("Delete lesson") }
             }
         }
         LessonCard {
@@ -162,6 +175,26 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
             }
         }
         }
+    }
+    deleteId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) deleteId = null },
+            title = { Text("Delete this lesson?") },
+            text = { Text("The saved draft, review and source excerpts will be permanently removed.") },
+            confirmButton = { TextButton(enabled = !busy, onClick = {
+                scope.launch {
+                    busy = true; error = ""
+                    try {
+                        deleteLesson(base, token, id)
+                        history = history.filterNot { it.optLong("id") == id }
+                        if (result?.optLong("id") == id) { result = null; explanation = ""; followUp = "" }
+                        deleteId = null
+                    } catch (e: Exception) { error = e.message ?: "Deletion failed"; deleteId = null }
+                    finally { busy = false }
+                }
+            }) { Text("Delete") } },
+            dismissButton = { TextButton(enabled = !busy, onClick = { deleteId = null }) { Text("Cancel") } }
+        )
     }
 }
 
