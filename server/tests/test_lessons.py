@@ -18,7 +18,13 @@ class Database:
         pass
 
     def execute(self, sql, params):
-        if "FROM resources WHERE id = ANY" in sql:
+        if "SELECT id FROM lessons" in sql:
+            self.result = (params[0],) if any(r[0] == params[0] for r in self.rows) else None
+        elif "UPDATE lesson_schedule_runs" in sql:
+            self.result = None
+        elif "DELETE FROM lessons" in sql:
+            self.rows = [r for r in self.rows if r[0] != params[0]]
+        elif "FROM resources WHERE id = ANY" in sql:
             self.result = [(value,) for value in params[0]]
         elif "FROM topics t LEFT JOIN style_profiles" in sql:
             self.result = ("Use worked examples",) if params[0] == 1 else None
@@ -71,6 +77,9 @@ def test_generation_snapshot_and_history():
     assert client.get("/lessons/2").status_code == 404
     assert client.get("/topics/2/lessons").status_code == 404
     assert client.get("/topics/1/lessons?limit=101").status_code == 422
+    assert client.delete("/lessons/1").status_code == 200
+    assert client.get("/lessons/1").status_code == 404
+    assert client.delete("/lessons/1").status_code == 404
 
 
 def test_review_failure_keeps_draft():

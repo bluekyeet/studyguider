@@ -536,7 +536,15 @@
             }
             $('explain-question').value = ''; $('explanation').textContent = '';
           });
-          item.append(button); $('saved-lessons').append(item);
+          const remove = document.createElement('button');
+          remove.type = 'button'; remove.textContent = `Delete lesson ${lesson.id}`;
+          remove.onclick = run(async () => {
+            if (!confirm('Permanently delete this lesson, its review and saved source excerpts?')) return;
+            remove.disabled = true;
+            try { await api(`/lessons/${lesson.id}`, { method: 'DELETE' }); await loadLessons(); message('Lesson deleted.'); }
+            finally { remove.disabled = false; }
+          });
+          item.append(button, ' ', remove); $('saved-lessons').append(item);
         }
         lessonOffset += lessons.length;
         $('more-lessons').hidden = lessons.length < 50 || lessonOffset > 100000;

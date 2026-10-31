@@ -91,8 +91,9 @@ PowerPoint references are slide numbers; Word text is returned as one section,
 not page numbers. Images, PowerPoint tables and Word tables are not extracted.
 Delete a resource with `DELETE /resources/{id}`; if removal fails or is
 interrupted, its status remains `deleting` and the same request can be retried.
-Resources referenced by saved lessons or exam questions cannot currently be
-deleted; those records must remain available until safe deletion is implemented.
+Resources referenced by saved lessons or exam questions cannot be deleted.
+Delete a saved lesson first with `DELETE /lessons/{id}` if you no longer need
+it; deleting a lesson also removes its saved source excerpts and reviewer text.
 Back up both the database and uploads volume together.
 See `deploy/BACKUP.md` for the proposed backup and fresh-project restore
 procedure. A disposable restore drill recovered synthetic database and upload

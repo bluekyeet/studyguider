@@ -96,4 +96,15 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             raise HTTPException(404, "Lesson not found")
         return result(row)
 
+    @router.delete("/lessons/{lesson_id}")
+    def delete_lesson(lesson_id: int):
+        with connect() as db:
+            row = db.execute("SELECT id FROM lessons WHERE id = %s FOR UPDATE", (lesson_id,)).fetchone()
+            if not row:
+                raise HTTPException(404, "Lesson not found")
+            # Keep schedule history but remove its reference to the deleted draft.
+            db.execute("UPDATE lesson_schedule_runs SET lesson_id = NULL WHERE lesson_id = %s", (lesson_id,))
+            db.execute("DELETE FROM lessons WHERE id = %s", (lesson_id,))
+        return {"status": "ok"}
+
     return router
