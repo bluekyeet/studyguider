@@ -2,10 +2,20 @@ package nz.studyguider
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.Tab
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -45,7 +55,24 @@ class LessonScreenshotTest {
                         }
                     }
                 }
-                compose.setContent { MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { LessonScreen("http://127.0.0.1:${server.localPort}", "fake-token", 1) } } }
+                compose.setContent {
+                    MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF1E3A8A), surface = Color(0xFFFBF8FF))) {
+                        Surface(Modifier.fillMaxSize()) {
+                            Column(Modifier.padding(top = 32.dp)) {
+                                Text("STUDYGUIDER", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                Text("Your study space", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.headlineMedium)
+                                ScrollableTabRow(selectedTabIndex = 1) {
+                                    listOf("Study", "Lessons", "Reviews", "Exams").forEachIndexed { index, title ->
+                                        Tab(selected = index == 1, onClick = {}, text = { Text(title) })
+                                    }
+                                }
+                                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+                                    LessonScreen("http://127.0.0.1:${server.localPort}", "fake-token", 1)
+                                }
+                            }
+                        }
+                    }
+                }
                 compose.waitUntil(15000) { compose.onAllNodesWithText("Synthetic waves · today").fetchSemanticsNodes().isNotEmpty() }
                 compose.onNodeWithText("Synthetic waves · today").performScrollTo().performClick()
                 compose.onNodeWithText("A wave transfers energy from one place to another.").performScrollTo().assertExists()
