@@ -18,7 +18,9 @@ class Database:
         pass
 
     def execute(self, sql, params):
-        if "FROM topics t LEFT JOIN style_profiles" in sql:
+        if "FROM resources WHERE id = ANY" in sql:
+            self.result = [(value,) for value in params[0]]
+        elif "FROM topics t LEFT JOIN style_profiles" in sql:
             self.result = ("Use worked examples",) if params[0] == 1 else None
         elif "INSERT INTO lessons" in sql:
             topic, query, lesson, review, status, sources, standards = params

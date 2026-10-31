@@ -607,6 +607,8 @@ def delete_resource(resource_id: uuid.UUID):
             raise HTTPException(404, "Resource not found")
         if db.execute("SELECT 1 FROM exam_questions WHERE paper_resource_id = %s OR schedule_resource_id = %s LIMIT 1", (resource_id, resource_id)).fetchone():
             raise HTTPException(409, "Resource is referenced by an exam question")
+        if db.execute("SELECT 1 FROM lessons WHERE sources @> %s::jsonb LIMIT 1", (json.dumps([{"resource_id": str(resource_id)}]),)).fetchone():
+            raise HTTPException(409, "Resource is referenced by a saved lesson; lesson deletion is not yet available")
         db.execute("UPDATE resources SET status = 'deleting' WHERE id = %s", (resource_id,))
     path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
     try:

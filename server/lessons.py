@@ -65,6 +65,12 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             # Review service failure must not lose the generated draft.
             pass
         with connect() as db:
+            # Lock sources before saving snapshots so concurrent deletion cannot
+            # remove the original while a lesson is being created.
+            source_ids = sorted({s["resource_id"] for s in sources})
+            locked = db.execute("SELECT id FROM resources WHERE id = ANY(%s::uuid[]) AND status = 'extracted' ORDER BY id FOR KEY SHARE", (source_ids,)).fetchall()
+            if len(locked) != len(source_ids):
+                raise HTTPException(409, "A source changed or was removed during generation; retry")
             row = db.execute("""INSERT INTO lessons
                 (topic_id, query, lesson, review, review_status, sources, standards)
                 VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
