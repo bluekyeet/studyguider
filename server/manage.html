@@ -304,6 +304,21 @@
       }
       return response.json();
     }
+    // Images cannot send the bearer token, so fetch the bytes and show an object URL.
+    async function authorisedImage(image, path) {
+      image.alt = image.alt || 'Original page';
+      try {
+        const response = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (!response.ok) throw new Error(`Page image failed (${response.status})`);
+        const url = URL.createObjectURL(await response.blob());
+        image.onload = () => URL.revokeObjectURL(url);
+        image.src = url;
+        image.dataset.loaded = 'true';
+      } catch (error) {
+        image.dataset.failed = error.message;
+        image.replaceWith(Object.assign(document.createElement('p'), { className: 'hint', textContent: `The original page could not be shown: ${error.message}` }));
+      }
+    }
     function run(action) { return async event => { event.preventDefault(); message(''); try { await action(); } catch (error) { message(error.message); } }; }
     function options(select, items, label) {
       select.replaceChildren();
@@ -363,6 +378,9 @@
       await loadNotes();
       await loadSchedule();
       await loadLessons();
+      // Keep the check screen in step with the chosen topic.
+      await loadParsed();
+      await loadDiagrams();
     }
     async function loadNotes() {
       const list = $('notes'); list.replaceChildren();
@@ -713,11 +731,15 @@
       }
     });
 
+    let parsedRequest = 0;
     async function loadParsed() {
       const topic = $('topics').value;
+      const request = ++parsedRequest;
       const list = $('parsed-questions'); list.replaceChildren();
       if (!topic) return;
       const rows = await api(`/topics/${topic}/parsed-questions`);
+      // A slower earlier request must never overwrite the newer topic's rows.
+      if (request !== parsedRequest || topic !== $('topics').value) return;
       $('parse-status').textContent = rows.length ? `${rows.length} staged question(s).` : 'No staged questions for this topic.';
       for (const row of rows) {
         const item = document.createElement('li');
@@ -731,23 +753,30 @@
         const questionText = document.createElement('textarea'); questionText.value = row.question_text; questionText.rows = 4; questionText.maxLength = 50000;
         const scheduleText = document.createElement('textarea'); scheduleText.value = row.schedule_text; scheduleText.rows = 4; scheduleText.maxLength = 100000;
         const reviewed = document.createElement('input'); reviewed.type = 'checkbox'; reviewed.checked = row.status === 'reviewed';
-        const reviewedLabel = document.createElement('label'); reviewedLabel.append(reviewed, document.createTextNode('I compared every number, mark and page with the originals'));
+        reviewed.id = `parsed-${row.id}-reviewed`;
+        const reviewedLabel = document.createElement('label'); reviewedLabel.htmlFor = reviewed.id;
+        reviewedLabel.append(reviewed, document.createTextNode('I compared every number, mark and page with the originals'));
         const original = document.createElement('details');
         const summary = document.createElement('summary');
         summary.textContent = `Original paper page ${row.paper_page} and schedule page ${row.schedule_page}`;
         const paperImage = document.createElement('img');
         paperImage.alt = `Original paper page ${row.paper_page}`;
         paperImage.loading = 'lazy';
-        paperImage.src = `/resources/${row.paper_resource_id}/pages/${row.paper_page}/image`;
         paperImage.style.maxWidth = '100%';
+        authorisedImage(paperImage, `/resources/${row.paper_resource_id}/pages/${row.paper_page}/image`);
         const scheduleImage = document.createElement('img');
         scheduleImage.alt = `Original schedule page ${row.schedule_page}`;
         scheduleImage.loading = 'lazy';
-        scheduleImage.src = `/resources/${row.schedule_resource_id}/pages/${row.schedule_page}/image`;
         scheduleImage.style.maxWidth = '100%';
+        authorisedImage(scheduleImage, `/resources/${row.schedule_resource_id}/pages/${row.schedule_page}/image`);
         original.append(summary, paperImage, scheduleImage);
         const fields = [['Number', number], ['Marks', marks], ['Paper page', paperPage], ['Schedule page', schedulePage], ['Question text', questionText], ['Schedule text', scheduleText]];
-        for (const [name, field] of fields) { const label = document.createElement('label'); label.textContent = name; label.append(field); item.append(label); }
+        for (const [name, field] of fields) {
+          const label = document.createElement('label');
+          label.textContent = name;
+          label.htmlFor = field.id = `parsed-${row.id}-${name.toLowerCase().replace(/\s+/g, '-')}`;
+          item.append(label, field);
+        }
         item.append(original, reviewedLabel);
         const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save edits';
         save.onclick = run(async () => {
@@ -832,7 +861,13 @@
         const item = document.createElement('li');
         const title = document.createElement('strong'); title.textContent = `${diagram.description} — ${diagram.status}`;
         item.append(title);
-        if (diagram.image_path) { const image = document.createElement('img'); image.alt = diagram.description; image.src = `/diagrams/${diagram.id}/image`; image.style.maxWidth = '100%'; item.append(image); }
+        if (diagram.image_path) {
+          const image = document.createElement('img');
+          image.alt = diagram.description;
+          image.style.maxWidth = '100%';
+          authorisedImage(image, `/diagrams/${diagram.id}/image`);
+          item.append(image);
+        }
         if (diagram.review) { const review = document.createElement('p'); review.textContent = diagram.review; item.append(review); }
         list.append(item);
       }

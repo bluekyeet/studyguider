@@ -381,6 +381,11 @@ def parsing_router(connect, authorised, model_reply):
                 raise HTTPException(404, "Parsed question not found")
             if row[13] == "approved":
                 raise HTTPException(409, "Question is already approved")
+            if db.execute("""SELECT 1 FROM exam_questions WHERE standard_number = %s AND year = %s
+                    AND question_number = %s AND paper_resource_id = %s LIMIT 1""",
+                    (row[1], row[2], row[5], row[3])).fetchone():
+                # The bank must never hold the same real question twice.
+                raise HTTPException(409, "This question is already in the bank")
             created = db.execute("""INSERT INTO exam_questions
                 (topic_id, standard_number, year, question_number, paper_resource_id, paper_page,
                  schedule_resource_id, schedule_page, marks, parts, question_text, schedule_text,
