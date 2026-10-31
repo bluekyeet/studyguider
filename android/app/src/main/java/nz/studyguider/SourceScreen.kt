@@ -6,8 +6,6 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -72,7 +70,8 @@ fun SourceScreen(base: String, token: String, resourceId: String, initialPage: I
                 ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
                     PdfRenderer(descriptor).use { renderer ->
                         require(renderer.pageCount > 0) { "PDF has no pages" }
-                        val selected = page.coerceIn(1, renderer.pageCount)
+                        require(page in 1..renderer.pageCount) { "Requested page $page is not present in this PDF (${renderer.pageCount} pages)" }
+                        val selected = page
                         renderer.openPage(selected - 1).use { pdfPage ->
                             // ponytail: fixed-width rendering limits memory; add zoom when detailed inspection is needed.
                             val width = 1200

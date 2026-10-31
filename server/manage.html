@@ -166,6 +166,25 @@
           <button id="refresh-runs" class="secondary" type="button">Reload saved settings and run status</button>
           <p id="schedule-status" role="status" aria-live="polite"></p><ul id="schedule-runs"></ul>
         </section>
+        <section class="card wide" aria-labelledby="saved-lessons-heading">
+          <div class="section-heading"><h2 id="saved-lessons-heading">Saved lesson history</h2></div>
+          <p class="hint">Saved and scheduled drafts are unverified. Check lessons, reviews and explanations against the original sources.</p>
+          <button id="refresh-lessons" class="secondary" type="button">Reload history</button>
+          <p id="lessons-status" role="status" aria-live="polite"></p><ul id="saved-lessons"></ul>
+          <button id="more-lessons" class="secondary" type="button" hidden>Load more lessons</button>
+          <div id="saved-lesson-detail" hidden>
+            <h3 id="saved-lesson-heading"></h3><pre id="saved-lesson-text"></pre>
+            <h3>Reviewer notes</h3><pre id="saved-lesson-review"></pre>
+            <h3>Saved source excerpts</h3><ul id="saved-lesson-sources"></ul>
+            <h3>Saved standards</h3><ul id="saved-lesson-standards"></ul>
+            <form id="explain-lesson">
+              <label for="explain-question">Follow-up question</label><textarea id="explain-question" maxlength="2000" rows="3" required aria-describedby="explain-help"></textarea>
+              <p class="hint" id="explain-help">Your question, the saved lesson and search terms, source excerpts and standards are sent to the configured external education model provider. The explanation is not saved or verified.</p>
+              <button id="explain-button">Get detailed explanation</button>
+            </form>
+            <h3>Explanation</h3><pre id="explanation" aria-live="polite"></pre>
+          </div>
+        </section>
         <section class="card wide" aria-labelledby="review-drafts-heading">
           <div class="section-heading"><span class="section-number">11</span><h2 id="review-drafts-heading">Review question drafts</h2></div>
           <p class="hint">Generating uses AI: matching resource excerpts are sent to the configured external education model provider. Drafts may be wrong; compare them with the sources and edit before approving each question. Nothing is saved automatically.</p>
@@ -225,6 +244,7 @@
       }
     }
     async function loadTopics() {
+      clearLessonHistory();
       $('verified').checked = false;
       const id = $('subjects').value;
       options($('topics'), id ? await api(`/subjects/${id}/topics`) : [], item => item.name);
@@ -232,6 +252,7 @@
       await loadTopicStandards();
       await loadNotes();
       await loadSchedule();
+      await loadLessons();
     }
     async function loadNotes() {
       const list = $('notes'); list.replaceChildren();
@@ -275,11 +296,11 @@
       token = result.token; $('password').value = ''; $('login').hidden = true; $('manager').hidden = false;
       await loadSubjects(); await loadStandards(); await loadExamQuestions();
     });
-    $('logout').onclick = run(async () => { await api('/logout', { method: 'POST' }); token = ''; $('manager').hidden = true; $('login').hidden = false; $('verified').checked = false; $('exam-view').replaceChildren(); $('exam-questions').replaceChildren(); $('review-drafts').replaceChildren(); $('review-sources').replaceChildren(); });
+    $('logout').onclick = run(async () => { await api('/logout', { method: 'POST' }); token = ''; clearLessonHistory(); $('manager').hidden = true; $('login').hidden = false; $('verified').checked = false; $('exam-view').replaceChildren(); $('exam-questions').replaceChildren(); $('review-drafts').replaceChildren(); $('review-sources').replaceChildren(); });
     $('add-subject').onsubmit = run(async () => { await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; await loadSubjects(); });
     $('subjects').onchange = run(loadTopics);
     $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; await loadTopics(); });
-    $('topics').onchange = run(async () => { $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); await loadSchedule(); });
+    $('topics').onchange = run(async () => { clearLessonHistory(); $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); await loadSchedule(); await loadLessons(); });
     $('add-note').onsubmit = run(async () => {
       if (!$('topics').value) throw new Error('Select a topic first');
       await api(`/topics/${$('topics').value}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: $('note').value }) });
@@ -413,6 +434,67 @@
       await loadSchedule(); message('Schedule saved.');
     });
     $('refresh-runs').onclick = run(loadSchedule);
+    let selectedLesson = null, lessonOffset = 0, lessonVersion = 0, detailVersion = 0;
+    function clearLessonHistory() {
+      lessonVersion++; selectedLesson = null; lessonOffset = 0;
+      $('saved-lessons').replaceChildren(); $('saved-lesson-detail').hidden = true;
+      $('saved-lesson-text').textContent = ''; $('saved-lesson-review').textContent = '';
+      $('saved-lesson-sources').replaceChildren(); $('saved-lesson-standards').replaceChildren();
+      $('explain-question').value = ''; $('explanation').textContent = '';
+      $('more-lessons').hidden = true; $('lessons-status').textContent = '';
+    }
+    async function loadLessons(more = false) {
+      if (!more) clearLessonHistory();
+      const topic = $('topics').value, version = lessonVersion, offset = lessonOffset;
+      if (!topic) { $('lessons-status').textContent = 'Select a topic to see saved lessons.'; return; }
+      $('more-lessons').disabled = true;
+      try {
+        const lessons = await api(`/topics/${topic}/lessons?limit=50&offset=${offset}`);
+        if (version !== lessonVersion || topic !== $('topics').value || !token) return;
+        for (const lesson of lessons) {
+          const item = document.createElement('li'), button = document.createElement('button');
+          button.type = 'button'; button.textContent = `View lesson ${lesson.id} — ${lesson.query} — ${lesson.created_at}`;
+          button.onclick = run(async () => {
+            const request = ++detailVersion;
+            const detail = await api(`/lessons/${lesson.id}`);
+            if (request !== detailVersion || version !== lessonVersion || topic !== $('topics').value || !token) return;
+            selectedLesson = detail.id; $('saved-lesson-detail').hidden = false;
+            $('saved-lesson-heading').textContent = `Lesson ${detail.id} — ${detail.query} — ${detail.created_at}`;
+            $('saved-lesson-text').textContent = detail.lesson;
+            $('saved-lesson-review').textContent = detail.review || `Review ${detail.review_status}.`;
+            $('saved-lesson-sources').replaceChildren(); $('saved-lesson-standards').replaceChildren();
+            for (const source of detail.sources) {
+              const li = document.createElement('li'); li.textContent = `${source.filename}, resource ${source.resource_id}, reference ${source.page}:\n${source.content}`; li.style.whiteSpace = 'pre-wrap'; $('saved-lesson-sources').append(li);
+            }
+            for (const standard of detail.standards) {
+              const li = document.createElement('li'); li.textContent = `${standard.number} — ${standard.title}\n${standard.description}`; li.style.whiteSpace = 'pre-wrap'; $('saved-lesson-standards').append(li);
+            }
+            $('explain-question').value = ''; $('explanation').textContent = '';
+          });
+          item.append(button); $('saved-lessons').append(item);
+        }
+        lessonOffset += lessons.length;
+        $('more-lessons').hidden = lessons.length < 50 || lessonOffset > 100000;
+        $('lessons-status').textContent = lessonOffset ? `${lessonOffset} saved lesson(s) loaded.` : 'No saved lessons for this topic.';
+      } finally { $('more-lessons').disabled = false; }
+    }
+    $('refresh-lessons').onclick = run(() => loadLessons());
+    $('more-lessons').onclick = run(() => loadLessons(true));
+    $('explain-lesson').onsubmit = run(async () => {
+      const id = selectedLesson, version = lessonVersion, question = $('explain-question').value.trim();
+      if (!id || !question) throw new Error('Select a saved lesson and enter a follow-up question');
+      if (!confirm('Send your question, saved lesson, search terms, source excerpts and standards to the configured external education model provider?')) return;
+      const button = $('explain-button'); if (button.disabled) return;
+      button.disabled = true; $('explanation').textContent = 'Generating explanation…';
+      try {
+        const result = await api(`/lessons/${id}/explain`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }) });
+        if (version !== lessonVersion || id !== selectedLesson || !token) return;
+        $('explanation').textContent = `${result.explanation}\n\n${result.warning}`;
+      } catch (error) {
+        if (version === lessonVersion && id === selectedLesson) $('explanation').textContent = 'Explanation could not be generated.';
+        throw error;
+      } finally { button.disabled = false; }
+    });
     let reviewSaveInFlight = false;
     $('generate-review').onsubmit = run(async () => {
       const topic = $('topics').value, query = $('review-query').value.trim();

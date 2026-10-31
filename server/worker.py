@@ -2,8 +2,31 @@
 
 import logging
 import threading
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
+
+
+def worker_router(connect, authorised):
+    router = APIRouter(dependencies=[Depends(authorised)])
+
+    @router.post("/resources/{resource_id}/retry", status_code=202)
+    def retry_resource(resource_id: UUID):
+        with connect() as db:
+            row = db.execute(
+                "UPDATE resources SET status = 'pending' WHERE id = %s AND status = 'failed' RETURNING id",
+                (resource_id,),
+            ).fetchone()
+            if row is None:
+                row = db.execute("SELECT status FROM resources WHERE id = %s", (resource_id,)).fetchone()
+                if row is None:
+                    raise HTTPException(404, "Resource not found")
+                raise HTTPException(409, "Only failed resources can be retried")
+        return {"id": resource_id, "status": "pending"}
+
+    return router
 
 
 def process_one(connect, extract):

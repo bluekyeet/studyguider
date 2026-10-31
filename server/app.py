@@ -26,7 +26,7 @@ from lessons import create_lesson_tables, lesson_router
 from marking import marking_router
 from exams import create_exam_tables, exam_router
 from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
-from worker import start_worker
+from worker import start_worker, worker_router
 from explain import explain_router
 from review_generation import review_generation_router
 
@@ -142,6 +142,7 @@ def authorised(authorization: str = Header(default="")):
 app.include_router(review_router(connect, authorised))
 app.include_router(exam_router(connect, authorised))
 app.include_router(scheduler_router(connect, authorised))
+app.include_router(worker_router(connect, authorised))
 
 
 @app.get("/health")

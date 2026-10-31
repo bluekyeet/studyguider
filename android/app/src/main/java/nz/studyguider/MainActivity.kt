@@ -160,7 +160,7 @@ private fun StudyApp() {
                 subjects = JSONArray(request(base, "/subjects", token))
             } }) { Text("Sign in") }
         } else {
-            TextButton(enabled = !busy && !examDirty, onClick = { run { request(base, "/logout", token, JSONObject()); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; tab = 0 } }) { Text("Sign out") }
+            TextButton(enabled = !busy && !examDirty, onClick = { run { request(base, "/logout", token, JSONObject()); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; sourceId = ""; tab = 0 } }) { Text("Sign out") }
         }
       }
       if (token.isNotEmpty()) {
@@ -232,7 +232,7 @@ private fun StudyApp() {
           3 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
             if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString() }
             else {
-                TextButton(onClick = { if (examDirty) { pendingTab = null; confirmExamExit = true } else examId = "" }) { Text("‹ All exams") }
+                TextButton(onClick = { if (examDirty) { pendingTab = null; confirmExamExit = true } else { examId = ""; sourceId = "" } }) { Text("‹ All exams") }
                 if (sourceId.isNotEmpty()) {
                     TextButton(onClick = { sourceId = "" }) { Text("‹ Close source") }
                     SourceScreen(base, token, sourceId, sourcePage)
@@ -247,7 +247,7 @@ private fun StudyApp() {
         onDismissRequest = { confirmExamExit = false },
         title = { Text("Discard unsaved answers?") },
         text = { Text("Changes not saved to the server will be lost.") },
-        confirmButton = { TextButton(onClick = { examDirty = false; examId = ""; pendingTab?.let { tab = it }; pendingTab = null; confirmExamExit = false }) { Text("Discard") } },
+        confirmButton = { TextButton(onClick = { examDirty = false; examId = ""; sourceId = ""; pendingTab?.let { tab = it }; pendingTab = null; confirmExamExit = false }) { Text("Discard") } },
         dismissButton = { TextButton(onClick = { confirmExamExit = false }) { Text("Keep editing") } }
     )
 }
