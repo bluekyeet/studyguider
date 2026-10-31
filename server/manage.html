@@ -102,7 +102,7 @@
       <div class="manager-top"><p><strong>Resource pipeline &amp; standards hub</strong><br>Manage your learning content below.</p><button id="logout" class="secondary" type="button">Sign out</button></div>
       <div class="manager-layout">
       <nav class="manager-nav" aria-label="Resource manager sections"><p>Resource manager</p><div>
-        <a href="#subjects-heading">Subjects</a><a href="#style-heading">Teaching style</a><a href="#topics-heading">Topics</a><a href="#standards-heading">NZQA standards</a><a href="#resources-heading">Resources</a><a href="#search-heading">Search resources</a><a href="#notes-heading">Topic notes</a><a href="#draft-heading">Lesson draft</a><a href="#question-heading">Register question</a><a href="#exam-heading">Exam assembly</a><a href="#scheduler-heading">Scheduled lessons</a><a href="#saved-lessons-heading">Saved lessons</a><a href="#review-drafts-heading">Review drafts</a>
+        <a href="#subjects-heading">Subjects</a><a href="#style-heading">Teaching style</a><a href="#topics-heading">Topics</a><a href="#standards-heading">NZQA standards</a><a href="#resources-heading">Resources</a><a href="#mastery-heading">Mastery</a><a href="#search-heading">Search resources</a><a href="#notes-heading">Topic notes</a><a href="#draft-heading">Lesson draft</a><a href="#question-heading">Register question</a><a href="#parse-heading">Question check</a><a href="#exam-heading">Exam assembly</a><a href="#marking-heading">Marking</a><a href="#diagram-heading">Diagrams</a><a href="#scheduler-heading">Scheduled lessons</a><a href="#saved-lessons-heading">Saved lessons</a><a href="#review-drafts-heading">Review drafts</a><a href="#usage-heading">AI usage</a>
       </div></nav>
       <div class="grid">
         <section class="card" aria-labelledby="subjects-heading">
@@ -141,7 +141,10 @@
         <section class="card" aria-labelledby="resources-heading">
           <div class="section-heading"><span class="section-number">04</span><h2 id="resources-heading">Resources</h2></div>
           <p class="hint">Upload files to the selected topic and extract their text for searching.</p>
-          <form id="upload"><label for="file">File (maximum 50 MiB)</label><input id="file" type="file" accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.png,.jpg,.jpeg" required><button>Upload</button></form>
+          <form id="upload"><label for="file">File (maximum 50 MiB)</label><input id="file" type="file" accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.png,.jpg,.jpeg" required>
+            <label for="resource-category">Category</label><select id="resource-category"><option value="exam_paper">Exam paper</option><option value="exam_answers">Exam answers or schedule</option><option value="slides">Slides</option><option value="extra" selected>Extra resource</option></select>
+            <button>Upload</button></form>
+          <p class="hint">Files are deduplicated by content. Status: Queued, Processing, Ready, Needs attention. The same file from the app or this page appears once.</p>
           <ul id="resources"></ul>
         </section>
         <section class="card" aria-labelledby="search-heading">
@@ -233,6 +236,55 @@
           <h3>Source excerpts</h3><ul id="review-sources"></ul>
           <h3>Drafts to approve</h3><ul id="review-drafts"></ul>
         </section>
+        <section class="card" aria-labelledby="mastery-heading">
+          <div class="section-heading"><span class="section-number">12</span><h2 id="mastery-heading">Topic mastery</h2></div>
+          <p class="hint">Mastery comes from your marked review answers. It is a study indicator, not an official grade.</p>
+          <button id="load-mastery" class="secondary" type="button">Load mastery for the selected topic</button>
+          <div id="mastery-view"></div>
+        </section>
+        <section class="card wide" aria-labelledby="parse-heading">
+          <div class="section-heading"><span class="section-number">13</span><h2 id="parse-heading">Question check</h2></div>
+          <p class="hint">Parse one paper and its schedule into a staging list. Nothing enters the question bank until you compare every number, mark and page with the originals and approve it. Parsing uses the reviewer model; the fallback is a page-heading scan.</p>
+          <form id="parse-paper">
+            <label for="parse-standard">Linked standard</label><select id="parse-standard" required></select>
+            <label for="parse-year">Year</label><input id="parse-year" type="number" min="1900" max="2100" required>
+            <label for="parse-paper-resource">Original paper</label><select id="parse-paper-resource" required></select>
+            <label for="parse-schedule-resource">Original schedule</label><select id="parse-schedule-resource" required></select>
+            <button id="parse-button">Parse questions</button>
+          </form>
+          <p id="parse-status" role="status" aria-live="polite"></p>
+          <ul id="parsed-questions"></ul>
+        </section>
+        <section class="card wide" aria-labelledby="marking-heading">
+          <div class="section-heading"><span class="section-number">14</span><h2 id="marking-heading">Marking check</h2></div>
+          <p class="hint">Strict AI feedback against the saved schedule. The first mark is cached for the same answer, the second marker is advisory, and your override is kept separately. This is not an official NZQA result.</p>
+          <form id="mark-answer">
+            <label for="mark-exam">Exam ID</label><input id="mark-exam" type="number" min="1" required>
+            <label for="mark-question">Question ID</label><input id="mark-question" type="number" min="1" required>
+            <label for="mark-answer-text">Your answer</label><textarea id="mark-answer-text" rows="5" maxlength="50000" required></textarea>
+            <label><input id="mark-second" type="checkbox">Ask the independent second marker</label>
+            <button id="mark-button">Save answer and mark</button>
+          </form>
+          <h3>Feedback</h3><pre id="mark-feedback"></pre>
+          <h3>Exam totals</h3><button id="exam-marks-button" class="secondary" type="button">Show marks for this exam</button><pre id="exam-marks"></pre>
+        </section>
+        <section class="card" aria-labelledby="diagram-heading">
+          <div class="section-heading"><span class="section-number">15</span><h2 id="diagram-heading">Diagrams</h2></div>
+          <p class="hint">The teacher model writes SVG, the server renders it, and the reviewer checks the image. A passed review is advisory; a failed diagram is flagged for you.</p>
+          <form id="generate-diagram">
+            <label for="diagram-description">What should the diagram show?</label><textarea id="diagram-description" rows="3" maxlength="2000" required></textarea>
+            <button id="diagram-button">Generate diagram</button>
+          </form>
+          <p id="diagram-status" role="status" aria-live="polite"></p>
+          <ul id="diagrams"></ul>
+        </section>
+        <section class="card" aria-labelledby="usage-heading">
+          <div class="section-heading"><span class="section-number">16</span><h2 id="usage-heading">AI usage</h2></div>
+          <p class="hint">Calls, errors and gateway-reported tokens. Token counts are not a billing statement.</p>
+          <form id="usage-form"><label for="usage-days">Days</label><input id="usage-days" type="number" min="1" max="365" value="30"><button>Load usage</button></form>
+          <pre id="usage-summary"></pre>
+          <ul id="usage-recent"></ul>
+        </section>
       </div>
       </div>
     </main>
@@ -287,8 +339,10 @@
       if (!id) return;
       const standards = await api(`/topics/${id}/standards`);
       $('question-standard').replaceChildren();
+      $('parse-standard').replaceChildren();
       for (const standard of standards) {
         $('question-standard').add(new Option(`${standard.number} — ${standard.title}`, standard.number));
+        $('parse-standard').add(new Option(`${standard.number} — ${standard.title}`, standard.number));
         const item = document.createElement('li');
         item.textContent = `${standard.number} — ${standard.title} `;
         const unlink = document.createElement('button');
@@ -326,26 +380,39 @@
       const id = $('topics').value;
       const list = $('resources');
       list.replaceChildren();
-      options($('paper-resource'), [], item => item.filename);
-      options($('schedule-resource'), [], item => item.filename);
+      for (const select of [$('paper-resource'), $('schedule-resource'), $('parse-paper-resource'), $('parse-schedule-resource')]) options(select, [], item => item.filename);
       $('results').replaceChildren();
       if (!id) return;
-      for (const item of await api(`/topics/${id}/resources`)) {
+      const resources = await api(`/topics/${id}/resources`);
+      for (const item of resources) {
         if (item.status !== 'deleting') {
           $('paper-resource').add(new Option(item.filename, item.id));
           $('schedule-resource').add(new Option(item.filename, item.id));
+          $('parse-paper-resource').add(new Option(item.filename, item.id));
+          $('parse-schedule-resource').add(new Option(item.filename, item.id));
         }
         const li = document.createElement('li');
-        li.textContent = `${item.filename} — ${item.status} `;
+        const title = document.createElement('strong');
+        title.textContent = `${item.filename}`;
+        const status = document.createElement('p');
+        status.textContent = `${item.display_status} · ${item.category.replaceAll('_', ' ')} · ${item.page_count || 0} page(s)${item.error ? ` · ${item.error}` : ''}`;
         const extract = document.createElement('button');
-        extract.textContent = 'Extract text';
+        extract.textContent = item.status === 'extracted' ? 'Re-extract text' : 'Extract text';
         extract.onclick = run(async () => { await api(`/resources/${item.id}/extract`, { method: 'POST' }); await loadResources(); });
         const remove = document.createElement('button');
         remove.textContent = 'Delete';
         remove.onclick = run(async () => { if (confirm(`Delete ${item.filename} and its extracted data?`)) { await api(`/resources/${item.id}`, { method: 'DELETE' }); await loadResources(); } });
-        li.append(extract, ' ', remove);
+        li.append(title, status, extract);
+        if (item.status === 'failed') {
+          const retry = document.createElement('button');
+          retry.textContent = 'Retry';
+          retry.onclick = run(async () => { await api(`/resources/${item.id}/retry`, { method: 'POST' }); await loadResources(); });
+          li.append(' ', retry);
+        }
+        li.append(' ', remove);
         list.append(li);
       }
+      if (!resources.length) message('No resources for this topic yet.');
     }
     $('login').onsubmit = run(async () => {
       const result = await api('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('password').value }) });
@@ -384,7 +451,17 @@
       await api(`/topics/${$('topics').value}/standards/${$('standards').value}`, { method: 'PUT' });
       await loadTopicStandards();
     });
-    $('upload').onsubmit = run(async () => { if (!$('topics').value) throw new Error('Select a topic first'); const data = new FormData(); data.append('file', $('file').files[0]); await api(`/topics/${$('topics').value}/resources`, { method: 'POST', body: data }); $('file').value = ''; await loadResources(); });
+    $('upload').onsubmit = run(async () => {
+      if (!$('topics').value) throw new Error('Select a topic first');
+      if (!$('file').files[0]) throw new Error('Choose a file first');
+      const data = new FormData();
+      data.append('file', $('file').files[0]);
+      data.append('category', $('resource-category').value);
+      const result = await api(`/topics/${$('topics').value}/resources`, { method: 'POST', body: data });
+      $('file').value = '';
+      await loadResources();
+      message(result.duplicate ? 'This exact file is already in this topic; the existing resource is shown once.' : `Uploaded ${result.filename}. Status: ${result.display_status}.`);
+    });
     $('search').onsubmit = run(async () => {
       if (!$('topics').value) throw new Error('Select a topic first');
       const results = await api(`/topics/${$('topics').value}/search?q=${encodeURIComponent($('query').value)}`);
@@ -587,22 +664,30 @@
         }
         for (const question of result.questions) {
           const item = document.createElement('li'), label = document.createElement('label'), input = document.createElement('textarea'), save = document.createElement('button');
-          label.textContent = 'Review and edit question'; input.value = question; input.maxLength = 5000; input.rows = 3; label.append(input);
+          label.textContent = 'Review and edit question'; input.value = question.question; input.maxLength = 5000; input.rows = 3; label.append(input);
+          const expected = document.createElement('textarea');
+          expected.value = question.expected_answer || ''; expected.maxLength = 20000; expected.rows = 2;
+          const expectedLabel = document.createElement('label'); expectedLabel.textContent = 'Expected answer (optional, used for AI marking)'; expectedLabel.append(expected);
+          const concept = document.createElement('input');
+          concept.value = question.concept || ''; concept.maxLength = 200;
+          const conceptLabel = document.createElement('label'); conceptLabel.textContent = 'Concept (optional, used for weak-topic focus)'; conceptLabel.append(concept);
+          item.append(label, expectedLabel, conceptLabel);
           save.type = 'button'; save.textContent = 'Approve and save to queue';
           save.onclick = run(async () => {
             if (save.disabled || reviewSaveInFlight) return;
             if (topic !== $('topics').value) throw new Error('Select the original topic before saving this draft');
-            const question = input.value.trim();
-            if (!question || question.length > 5000) throw new Error('Enter a question of up to 5000 characters');
+            const text = input.value.trim();
+            if (!text || text.length > 5000) throw new Error('Enter a question of up to 5000 characters');
             save.disabled = true; reviewSaveInFlight = true;
             try {
               // ponytail: client-side duplicate checks can race; add a server constraint for concurrent saves.
               const existing = await api('/review-questions/due?as_of=9999-12-31');
-              if (existing.some(q => String(q.topic_id) === topic && q.question.trim().toLocaleLowerCase() === question.toLocaleLowerCase())) throw new Error('This question is already in the queue for this topic');
+              if (existing.some(q => String(q.topic_id) === topic && q.question.trim().toLocaleLowerCase() === text.toLocaleLowerCase())) throw new Error('This question is already in the queue for this topic');
               const now = new Date();
               const due_date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+              const source = question.source_page && question.source_resource_id ? [{ resource_id: String(question.source_resource_id), page: question.source_page }] : [];
               try {
-                await api(`/topics/${topic}/review-questions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, due_date }) });
+                await api(`/topics/${topic}/review-questions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: text, due_date, expected_answer: expected.value.trim(), concept: concept.value.trim(), source }) });
               } catch (error) { throw new Error(`${error.message}. The save may have succeeded; check the queue before retrying.`); }
               input.disabled = true; save.textContent = 'Saved to queue'; message('Approved question saved to the queue.');
             } finally { reviewSaveInFlight = false; if (!input.disabled) save.disabled = false; }
@@ -611,6 +696,170 @@
         }
         message(result.warning);
       } finally { button.disabled = false; }
+    });
+
+    $('load-mastery').onclick = run(async () => {
+      const topic = $('topics').value;
+      if (!topic) throw new Error('Select a topic first');
+      const data = await api(`/topics/${topic}/mastery`);
+      $('mastery-view').replaceChildren();
+      const summary = document.createElement('p');
+      summary.textContent = `${data.name}: mastery ${Math.round(data.mastery * 100)}%, status ${data.status}, ${data.due} question(s) due, ${data.correct}/${data.answers} correct.`;
+      $('mastery-view').append(summary);
+      if (data.weak_concepts.length) {
+        const list = document.createElement('ul');
+        for (const concept of data.weak_concepts) { const item = document.createElement('li'); item.textContent = concept; list.append(item); }
+        $('mastery-view').append(list);
+      }
+    });
+
+    async function loadParsed() {
+      const topic = $('topics').value;
+      const list = $('parsed-questions'); list.replaceChildren();
+      if (!topic) return;
+      const rows = await api(`/topics/${topic}/parsed-questions`);
+      $('parse-status').textContent = rows.length ? `${rows.length} staged question(s).` : 'No staged questions for this topic.';
+      for (const row of rows) {
+        const item = document.createElement('li');
+        const heading = document.createElement('strong');
+        heading.textContent = `Question ${row.question_number} · ${row.year} · standard ${row.standard_number} · ${row.status} · parser ${row.parser}`;
+        item.append(heading);
+        const number = document.createElement('input'); number.value = row.question_number; number.maxLength = 100;
+        const marks = document.createElement('input'); marks.type = 'number'; marks.min = 0; marks.max = 100; marks.value = row.marks;
+        const paperPage = document.createElement('input'); paperPage.type = 'number'; paperPage.min = 1; paperPage.value = row.paper_page;
+        const schedulePage = document.createElement('input'); schedulePage.type = 'number'; schedulePage.min = 1; schedulePage.value = row.schedule_page;
+        const questionText = document.createElement('textarea'); questionText.value = row.question_text; questionText.rows = 4; questionText.maxLength = 50000;
+        const scheduleText = document.createElement('textarea'); scheduleText.value = row.schedule_text; scheduleText.rows = 4; scheduleText.maxLength = 100000;
+        const reviewed = document.createElement('input'); reviewed.type = 'checkbox'; reviewed.checked = row.status === 'reviewed';
+        const reviewedLabel = document.createElement('label'); reviewedLabel.append(reviewed, document.createTextNode('I compared every number, mark and page with the originals'));
+        const original = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = `Original paper page ${row.paper_page} and schedule page ${row.schedule_page}`;
+        const paperImage = document.createElement('img');
+        paperImage.alt = `Original paper page ${row.paper_page}`;
+        paperImage.loading = 'lazy';
+        paperImage.src = `/resources/${row.paper_resource_id}/pages/${row.paper_page}/image`;
+        paperImage.style.maxWidth = '100%';
+        const scheduleImage = document.createElement('img');
+        scheduleImage.alt = `Original schedule page ${row.schedule_page}`;
+        scheduleImage.loading = 'lazy';
+        scheduleImage.src = `/resources/${row.schedule_resource_id}/pages/${row.schedule_page}/image`;
+        scheduleImage.style.maxWidth = '100%';
+        original.append(summary, paperImage, scheduleImage);
+        const fields = [['Number', number], ['Marks', marks], ['Paper page', paperPage], ['Schedule page', schedulePage], ['Question text', questionText], ['Schedule text', scheduleText]];
+        for (const [name, field] of fields) { const label = document.createElement('label'); label.textContent = name; label.append(field); item.append(label); }
+        item.append(original, reviewedLabel);
+        const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save edits';
+        save.onclick = run(async () => {
+          await api(`/parsed-questions/${row.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            question_number: number.value.trim(), marks: Number(marks.value), paper_page: Number(paperPage.value), schedule_page: Number(schedulePage.value),
+            question_text: questionText.value, schedule_text: scheduleText.value, reviewed: reviewed.checked }) });
+          await loadParsed(); message('Staged question saved. Approve it when the fields match the originals.');
+        });
+        const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = 'Approve into bank';
+        approve.onclick = run(async () => {
+          if (!reviewed.checked) throw new Error('Tick the comparison box first');
+          await api(`/parsed-questions/${row.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            question_number: number.value.trim(), marks: Number(marks.value), paper_page: Number(paperPage.value), schedule_page: Number(schedulePage.value),
+            question_text: questionText.value, schedule_text: scheduleText.value, reviewed: true }) });
+          await api(`/parsed-questions/${row.id}/approve`, { method: 'POST' });
+          await loadParsed(); await loadExamQuestions(); message('Question approved into the bank.');
+        });
+        const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Discard';
+        remove.onclick = run(async () => { if (confirm('Discard this staged question?')) { await api(`/parsed-questions/${row.id}`, { method: 'DELETE' }); await loadParsed(); } });
+        item.append(save, ' ', approve, ' ', remove);
+        list.append(item);
+      }
+    }
+    $('parse-paper').onsubmit = run(async () => {
+      const topic = $('topics').value;
+      if (!topic) throw new Error('Select a topic first');
+      if (!$('parse-paper-resource').value || !$('parse-schedule-resource').value) throw new Error('Choose both the paper and schedule');
+      if ($('parse-paper-resource').value === $('parse-schedule-resource').value) throw new Error('Paper and schedule must be different resources');
+      const button = $('parse-button'); button.disabled = true; $('parse-status').textContent = 'Parsing; this may take a minute.';
+      try {
+        const result = await api(`/topics/${topic}/exam-papers/parse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          paper_resource_id: $('parse-paper-resource').value, schedule_resource_id: $('parse-schedule-resource').value,
+          year: Number($('parse-year').value), standard_number: Number($('parse-standard').value) }) });
+        await loadParsed();
+        message(`${result.questions.length} question(s) staged with the ${result.parser} parser. ${result.warning}`);
+      } finally { button.disabled = false; }
+    });
+    $('topics').addEventListener('change', () => { loadParsed().catch(error => message(error.message)); });
+
+    function renderMarking(result) {
+      const lines = [
+        `Marks: ${result.marks_awarded}/${result.marks_available} — ${result.outcome}`,
+        `Cached: ${result.cached ? 'yes' : 'no'}`,
+        result.feedback,
+        '',
+        'Schedule evidence:',
+        ...result.evidence.map(item => `- "${item.quote}" — ${item.explanation}${item.marks ? ` (${item.marks} mark(s))` : ''}`),
+      ];
+      if (result.missing && result.missing.length) lines.push('', 'Missing:', ...result.missing.map(item => `- ${item}`));
+      if (result.second_review) {
+        lines.push('', `Second marker: ${result.second_review.marks_awarded}/${result.second_review.marks_available} — ${result.second_review.outcome}`,
+          result.disagreement ? 'Disagreement flagged between markers.' : 'Markers agree.');
+      }
+      lines.push('', result.disclaimer);
+      return lines.join('\n');
+    }
+    $('mark-answer').onsubmit = run(async () => {
+      const exam = $('mark-exam').value, question = $('mark-question').value, answer = $('mark-answer-text').value.trim();
+      if (!exam || !question) throw new Error('Enter the exam and question IDs');
+      if (!answer) throw new Error('Enter an answer');
+      const button = $('mark-button'); button.disabled = true; $('mark-feedback').textContent = 'Marking…';
+      try {
+        await api(`/exams/${exam}/answers/${question}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer }) });
+        const result = await api(`/exams/${exam}/answers/${question}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ second_review: $('mark-second').checked }) });
+        $('mark-feedback').textContent = renderMarking(result);
+      } finally { button.disabled = false; }
+    });
+    $('exam-marks-button').onclick = run(async () => {
+      const exam = $('mark-exam').value;
+      if (!exam) throw new Error('Enter an exam ID');
+      const data = await api(`/exams/${exam}/marks`);
+      $('exam-marks').textContent = `Awarded ${data.marks_awarded}/${data.marks_available} — ${data.outcome}\n` +
+        data.questions.map(q => `Question ${q.question_number}: ${q.marks_awarded}/${q.marks_available}${q.marked ? '' : ' (not marked)'}${q.overridden ? ' (override)' : ''}`).join('\n') +
+        `\n${data.disclaimer}`;
+    });
+
+    async function loadDiagrams() {
+      const topic = $('topics').value;
+      const list = $('diagrams'); list.replaceChildren();
+      if (!topic) return;
+      for (const diagram of await api(`/topics/${topic}/diagrams`)) {
+        const item = document.createElement('li');
+        const title = document.createElement('strong'); title.textContent = `${diagram.description} — ${diagram.status}`;
+        item.append(title);
+        if (diagram.image_path) { const image = document.createElement('img'); image.alt = diagram.description; image.src = `/diagrams/${diagram.id}/image`; image.style.maxWidth = '100%'; item.append(image); }
+        if (diagram.review) { const review = document.createElement('p'); review.textContent = diagram.review; item.append(review); }
+        list.append(item);
+      }
+    }
+    $('generate-diagram').onsubmit = run(async () => {
+      const topic = $('topics').value;
+      if (!topic) throw new Error('Select a topic first');
+      const button = $('diagram-button'); button.disabled = true; $('diagram-status').textContent = 'Generating, rendering and reviewing…';
+      try {
+        const result = await api(`/topics/${topic}/diagrams`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: $('diagram-description').value }) });
+        $('diagram-status').textContent = `Diagram ${result.id}: ${result.status}. ${result.warning}`;
+        await loadDiagrams();
+      } finally { button.disabled = false; }
+    });
+
+    $('usage-form').onsubmit = run(async () => {
+      const days = $('usage-days').value;
+      const data = await api(`/usage?days=${encodeURIComponent(days)}`);
+      $('usage-summary').textContent = `${data.calls} call(s), ${data.errors} error(s), ${data.prompt_tokens} prompt token(s), ${data.completion_tokens} completion token(s) in ${data.days} day(s).\n${data.warning}\n\n` +
+        data.by_model.map(row => `${row.model}: ${row.calls} call(s), ${row.errors} error(s)`).join('\n');
+      const recent = await api('/usage/recent?limit=20');
+      $('usage-recent').replaceChildren();
+      for (const row of recent) {
+        const item = document.createElement('li');
+        item.textContent = `${row.created_at} — ${row.task} — ${row.model} — ${row.outcome}${row.error ? ` — ${row.error}` : ''}`;
+        $('usage-recent').append(item);
+      }
     });
   </script>
 </body>

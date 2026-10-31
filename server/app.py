@@ -18,27 +18,40 @@ from docx import Document
 from pptx import Presentation
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from reviews import create_review_tables, review_router
 from lessons import create_lesson_tables, lesson_router
-from marking import marking_router
+from marking import create_marking_tables, marking_router
 from exams import create_exam_tables, exam_router
+from parsing import create_parsing_tables, parsing_router
+from usage import create_usage_tables, usage_router, log_run
+from diagrams import create_diagram_tables, diagram_router
 from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
 from worker import start_worker, worker_router
 from explain import explain_router
 from review_generation import review_generation_router
 from styles import create_style_tables, style_router
+from pages import page_router
+import ocr
 
 
 def connect():
-    return psycopg.connect(os.environ["DATABASE_URL"])
+    # Timeouts prevent one stalled request (for example while extracting a large
+    # file) from blocking the worker or the next request on the same row forever.
+    return psycopg.connect(
+        os.environ["DATABASE_URL"],
+        options="-c statement_timeout=1800000 -c lock_timeout=60000 -c idle_in_transaction_session_timeout=900000",
+        connect_timeout=15,
+    )
 
 
 @asynccontextmanager
 async def lifespan(app):
     with connect() as db:
+        db.execute("SET client_encoding = 'UTF8'")
+        db.execute("SET client_encoding = 'UTF8'")
         db.execute("CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS sessions (token_hash text PRIMARY KEY, expires timestamptz NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS subjects (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name text NOT NULL, level integer NOT NULL CHECK (level BETWEEN 1 AND 3))")
@@ -50,9 +63,36 @@ async def lifespan(app):
         db.execute("CREATE TABLE IF NOT EXISTS standards (number integer PRIMARY KEY CHECK (number > 0), title text NOT NULL, description text NOT NULL DEFAULT '')")
         db.execute("CREATE TABLE IF NOT EXISTS topic_standards (topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE CASCADE, standard_number integer NOT NULL REFERENCES standards(number) ON DELETE RESTRICT, PRIMARY KEY (topic_id, standard_number))")
         db.execute("CREATE TABLE IF NOT EXISTS notes (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT, content text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())")
+        # Additive migrations keep existing prototype databases usable.
+        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'extra'")
+        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS sha256 text")
+        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS page_count integer NOT NULL DEFAULT 0")
+        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS error text")
+        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS mime text")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS resources_topic_sha_idx ON resources(topic_id, sha256) WHERE sha256 IS NOT NULL")
+        db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0")
+        db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS mastery real NOT NULL DEFAULT 0")
+        db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'not_started'")
+        db.execute("""CREATE TABLE IF NOT EXISTS resource_chunks (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            resource_id uuid NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+            topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT,
+            standard_number integer REFERENCES standards(number) ON DELETE SET NULL,
+            page integer NOT NULL CHECK (page > 0),
+            ordinal integer NOT NULL CHECK (ordinal > 0),
+            content text NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE (resource_id, page, ordinal)
+        )""")
+        db.execute("CREATE INDEX IF NOT EXISTS resource_chunks_topic_idx ON resource_chunks(topic_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS resource_chunks_fts_idx ON resource_chunks USING gin(to_tsvector('english', content))")
+        create_usage_tables(db)
         create_review_tables(db)
         create_lesson_tables(db)
         create_exam_tables(db)
+        create_parsing_tables(db)
+        create_diagram_tables(db)
+        create_marking_tables(db)
         create_scheduler_tables(db)
     stop, thread = start_scheduler(connect, scheduled_generate)
     extraction_stop, extraction_thread = start_worker(connect, extract_resource)
@@ -110,25 +150,55 @@ class Note(BaseModel):
     content: str = Field(min_length=1, max_length=50000, pattern=r"\S")
 
 
-def model_reply(model, messages):
+def _gateway_request(model, messages, task, timeout=120):
     base = os.environ.get("ROUTER_BASE_URL", "").rstrip("/")
     key = os.environ.get("ROUTER_API_KEY", "")
     if not base or not key:
         raise HTTPException(503, "Model gateway is not configured")
+    try:
+        timeout = int(os.environ.get("ROUTER_TIMEOUT_SECONDS", timeout))
+    except ValueError:
+        pass
     request = urllib.request.Request(
         base + "/chat/completions",
         data=json.dumps({"model": model, "messages": messages, "temperature": 0, "stream": False}).encode(),
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
-            result = json.load(response)
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            result = json.loads(response.read().decode("utf-8", errors="replace"))
         content = result["choices"][0]["message"]["content"]
         if not isinstance(content, str) or not content.strip():
             raise ValueError("Empty model response")
+        usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+        prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
+        if len(content.strip()) < 12:
+            log_run(task, model, prompt_chars, len(content), "short", f"short reply: {content[:200]!r}", None, None)
+        else:
+            log_run(task, model, prompt_chars, len(content), "ok", None,
+                    usage.get("prompt_tokens"), usage.get("completion_tokens"))
         return content
-    except (urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError):
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_run(task, model, sum(len(str(m.get("content", ""))) for m in messages), 0, "error", str(exc)[:500], None, None)
         raise HTTPException(502, "Model gateway failed or returned an invalid response")
+
+
+def model_reply(model, messages, task="general", timeout=120):
+    return _gateway_request(model, messages, task, timeout)
+
+
+def model_reply_vision(model, prompt, image_bytes, mime="image/png", task="vision"):
+    import base64
+    if not isinstance(image_bytes, bytes) or not image_bytes or len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(422, "Invalid or oversized image")
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return _gateway_request(model, [{"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}},
+    ]}], task, timeout=120)
+
 
 
 def authorised(authorization: str = Header(default="")):
@@ -141,11 +211,15 @@ def authorised(authorization: str = Header(default="")):
         raise HTTPException(401, "Invalid or expired session")
 
 
-app.include_router(review_router(connect, authorised))
+app.include_router(review_router(connect, authorised, model_reply))
 app.include_router(exam_router(connect, authorised))
+app.include_router(parsing_router(connect, authorised, model_reply))
 app.include_router(scheduler_router(connect, authorised))
 app.include_router(worker_router(connect, authorised))
-app.include_router(style_router(connect, authorised))
+app.include_router(style_router(connect, authorised, model_reply))
+app.include_router(page_router(connect, authorised))
+app.include_router(usage_router(connect, authorised, model_reply, model_reply_vision))
+app.include_router(diagram_router(connect, authorised, model_reply, model_reply_vision))
 
 
 @app.get("/health")
@@ -278,8 +352,8 @@ def topics(subject_id: int):
     with connect() as db:
         if not db.execute("SELECT 1 FROM subjects WHERE id = %s", (subject_id,)).fetchone():
             raise HTTPException(404, "Subject not found")
-        rows = db.execute("SELECT id, name FROM topics WHERE subject_id = %s ORDER BY id", (subject_id,)).fetchall()
-    return [{"id": row[0], "name": row[1]} for row in rows]
+        rows = db.execute("SELECT id, name, mastery, status FROM topics WHERE subject_id = %s ORDER BY position, id", (subject_id,)).fetchall()
+    return [{"id": row[0], "name": row[1], "mastery": row[2], "status": row[3]} for row in rows]
 
 
 @app.post("/subjects/{subject_id}/topics", status_code=201, dependencies=[Depends(authorised)])
@@ -344,8 +418,10 @@ def delete_note(topic_id: int, note_id: int):
 
 
 @app.post("/topics/{topic_id}/resources", status_code=201, dependencies=[Depends(authorised)])
-def upload_resource(topic_id: int, file: UploadFile):
+def upload_resource(topic_id: int, file: UploadFile = File(...), category: str = Form("extra")):
     filename = (file.filename or "").replace("\\", "/").split("/")[-1]
+    if category not in {"exam_paper", "exam_answers", "slides", "extra"}:
+        raise HTTPException(400, "Invalid resource category")
     if not filename or len(filename) > 255 or Path(filename).suffix.lower() not in {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".txt", ".md", ".html", ".png", ".jpg", ".jpeg"}:
         raise HTTPException(400, "Unsupported or invalid filename")
     directory = Path(os.environ.get("UPLOAD_DIR", "/data/uploads"))
@@ -353,6 +429,7 @@ def upload_resource(topic_id: int, file: UploadFile):
     resource_id = uuid.uuid4()
     path = directory / str(resource_id)
     size = 0
+    digest = hashlib.sha256()
     created = False
     try:
         with connect() as db:
@@ -364,17 +441,40 @@ def upload_resource(topic_id: int, file: UploadFile):
                     size += len(chunk)
                     if size > 50 * 1024 * 1024:
                         raise HTTPException(413, "File exceeds 50 MiB")
+                    digest.update(chunk)
                     destination.write(chunk)
             if not size:
                 raise HTTPException(400, "File is empty")
-            db.execute("INSERT INTO resources VALUES (%s, %s, %s, %s, 'pending')", (resource_id, topic_id, filename, size))
+            sha256 = digest.hexdigest()
+            duplicate = db.execute(
+                "SELECT id, filename, size, status, category, page_count FROM resources WHERE topic_id = %s AND sha256 = %s AND status != 'deleting'",
+                (topic_id, sha256),
+            ).fetchone()
+            if duplicate:
+                path.unlink(missing_ok=True)
+                created = False
+                return {
+                    "id": str(duplicate[0]), "filename": duplicate[1], "size": duplicate[2],
+                    "status": duplicate[3], "category": duplicate[4], "page_count": duplicate[5],
+                    "display_status": display_status(duplicate[3]), "duplicate": True,
+                }
+            db.execute(
+                "INSERT INTO resources (id, topic_id, filename, size, status, category, sha256, mime) VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s)",
+                (resource_id, topic_id, filename, size, category, sha256, file.content_type),
+            )
     except BaseException:
         if created:
             path.unlink(missing_ok=True)
         raise
     finally:
         file.file.close()
-    return {"id": str(resource_id), "filename": filename, "size": size, "status": "pending"}
+    return {"id": str(resource_id), "filename": filename, "size": size, "status": "pending",
+            "category": category, "page_count": 0, "display_status": "Queued", "duplicate": False}
+
+
+def display_status(status):
+    return {"pending": "Queued", "extracting": "Processing", "extracted": "Ready",
+            "failed": "Needs attention", "deleting": "Removing"}.get(status, status)
 
 
 @app.get("/topics/{topic_id}/resources", dependencies=[Depends(authorised)])
@@ -382,8 +482,29 @@ def list_resources(topic_id: int):
     with connect() as db:
         if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
             raise HTTPException(404, "Topic not found")
-        rows = db.execute("SELECT id, filename, size, status FROM resources WHERE topic_id = %s ORDER BY filename, id", (topic_id,)).fetchall()
-    return [{"id": str(row[0]), "filename": row[1], "size": row[2], "status": row[3]} for row in rows]
+        rows = db.execute("""SELECT id, filename, size, status, category, page_count, error, sha256
+            FROM resources WHERE topic_id = %s ORDER BY category, filename, id""", (topic_id,)).fetchall()
+    return [{"id": str(row[0]), "filename": row[1], "size": row[2], "status": row[3],
+             "category": row[4], "page_count": row[5], "error": row[6], "sha256": row[7],
+             "display_status": display_status(row[3])} for row in rows]
+
+
+@app.get("/topics/{topic_id}/chunks", dependencies=[Depends(authorised)])
+def list_chunks(topic_id: int, limit: int = 20):
+    limit = max(1, min(limit, 200))
+    with connect() as db:
+        if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
+            raise HTTPException(404, "Topic not found")
+        rows = db.execute("""SELECT c.id, c.resource_id, r.filename, c.page, c.ordinal,
+            c.standard_number, c.content, t.subject_id
+            FROM resource_chunks c JOIN resources r ON r.id = c.resource_id
+            JOIN topics t ON t.id = c.topic_id
+            WHERE c.topic_id = %s ORDER BY c.resource_id, c.page, c.ordinal LIMIT %s""",
+            (topic_id, limit)).fetchall()
+    return [{"id": row[0], "resource_id": str(row[1]), "filename": row[2], "page": row[3],
+             "ordinal": row[4], "standard_number": row[5], "subject_id": row[6],
+             "content": row[7][:1000]} for row in rows]
+
 
 
 @app.get("/topics/{topic_id}/search", dependencies=[Depends(authorised)])
@@ -394,14 +515,25 @@ def search_resources(topic_id: int, q: str):
         if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
             raise HTTPException(404, "Topic not found")
         rows = db.execute("""
-            SELECT r.id, r.filename, p.page, p.content
-            FROM resources r JOIN resource_pages p ON p.resource_id = r.id
-            WHERE r.topic_id = %s AND r.status = 'extracted'
-              AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
-            ORDER BY ts_rank(to_tsvector('english', p.content), plainto_tsquery('english', %s)) DESC, r.id, p.page
+            SELECT c.id, r.id, r.filename, c.page, c.content, c.standard_number
+            FROM resource_chunks c JOIN resources r ON r.id = c.resource_id
+            WHERE c.topic_id = %s AND r.status = 'extracted'
+              AND to_tsvector('english', c.content) @@ plainto_tsquery('english', %s)
+            ORDER BY ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', %s)) DESC, c.id
             LIMIT 20
         """, (topic_id, q, q)).fetchall()
-    return [{"resource_id": str(row[0]), "filename": row[1], "page": row[2], "content": row[3]} for row in rows]
+        if not rows:
+            rows = db.execute("""
+                SELECT NULL, r.id, r.filename, p.page, p.content, NULL
+                FROM resources r JOIN resource_pages p ON p.resource_id = r.id
+                WHERE r.topic_id = %s AND r.status = 'extracted'
+                  AND to_tsvector('english', p.content) @@ plainto_tsquery('english', %s)
+                ORDER BY ts_rank(to_tsvector('english', p.content), plainto_tsquery('english', %s)) DESC, r.id, p.page
+                LIMIT 20
+            """, (topic_id, q, q)).fetchall()
+    return [{"chunk_id": row[0], "resource_id": str(row[1]), "filename": row[2], "page": row[3],
+             "content": row[4], "standard_number": row[5]} for row in rows]
+
 
 
 @app.post("/topics/{topic_id}/lesson-draft", dependencies=[Depends(authorised)])
@@ -509,14 +641,90 @@ def extract_xlsx(path):
         return pages
 
 
+def _ocr_png(data):
+    try:
+        return ocr.extract_png(data).strip()
+    except Exception:
+        return ""
+
+
+def _chunk_text(text, size=1200):
+    paragraphs = [part.strip() for part in text.replace("\r\n", "\n").split("\n\n") if part.strip()]
+    chunks = []
+    current = ""
+    for paragraph in paragraphs:
+        if len(paragraph) > size:
+            if current:
+                chunks.append(current)
+                current = ""
+            for start in range(0, len(paragraph), size):
+                chunks.append(paragraph[start:start + size])
+            continue
+        if current and len(current) + len(paragraph) + 2 > size:
+            chunks.append(current)
+            current = paragraph
+        else:
+            current = (current + "\n\n" + paragraph).strip()
+    if current:
+        chunks.append(current)
+    return chunks or ([text.strip()] if text.strip() else [])
+
+
+def _pptx_slide_text(slide):
+    parts = [shape.text for shape in slide.shapes if getattr(shape, "has_text_frame", False) and shape.text.strip()]
+    if parts:
+        return "\n".join(parts)
+    # Image-only slides: OCR embedded pictures when Tesseract is available.
+    for shape in slide.shapes:
+        try:
+            image = shape.image
+        except (AttributeError, ValueError):
+            continue
+        try:
+            from PIL import Image
+            import io as _io
+            with Image.open(_io.BytesIO(image.blob)) as picture:
+                buffer = _io.BytesIO()
+                picture.convert("RGB").save(buffer, format="PNG")
+            text = _ocr_png(buffer.getvalue())
+            if text:
+                parts.append(text)
+        except Exception:
+            continue
+    return "\n".join(parts)
+
+
+def _docx_text(document):
+    parts = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+    for table in document.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+    return "\n".join(parts)
+
+
 @app.post("/resources/{resource_id}/extract", dependencies=[Depends(authorised)])
 def extract_resource(resource_id: uuid.UUID):
+    try:
+        result = _extract_into_database(resource_id)
+    except HTTPException as exc:
+        # Record the failure on a fresh transaction: the extraction transaction has
+        # already rolled back and released its row lock, so this cannot deadlock.
+        with connect() as failed:
+            failed.execute("UPDATE resources SET status = 'failed', error = %s WHERE id = %s AND status != 'deleting'",
+                           (str(exc.detail)[:2000], resource_id))
+        raise
+    return result
+
+
+def _extract_into_database(resource_id: uuid.UUID):
     with connect() as db:
         row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting' FOR UPDATE", (resource_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Resource not found")
         suffix = Path(row[0]).suffix.lower()
-        if suffix not in {".txt", ".md", ".csv", ".pdf", ".pptx", ".docx", ".html", ".xlsx"}:
+        if suffix not in {".txt", ".md", ".csv", ".pdf", ".pptx", ".docx", ".html", ".xlsx", ".png", ".jpg", ".jpeg"}:
             raise HTTPException(422, "Extraction is not available for this file type")
         path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
         warnings = []
@@ -526,24 +734,43 @@ def extract_resource(resource_id: uuid.UUID):
                     if len(archive.infolist()) > 10000 or sum(item.file_size for item in archive.infolist()) > 100 * 1024 * 1024:
                         raise HTTPException(422, "Document expands beyond the allowed size")
             if suffix == ".pdf":
+                pages = []
                 with pymupdf.open(path) as document:
                     if document.needs_pass:
                         raise HTTPException(422, "Password-protected PDFs are not supported")
-                    pages = [(number + 1, page.get_text()) for number, page in enumerate(document)]
-                if not pages or any(not text.strip() for _, text in pages):
-                    raise HTTPException(422, "PDF has empty or scanned pages; OCR is not available")
+                    for number, page in enumerate(document, 1):
+                        text = page.get_text()
+                        if "\x00" in text:
+                            # Old papers embed NUL characters in their text layer;
+                            # PostgreSQL text cannot store them, so drop them.
+                            text = text.replace("\x00", "")
+                            warnings.append(f"Page {number} contained null characters; they were removed.")
+                        if not text.strip():
+                            text = _ocr_png(page.get_pixmap(dpi=200).tobytes("png"))
+                            if text:
+                                warnings.append(f"Page {number} was scanned; text came from OCR and may contain errors.")
+                            else:
+                                warnings.append(f"Page {number} had no extractable text.")
+                        pages.append((number, text))
+                if not any(text.strip() for _, text in pages):
+                    raise HTTPException(422, "PDF has no extractable text even after OCR")
                 content = "\n\n".join(text for _, text in pages)
             elif suffix == ".pptx":
                 presentation = Presentation(path)
-                pages = [(number, "\n".join(shape.text for shape in slide.shapes if shape.has_text_frame)) for number, slide in enumerate(presentation.slides, 1)]
-                if not pages or any(not text.strip() for _, text in pages):
-                    raise HTTPException(422, "Presentation has empty or image-only slides; OCR is not available")
+                pages = []
+                for number, slide in enumerate(presentation.slides, 1):
+                    text = _pptx_slide_text(slide)
+                    if not text.strip():
+                        warnings.append(f"Slide {number} had no extractable text.")
+                    pages.append((number, text))
+                if not any(text.strip() for _, text in pages):
+                    raise HTTPException(422, "Presentation has no extractable text even after OCR")
                 content = "\n\n".join(text for _, text in pages)
             elif suffix == ".docx":
                 document = Document(path)
-                content = "\n".join(paragraph.text for paragraph in document.paragraphs)
+                content = _docx_text(document)
                 if not content.strip():
-                    raise HTTPException(422, "Document has no paragraph text")
+                    raise HTTPException(422, "Document has no paragraph or table text")
                 pages = [(1, content)]
             elif suffix == ".xlsx":
                 pages = extract_xlsx(path)
@@ -558,6 +785,17 @@ def extract_resource(resource_id: uuid.UUID):
                     raise HTTPException(422, "HTML has no extractable text")
                 pages = [(1, content)]
                 warnings.append("HTML scripts, styles and embedded content are not extracted; no external resources are fetched.")
+            elif suffix in {".png", ".jpg", ".jpeg"}:
+                from PIL import Image
+                import io as _io
+                with Image.open(path) as picture:
+                    buffer = _io.BytesIO()
+                    picture.convert("RGB").save(buffer, format="PNG")
+                content = _ocr_png(buffer.getvalue())
+                if not content:
+                    raise HTTPException(422, "Image has no OCR text; install Tesseract or use a text-based file")
+                pages = [(1, content)]
+                warnings.append("Text came from OCR and may contain errors; diagrams and handwriting are not interpreted.")
             else:
                 content = path.read_bytes().decode("utf-8-sig")
                 pages = [(1, content)]
@@ -570,13 +808,67 @@ def extract_resource(resource_id: uuid.UUID):
         except (BadZipFile, KeyError, ValueError, IndexError, ElementTree.ParseError):
             raise HTTPException(422, "Invalid document")
         if "\x00" in content:
-            raise HTTPException(422, "Text cannot contain null characters")
+            # Never store NULs; other formats can carry them too.
+            content = content.replace("\x00", "")
+            pages = [(number, text.replace("\x00", "")) for number, text in pages]
+            warnings.append("Null characters were removed from the extracted text.")
+        standard = db.execute("SELECT standard_number FROM topic_standards WHERE topic_id = (SELECT topic_id FROM resources WHERE id = %s) ORDER BY standard_number LIMIT 1", (resource_id,)).fetchone()
+        standard_number = standard[0] if standard else None
+        topic_id = db.execute("SELECT topic_id FROM resources WHERE id = %s", (resource_id,)).fetchone()[0]
         db.execute("INSERT INTO resource_text VALUES (%s, %s) ON CONFLICT (resource_id) DO UPDATE SET content = EXCLUDED.content", (resource_id, content))
         db.execute("DELETE FROM resource_pages WHERE resource_id = %s", (resource_id,))
+        db.execute("DELETE FROM resource_chunks WHERE resource_id = %s", (resource_id,))
         for number, text in pages:
             db.execute("INSERT INTO resource_pages VALUES (%s, %s, %s)", (resource_id, number, text))
-        db.execute("UPDATE resources SET status = 'extracted' WHERE id = %s", (resource_id,))
-    return {"status": "extracted", "characters": len(content), "warnings": warnings}
+            for ordinal, chunk in enumerate(_chunk_text(text), 1):
+                db.execute("INSERT INTO resource_chunks (resource_id, topic_id, standard_number, page, ordinal, content) VALUES (%s, %s, %s, %s, %s, %s)",
+                           (resource_id, topic_id, standard_number, number, ordinal, chunk))
+        db.execute("UPDATE resources SET status = 'extracted', page_count = %s, error = NULL WHERE id = %s", (len(pages), resource_id))
+    return {"status": "extracted", "characters": len(content), "pages": len(pages), "warnings": warnings}
+
+
+
+@app.get("/resources/{resource_id}/pages/{page}/image", dependencies=[Depends(authorised)])
+def get_page_image(resource_id: uuid.UUID, page: int):
+    with connect() as db:
+        row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting'", (resource_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Resource not found")
+    path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
+    if not path.is_file():
+        raise HTTPException(500, "Stored file missing; restore from backup")
+    suffix = Path(row[0]).suffix.lower()
+    if suffix == ".pdf":
+        try:
+            with pymupdf.open(path) as document:
+                if page < 1 or page > len(document):
+                    raise HTTPException(404, "Page not found")
+                png = document[page - 1].get_pixmap(dpi=140).tobytes("png")
+        except (pymupdf.FileDataError, pymupdf.EmptyFileError):
+            raise HTTPException(422, "Invalid PDF")
+        return Response(png, media_type="image/png")
+    if suffix in {".png", ".jpg", ".jpeg"} and page == 1:
+        media = "image/png" if suffix == ".png" else "image/jpeg"
+        return Response(path.read_bytes(), media_type=media)
+    raise HTTPException(422, "Page images are available for PDFs and images only")
+
+
+@app.get("/topics/{topic_id}/mastery", dependencies=[Depends(authorised)])
+def topic_mastery(topic_id: int):
+    with connect() as db:
+        row = db.execute("SELECT id, name, mastery, status FROM topics WHERE id = %s", (topic_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Topic not found")
+        answers = db.execute("""SELECT COUNT(*), COUNT(*) FILTER (WHERE correct), COUNT(*) FILTER (WHERE NOT correct)
+            FROM review_answers a JOIN review_questions q ON q.id = a.question_id WHERE q.topic_id = %s""", (topic_id,)).fetchone()
+        due = db.execute("SELECT COUNT(*) FROM review_questions WHERE topic_id = %s AND due_date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date", (topic_id,)).fetchone()
+        weak = db.execute("""SELECT DISTINCT concept FROM review_questions
+            WHERE topic_id = %s AND concept IS NOT NULL AND concept != '' AND id IN
+            (SELECT question_id FROM review_answers WHERE NOT correct ORDER BY id DESC LIMIT 20) LIMIT 10""", (topic_id,)).fetchall()
+    total, correct, wrong = answers
+    return {"topic_id": row[0], "name": row[1], "mastery": row[2], "status": row[3],
+            "answers": total, "correct": correct, "wrong": wrong, "due": due[0],
+            "weak_concepts": [item[0] for item in weak]}
 
 
 @app.get("/resources/{resource_id}/text", dependencies=[Depends(authorised)])
