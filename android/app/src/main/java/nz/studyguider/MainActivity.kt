@@ -8,6 +8,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -179,7 +181,27 @@ private fun StudyApp() {
                 }) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
             }
             if (selected == 0L) {
-            Text("Subjects", style = MaterialTheme.typography.titleLarge)
+            Text("Your subjects", style = MaterialTheme.typography.headlineSmall)
+            Text("Choose a subject to explore its topics and resources.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (subjects.length() == 0) Text("No subjects yet. Add one below to get started.")
+            for (i in 0 until subjects.length()) {
+                val subject = subjects.getJSONObject(i)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = !busy, onClickLabel = "Open ${subject.getString("name")}") {
+                        run { val id = subject.getLong("id"); val loaded = JSONArray(request(base, "/subjects/$id/topics", token)); selected = id; subjectTitle = subject.getString("name"); topics = loaded }
+                    }
+                ) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("NCEA LEVEL ${subject.getInt("level")}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(subject.getString("name"), style = MaterialTheme.typography.titleLarge)
+                        Text("View topics →", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+                    }
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Add a subject", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(subjectName, { subjectName = it }, label = { Text("New subject") }, singleLine = true)
             OutlinedTextField(subjectLevel, { subjectLevel = it }, label = { Text("NCEA level (1–3)") }, singleLine = true)
             OutlinedButton(enabled = !busy && subjectName.isNotBlank(), onClick = { run {
@@ -187,12 +209,6 @@ private fun StudyApp() {
                 request(base, "/subjects", token, JSONObject().put("name", subjectName).put("level", level))
                 subjectName = ""; subjects = JSONArray(request(base, "/subjects", token))
             } }) { Text("Add subject") }
-            for (i in 0 until subjects.length()) {
-                val subject = subjects.getJSONObject(i)
-                TextButton(enabled = !busy, onClick = { run { val id = subject.getLong("id"); val loaded = JSONArray(request(base, "/subjects/$id/topics", token)); selected = id; subjectTitle = subject.getString("name"); topics = loaded } }) {
-                    Text("${subject.getString("name")} — Level ${subject.getInt("level")}")
-                }
-            }
             } else if (selectedTopic == 0L) {
                 Text("$subjectTitle · Topics", style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(topicName, { topicName = it }, label = { Text("New topic") }, singleLine = true)

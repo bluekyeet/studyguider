@@ -64,10 +64,11 @@ class LoginHomeTest {
                 compose.onNodeWithText("Server URL").performTextInput("http://127.0.0.1:${server.localPort}")
                 compose.onNodeWithText("Password").performTextInput("secret")
                 compose.onNodeWithText("Sign in").performClick()
-                compose.waitUntil(20000) { compose.onAllNodesWithText("Physics — Level 2").fetchSemanticsNodes().isNotEmpty() }
+                compose.waitUntil(20000) { compose.onAllNodesWithText("Physics").fetchSemanticsNodes().isNotEmpty() }
                 compose.onNodeWithText("Your study space").assertIsDisplayed()
-                compose.onNodeWithText("Subjects").assertIsDisplayed()
-                compose.onNodeWithText("Physics — Level 2").assertIsDisplayed()
+                compose.onNodeWithText("Your subjects").assertIsDisplayed()
+                compose.onNodeWithText("Physics").assertIsDisplayed()
+                compose.onNodeWithText("NCEA LEVEL 2").assertIsDisplayed()
                 compose.waitForIdle()
                 val instrumentation = InstrumentationRegistry.getInstrumentation()
                 val directory = checkNotNull(instrumentation.targetContext.getExternalFilesDir(null))
