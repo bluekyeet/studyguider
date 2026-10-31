@@ -1,5 +1,6 @@
 package nz.studyguider
 
+import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -8,6 +9,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -65,6 +68,12 @@ class LoginHomeTest {
                 compose.onNodeWithText("Your study space").assertIsDisplayed()
                 compose.onNodeWithText("Subjects").assertIsDisplayed()
                 compose.onNodeWithText("Physics — Level 2").assertIsDisplayed()
+                compose.waitForIdle()
+                val instrumentation = InstrumentationRegistry.getInstrumentation()
+                val directory = checkNotNull(instrumentation.targetContext.getExternalFilesDir(null))
+                val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+                File(directory, "synthetic-home.png").outputStream().use { check(screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+                screenshot.recycle()
                 val received = requests.get(5, TimeUnit.SECONDS)
                 assertTrue(received[0].first.startsWith("POST /login HTTP/1.1\r\n"))
                 assertEquals("secret", JSONObject(received[0].second).getString("password"))

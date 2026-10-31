@@ -146,7 +146,7 @@ private fun StudyApp() {
             resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
         }
     }
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
       Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("STUDYGUIDER", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         Text(if (token.isEmpty()) "Make progress, one topic at a time." else "Your study space", style = MaterialTheme.typography.headlineMedium)
