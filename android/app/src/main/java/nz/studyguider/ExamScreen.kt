@@ -47,7 +47,7 @@ private val answerMapSaver = Saver<SnapshotStateMap<Long, String>, ArrayList<Str
 
 /** The host must guard its own navigation when [onDirtyChange] reports unsaved answers. */
 @Composable
-fun ExamScreen(base: String, token: String, examId: Long, onDirtyChange: (Boolean) -> Unit = {}) {
+fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String, Int) -> Unit = { _, _ -> }, onDirtyChange: (Boolean) -> Unit = {}) {
     var exam by remember(base, token, examId) { mutableStateOf<JSONObject?>(null) }
     var error by remember(base, token, examId) { mutableStateOf("") }
     var busy by remember(base, token, examId) { mutableStateOf(false) }
@@ -80,14 +80,17 @@ fun ExamScreen(base: String, token: String, examId: Long, onDirtyChange: (Boolea
     suspend fun load() {
         val result = JSONObject(examRequest(base, token, "/exams/$examId"))
         val questions = result.getJSONArray("questions")
+        val serverAnswers = buildMap {
+            for (i in 0 until questions.length()) {
+                val question = questions.getJSONObject(i)
+                put(question.getLong("id"), if (question.isNull("answer")) "" else question.getString("answer"))
+            }
+        }
         val drafts = answers.filter { (id, answer) -> answer != saved[id] }
         answers.clear()
         saved.clear()
         feedback.clear()
-        for (i in 0 until questions.length()) {
-            val question = questions.getJSONObject(i)
-            val id = question.getLong("id")
-            val answer = if (question.isNull("answer")) "" else question.getString("answer")
+        for ((id, answer) in serverAnswers) {
             answers[id] = drafts[id] ?: answer
             saved[id] = answer
         }
@@ -130,8 +133,10 @@ fun ExamScreen(base: String, token: String, examId: Long, onDirtyChange: (Boolea
                     Text("${question.getInt("position")}. Question ${question.getString("question_number")}", style = MaterialTheme.typography.titleMedium)
                     Text("Standard ${question.getInt("standard_number")} · ${question.getInt("year")} · Topic ${question.getLong("topic_id")}")
                     Text("Paper resource ${question.getString("paper_resource_id")}, page ${question.getInt("paper_page")}")
+                    OutlinedButton(onClick = { onOpenSource(question.getString("paper_resource_id"), question.getInt("paper_page")) }) { Text("View paper") }
                     Text("Schedule resource ${question.getString("schedule_resource_id")}, page ${question.getInt("schedule_page")}")
-                    OutlinedTextField(answers[id].orEmpty(), { answers[id] = it; feedback.remove(id) }, modifier = Modifier.fillMaxWidth(), label = { Text("Your answer") }, enabled = !busy, supportingText = { Text("Maximum 100,000 characters") })
+                    OutlinedButton(onClick = { onOpenSource(question.getString("schedule_resource_id"), question.getInt("schedule_page")) }) { Text("View schedule") }
+                    OutlinedTextField(answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, modifier = Modifier.fillMaxWidth(), label = { Text("Your answer") }, enabled = !busy, supportingText = { Text("Maximum 100,000 characters") })
                     if (answers[id] != saved[id]) Text("Unsaved changes")
                     Button(enabled = !busy && answers[id].orEmpty().length <= 100000, onClick = {
                         val answer = answers[id].orEmpty()

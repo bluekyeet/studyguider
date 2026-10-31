@@ -158,6 +158,30 @@ assert request("POST", "/exam-questions", {**question, "verified_against_origina
 status, created = request("POST", "/exam-questions", question, token)
 assert status == 201 and created["question_number"] == "1"
 assert any(item["id"] == created["id"] for item in request("GET", f'/exam-questions?topic_id={topic["id"]}', token=token)[1])
+question_ids = {created["id"]}
+for number in ("2", "3"):
+    status, extra = request("POST", "/exam-questions", {**question, "question_number": number}, token)
+    assert status == 201 and extra["verified_at"]
+    question_ids.add(extra["id"])
+assert len(question_ids) == 3 and created["verified_at"]
+monthly = {"subject_id": subject["id"], "question_count": 2}
+before = request("GET", "/exams", token=token)
+assert before[0] == 200
+status, shortage = request("POST", "/exams/monthly", {**monthly, "question_count": 4}, token)
+assert status == 409 and shortage["detail"] == {"message": "Insufficient verified questions", "requested": 4, "available": 3}
+assert request("GET", "/exams", token=token) == before
+status, first = request("POST", "/exams/monthly", monthly, token)
+assert status == 201 and first["subject_id"] == subject["id"]
+first_ids = set(first["question_ids"])
+assert len(first_ids) == 2 and first_ids <= question_ids
+status, second = request("POST", "/exams/monthly", {**monthly, "question_count": 1}, token)
+assert status == 201 and set(second["question_ids"]) == question_ids - first_ids
+status, third = request("POST", "/exams/monthly", {**monthly, "question_count": 1}, token)
+assert status == 201 and set(third["question_ids"]) <= first_ids
+for exam in (first, second, third):
+    status, saved = request("GET", f'/exams/{exam["id"]}', token=token)
+    assert status == 200 and [item["id"] for item in saved["questions"]] == exam["question_ids"]
+    assert all(item["verified_at"] for item in saved["questions"])
 for resource_id in exam_resources:
     assert request("DELETE", f'/resources/{resource_id}', token=token)[0] == 409
     with urllib.request.urlopen(urllib.request.Request(f'http://api:8000/resources/{resource_id}/download', headers={"Authorization": "Bearer " + token})) as response:

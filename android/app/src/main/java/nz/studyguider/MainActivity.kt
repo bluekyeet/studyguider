@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -110,6 +111,8 @@ private fun StudyApp() {
     var topicName by remember { mutableStateOf("") }
     var examId by remember { mutableStateOf("") }
     var examDirty by remember { mutableStateOf(false) }
+    var sourceId by rememberSaveable { mutableStateOf("") }
+    var sourcePage by remember { mutableIntStateOf(1) }
     var pendingTab by remember { mutableStateOf<Int?>(null) }
     var confirmExamExit by remember { mutableStateOf(false) }
     var tab by remember { mutableIntStateOf(0) }
@@ -230,7 +233,11 @@ private fun StudyApp() {
             if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString() }
             else {
                 TextButton(onClick = { if (examDirty) { pendingTab = null; confirmExamExit = true } else examId = "" }) { Text("‹ All exams") }
-                ExamScreen(base, token, examId.toLong()) { examDirty = it }
+                if (sourceId.isNotEmpty()) {
+                    TextButton(onClick = { sourceId = "" }) { Text("‹ Close source") }
+                    SourceScreen(base, token, sourceId, sourcePage)
+                }
+                ExamScreen(base, token, examId.toLong(), onOpenSource = { id, page -> sourceId = id; sourcePage = page }, onDirtyChange = { examDirty = it })
             }
           }
         }
