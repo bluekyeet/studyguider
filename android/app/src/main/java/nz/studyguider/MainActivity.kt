@@ -113,6 +113,7 @@ private fun StudyApp() {
     var examDirty by remember { mutableStateOf(false) }
     var sourceId by rememberSaveable { mutableStateOf("") }
     var sourcePage by remember { mutableIntStateOf(1) }
+    var topicSourceId by remember { mutableStateOf("") }
     var pendingTab by remember { mutableStateOf<Int?>(null) }
     var confirmExamExit by remember { mutableStateOf(false) }
     var tab by remember { mutableIntStateOf(0) }
@@ -172,7 +173,8 @@ private fun StudyApp() {
           0 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (selected != 0L) {
                 TextButton(enabled = !busy, onClick = {
-                    if (selectedTopic != 0L) { selectedTopic = 0; topicTitle = ""; resources = JSONArray() }
+                    if (topicSourceId.isNotEmpty()) topicSourceId = ""
+                    else if (selectedTopic != 0L) { selectedTopic = 0; topicTitle = ""; resources = JSONArray() }
                     else { selected = 0; subjectTitle = ""; topics = JSONArray() }
                 }) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
             }
@@ -204,6 +206,10 @@ private fun StudyApp() {
                 }
             } else {
                 Text("$topicTitle · Resources", style = MaterialTheme.typography.titleLarge)
+                if (topicSourceId.isNotEmpty()) {
+                    TextButton(onClick = { topicSourceId = "" }) { Text("‹ Close PDF") }
+                    SourceScreen(base, token, topicSourceId)
+                }
                 if (resourceRefreshError.isNotEmpty()) Text(resourceRefreshError, color = MaterialTheme.colorScheme.error)
                 OutlinedButton(enabled = !busy, onClick = { run {
                     resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
@@ -213,9 +219,13 @@ private fun StudyApp() {
                 for (i in 0 until resources.length()) {
                     val item = resources.getJSONObject(i)
                     Text("${item.getString("filename")} — ${item.getString("status")}")
+                    if (item.getString("filename").endsWith(".pdf", ignoreCase = true)) {
+                        OutlinedButton(onClick = { topicSourceId = item.getString("id") }) { Text("Open PDF") }
+                    }
                     if (item.optString("status") == "failed") Text("Extraction failed. Retry to see the error.", color = MaterialTheme.colorScheme.error)
                     OutlinedButton(enabled = !busy, onClick = { run {
-                        request(base, "/resources/${item.getString("id")}/extract", token, JSONObject())
+                        val operation = if (item.optString("status") == "failed") "retry" else "extract"
+                        request(base, "/resources/${item.getString("id")}/$operation", token, JSONObject())
                         resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
                     } }) { Text(if (item.optString("status") == "failed") "Retry extraction" else "Extract text") }
                 }
