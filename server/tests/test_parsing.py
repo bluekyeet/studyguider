@@ -55,6 +55,16 @@ def test_clean_json_rejects_a_reply_without_json():
         _clean_json("I cannot help with that.")
 
 
+def test_clean_json_keeps_only_the_first_of_two_arrays():
+    reply = '[{"question_number": "1"}] [{"question_number": "2"}]'
+    assert _clean_json(reply) == [{"question_number": "1"}]
+
+
+def test_clean_json_rejects_a_truncated_array():
+    with pytest.raises(ValueError):
+        _clean_json('[{"question_number": "1"}, {"question_number": "2"')
+
+
 def test_schedule_lookup_skips_a_bare_mention_in_body_text():
     schedule = [(1, "This paper covers one topic.\nONE  (a)  Correct answer."), (2, "unused")]
     page, text = _schedule_for(schedule, "1")
