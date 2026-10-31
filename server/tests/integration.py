@@ -61,6 +61,10 @@ assert status == 200
 token = result["token"]
 status, subject = request("POST", "/subjects", {"name": " Physics ", "level": 2}, token)
 assert status == 201 and subject["name"] == "Physics"
+style_path = f'/subjects/{subject["id"]}/style-profile'
+assert request("GET", style_path, token=token)[1]["content"] == ""
+assert request("PUT", style_path, {"content": "Use worked examples"}, token)[0] == 200
+assert request("GET", style_path, token=token)[1]["content"] == "Use worked examples"
 base = "/subjects/" + str(subject["id"])
 status, topic = request("POST", base + "/topics", {"name": "Waves"}, token)
 assert status == 201

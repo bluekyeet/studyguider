@@ -102,7 +102,7 @@
       <div class="manager-top"><p><strong>Resource pipeline &amp; standards hub</strong><br>Manage your learning content below.</p><button id="logout" class="secondary" type="button">Sign out</button></div>
       <div class="manager-layout">
       <nav class="manager-nav" aria-label="Resource manager sections"><p>Resource manager</p><div>
-        <a href="#subjects-heading">Subjects</a><a href="#topics-heading">Topics</a><a href="#standards-heading">NZQA standards</a><a href="#resources-heading">Resources</a><a href="#search-heading">Search resources</a><a href="#notes-heading">Topic notes</a><a href="#draft-heading">Lesson draft</a><a href="#question-heading">Register question</a><a href="#exam-heading">Exam assembly</a><a href="#scheduler-heading">Scheduled lessons</a><a href="#saved-lessons-heading">Saved lessons</a><a href="#review-drafts-heading">Review drafts</a>
+        <a href="#subjects-heading">Subjects</a><a href="#style-heading">Teaching style</a><a href="#topics-heading">Topics</a><a href="#standards-heading">NZQA standards</a><a href="#resources-heading">Resources</a><a href="#search-heading">Search resources</a><a href="#notes-heading">Topic notes</a><a href="#draft-heading">Lesson draft</a><a href="#question-heading">Register question</a><a href="#exam-heading">Exam assembly</a><a href="#scheduler-heading">Scheduled lessons</a><a href="#saved-lessons-heading">Saved lessons</a><a href="#review-drafts-heading">Review drafts</a>
       </div></nav>
       <div class="grid">
         <section class="card" aria-labelledby="subjects-heading">
@@ -114,6 +114,12 @@
             <button>Add subject</button>
           </form>
           <div class="divider"><label for="subjects">Select subject</label><select id="subjects"></select></div>
+        </section>
+        <section class="card" aria-labelledby="style-heading">
+          <div class="section-heading"><h2 id="style-heading">Teaching style</h2></div>
+          <p class="hint">Describe how the selected subject should be taught. Up to 10,000 characters are sent with lesson requests to the configured education model. This guides presentation, not factual evidence.</p>
+          <form id="style-form"><label for="style-content">Teaching instructions</label><textarea id="style-content" rows="6" maxlength="50000"></textarea><button>Save teaching style</button></form>
+          <p id="style-status" role="status" aria-live="polite"></p>
         </section>
         <section class="card" aria-labelledby="topics-heading">
           <div class="section-heading"><span class="section-number">02</span><h2 id="topics-heading">Topics</h2></div>
@@ -251,8 +257,22 @@
       select.replaceChildren();
       for (const item of items) select.add(new Option(label(item), item.id));
     }
+    let styleSubject = '', savedStyle = '';
+    async function loadStyle() {
+      const id = $('subjects').value;
+      $('style-content').disabled = true;
+      $('style-content').value = '';
+      savedStyle = ''; styleSubject = '';
+      if (!id) return;
+      const profile = await api(`/subjects/${id}/style-profile`);
+      if ($('subjects').value !== id) return;
+      styleSubject = id; savedStyle = profile.content;
+      $('style-content').value = savedStyle; $('style-content').disabled = false;
+      $('style-status').textContent = '';
+    }
     async function loadSubjects() {
       options($('subjects'), await api('/subjects'), item => `${item.name} (Level ${item.level})`);
+      await loadStyle();
       await loadTopics();
     }
     async function loadStandards() {
@@ -333,8 +353,17 @@
       await loadSubjects(); await loadStandards(); await loadExamQuestions();
     });
     $('logout').onclick = run(async () => { await api('/logout', { method: 'POST' }); token = ''; clearLessonHistory(); $('manager').hidden = true; $('login').hidden = false; $('verified').checked = false; $('exam-view').replaceChildren(); $('exam-questions').replaceChildren(); $('review-drafts').replaceChildren(); $('review-sources').replaceChildren(); });
-    $('add-subject').onsubmit = run(async () => { await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; await loadSubjects(); });
-    $('subjects').onchange = run(loadTopics);
+    $('add-subject').onsubmit = run(async () => { if (styleSubject && $('style-content').value !== savedStyle && !confirm('Discard unsaved teaching-style changes?')) return; await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; await loadSubjects(); });
+    $('subjects').onchange = run(async () => {
+      if (styleSubject && $('style-content').value !== savedStyle && !confirm('Discard unsaved teaching-style changes?')) { $('subjects').value = styleSubject; return; }
+      await loadStyle(); await loadTopics();
+    });
+    $('style-form').onsubmit = run(async () => {
+      if (!styleSubject || styleSubject !== $('subjects').value) throw new Error('Select a subject first');
+      const id = styleSubject, content = $('style-content').value;
+      await api(`/subjects/${id}/style-profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
+      if (styleSubject === id) { savedStyle = content; $('style-status').textContent = 'Teaching style saved.'; }
+    });
     $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; await loadTopics(); });
     $('topics').onchange = run(async () => { clearLessonHistory(); $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); await loadSchedule(); await loadLessons(); });
     $('add-note').onsubmit = run(async () => {
