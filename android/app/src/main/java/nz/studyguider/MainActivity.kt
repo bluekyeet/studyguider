@@ -4,12 +4,20 @@ import android.os.Bundle
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -17,9 +25,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.Alignment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -29,26 +40,46 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.spec.GCMParameterSpec
+
+private fun sessionCipher(): javax.crypto.SecretKey {
+    val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    (store.getKey("studyguider-session", null) as? javax.crypto.SecretKey)?.let { return it }
+    return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
+        init(KeyGenParameterSpec.Builder("studyguider-session", KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
+    }.generateKey()
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Transparent system bars with icons that follow the theme, so the status bar never shows as a white strip.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+        )
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF1E3A8A), onPrimary = Color.White, secondary = Color(0xFF006A61), surface = Color(0xFFFBF8FF), background = Color(0xFFFBF8FF), surfaceVariant = Color(0xFFEEEDF7))) {
-                Surface(Modifier.fillMaxSize()) { StudyApp() }
-            }
+            val dark = isSystemInDarkTheme()
+            StudyTheme(dark) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { StudyApp() } }
         }
     }
 }
 
-private suspend fun request(base: String, path: String, token: String = "", body: JSONObject? = null): String = withContext(Dispatchers.IO) {
+private suspend fun request(base: String, path: String, token: String = "", body: JSONObject? = null, method: String = "POST"): String = withContext(Dispatchers.IO) {
     val connection = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000
         connection.readTimeout = 20000
         if (token.isNotEmpty()) connection.setRequestProperty("Authorization", "Bearer $token")
         if (body != null) {
-            connection.requestMethod = "POST"
+            connection.requestMethod = method
             connection.setRequestProperty("Content-Type", "application/json")
             connection.doOutput = true
             connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
@@ -95,8 +126,83 @@ private suspend fun upload(context: android.content.Context, base: String, token
     } finally { connection.disconnect() }
 }
 
+/**
+ * Uploads one file or several at once. Several files are wrapped in a zip on
+ * the device and sent to the batch endpoint, so one request covers the lot.
+ */
+private suspend fun uploadMany(context: android.content.Context, base: String, token: String, topic: Long, uris: List<Uri>): String = withContext(Dispatchers.IO) {
+    fun read(uri: Uri): Triple<String, ByteArray, String?> {
+        val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (!it.moveToFirst()) throw IllegalStateException("Cannot read file details")
+            it.getString(it.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+        } ?: throw IllegalStateException("Cannot read file details")
+        val bytes = context.contentResolver.openInputStream(uri)?.use { stream ->
+            val buffer = java.io.ByteArrayOutputStream()
+            val chunk = ByteArray(65536)
+            while (true) {
+                val count = stream.read(chunk)
+                if (count < 0) break
+                if (buffer.size() + count > 50 * 1024 * 1024) throw IllegalStateException("$name exceeds 50 MiB")
+                buffer.write(chunk, 0, count)
+            }
+            buffer.toByteArray()
+        } ?: throw IllegalStateException("Cannot open $name")
+        val mime = context.contentResolver.getType(uri)
+        return Triple(name, bytes, mime)
+    }
+
+    val parts = mutableListOf<Triple<String, ByteArray, String?>>()
+    if (uris.size == 1) parts.add(read(uris.first()))
+    else {
+        // Several files: one zip, written to memory only, then replaced by its contents server-side.
+        val zip = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(zip).use { out ->
+            uris.forEach { uri ->
+                val (name, bytes, _) = read(uri)
+                out.putNextEntry(java.util.zip.ZipEntry(name.replace("\\", "_").replace("/", "_")))
+                out.write(bytes)
+                out.closeEntry()
+            }
+        }
+        val archive = zip.toByteArray()
+        if (archive.size > 50 * 1024 * 1024) throw IllegalStateException("The batch is larger than 50 MiB; upload it in smaller groups")
+        parts.add(Triple("batch-${uris.size}-files.zip", archive, "application/zip"))
+    }
+
+    val boundary = "studyguider-" + java.util.UUID.randomUUID()
+    val body = java.io.ByteArrayOutputStream()
+    body.write("--$boundary\r\nContent-Disposition: form-data; name=\"category\"\r\n\r\nextra\r\n".toByteArray())
+    parts.forEach { (name, bytes, mime) ->
+        val safeName = name.replace("\"", "_").replace("\r", "_").replace("\n", "_")
+        body.write("--$boundary\r\nContent-Disposition: form-data; name=\"files\"; filename=\"$safeName\"\r\nContent-Type: ${mime ?: "application/octet-stream"}\r\n\r\n".toByteArray(Charsets.UTF_8))
+        body.write(bytes)
+        body.write("\r\n".toByteArray())
+    }
+    body.write("--$boundary--\r\n".toByteArray())
+    val payload = body.toByteArray()
+    val connection = URL(base.trimEnd('/') + "/topics/$topic/resources/batch").openConnection() as HttpURLConnection
+    try {
+        connection.connectTimeout = 15000; connection.readTimeout = 120000
+        connection.requestMethod = "POST"; connection.doOutput = true
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        connection.setFixedLengthStreamingMode(payload.size)
+        connection.outputStream.use { it.write(payload) }
+        val status = connection.responseCode
+        val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (status !in 200..299) throw IllegalStateException("Upload failed ($status): $text")
+        text
+    } finally { connection.disconnect() }
+}
+
+private val tabOrder = listOf(1 to "Today's Lesson", 2 to "Daily Review", 3 to "Monthly Exam", 0 to "Resources")
+
 @Composable
 private fun StudyApp() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("session", android.content.Context.MODE_PRIVATE) }
+    val activity = androidx.activity.compose.LocalActivity.current as? android.app.Activity
+    val leaveApp: () -> Unit = { activity?.finish() }
     var base by remember { mutableStateOf("https://") }
     var password by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
@@ -118,12 +224,85 @@ private fun StudyApp() {
     var topicSourceId by remember { mutableStateOf("") }
     var pendingTab by remember { mutableStateOf<Int?>(null) }
     var confirmExamExit by remember { mutableStateOf(false) }
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(1) }
     var subjectTitle by remember { mutableStateOf("") }
     var topicTitle by remember { mutableStateOf("") }
+    var showAddSubject by remember { mutableStateOf(false) }
+    var signOutConfirm by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    // Every topic across subjects, so the Lessons and Review tabs list them straight away.
+    var allTopics by remember { mutableStateOf<List<Pair<String, JSONObject>>>(emptyList()) }
+    var allTopicsLoading by remember { mutableStateOf(false) }
+    var allTopicsError by remember { mutableStateOf("") }
+    var topicsReload by remember { mutableIntStateOf(0) }
+    // Picking the topics to study, opened from Lessons and from Settings.
+    var showTopicPicker by remember { mutableStateOf(false) }
+    // True until the saved session has been checked, so the sign-in form never flashes.
+    var restoring by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val openTopic = { id: Long, title: String ->
+        if (examDirty) { confirmExamExit = true } else scope.launch {
+            selectedTopic = id; topicTitle = title
+            try {
+                resources = JSONArray(request(base, "/topics/$id/resources", token))
+                resourceRefreshError = ""
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                resourceRefreshError = "Could not load resources: ${e.message ?: "request failed"}"
+            }
+        }
+        Unit
+    }
+    val findSubject = { topicId: Long -> allTopics.firstOrNull { it.second.optLong("id") == topicId }?.first ?: subjectTitle }
+
+    /**
+     * One level up in the app, used by both the visible back control and the
+     * Android back key. Returns true when it handled the press.
+     */
+    fun goBack(): Boolean {
+        if (topicSourceId.isNotEmpty()) { topicSourceId = ""; return true }
+        if (selectedTopic != 0L) { selectedTopic = 0; topicTitle = ""; resources = JSONArray(); return true }
+        if (selected != 0L) { selected = 0; subjectTitle = ""; topics = JSONArray(); return true }
+        if (tab != 0) { tab = 0; return true }
+        return false
+    }
+    BackHandler(enabled = token.isNotEmpty()) {
+        if (examDirty) { pendingTab = null; confirmExamExit = true } else if (!goBack()) leaveApp()
+    }
+    LaunchedEffect(Unit) {
+        val saved = prefs.getString("token", null)
+        if (saved == null) { restoring = false; return@LaunchedEffect }
+        try {
+            val bytes = Base64.decode(saved, Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, sessionCipher(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
+            val restored = String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
+            val savedBase = prefs.getString("base", null) ?: run { restoring = false; return@LaunchedEffect }
+            base = savedBase; token = restored
+            val loaded = JSONArray(request(savedBase, "/subjects", restored))
+            subjects = loaded
+        } catch (e: Exception) {
+            error = "Could not restore your session. Sign in again."
+        } finally { restoring = false }
+    }
     val processing = (0 until resources.length()).any { resources.getJSONObject(it).optString("status") in setOf("pending", "extracting") }
+    LaunchedEffect(token, base, subjects.length(), topicsReload) {
+        if (token.isEmpty()) { allTopics = emptyList(); return@LaunchedEffect }
+        allTopicsLoading = true; allTopicsError = ""
+        try {
+            val found = mutableListOf<Pair<String, JSONObject>>()
+            val list = JSONArray(request(base, "/subjects", token))
+            subjects = list
+            for (i in 0 until list.length()) {
+                val subject = list.getJSONObject(i)
+                val name = subject.optString("name")
+                val topicsForSubject = JSONArray(request(base, "/subjects/${subject.getLong("id")}/topics", token))
+                for (j in 0 until topicsForSubject.length()) found.add(name to topicsForSubject.getJSONObject(j))
+            }
+            allTopics = found
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { allTopicsError = e.message ?: "Could not load topics" }
+        finally { allTopicsLoading = false }
+    }
     LaunchedEffect(selectedTopic, token, base, tab, processing) {
         if (selectedTopic != 0L && token.isNotEmpty() && tab == 0 && processing) {
             while (true) {
@@ -142,133 +321,240 @@ private fun StudyApp() {
     fun run(block: suspend () -> Unit) {
         scope.launch { busy = true; error = ""; try { block() } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false } }
     }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && selectedTopic != 0L) run {
-            upload(context, base, token, selectedTopic, uri)
+    var uploadNotice by remember { mutableStateOf("") }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty() && selectedTopic != 0L) run {
+            val reply = uploadMany(context, base, token, selectedTopic, uris)
             resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
+            val result = JSONObject(reply)
+            uploadNotice = buildString {
+                append("Queued ${result.optInt("queued")} file(s)")
+                if (result.optInt("duplicates") > 0) append(" · ${result.optInt("duplicates")} already in this topic")
+                val skipped = result.optJSONArray("skipped")
+                if (skipped != null && skipped.length() > 0) append(" · ${skipped.length()} skipped")
+            }
         }
     }
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-      Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("STUDYGUIDER", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        Text(if (token.isEmpty()) "Make progress, one topic at a time." else "Your study space", style = MaterialTheme.typography.headlineMedium)
-        if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (token.isEmpty()) {
-            OutlinedTextField(base, { base = it }, label = { Text("Server URL") }, singleLine = true)
-            OutlinedTextField(password, { password = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
-            Button(enabled = !busy, onClick = { run {
-                val result = JSONObject(request(base, "/login", body = JSONObject().put("password", password)))
-                token = result.getString("token"); password = ""
-                subjects = JSONArray(request(base, "/subjects", token))
-            } }) { Text("Sign in") }
-        } else {
-            TextButton(enabled = !busy && !examDirty, onClick = { run { request(base, "/logout", token, JSONObject()); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; sourceId = ""; tab = 0 } }) { Text("Sign out") }
+    val scopeLabel = if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else null
+    LaunchedEffect(Unit) {
+        // Debug builds expose the bundled KaTeX page on 127.0.0.1:8787 so its rendering can be checked in a browser.
+        val debugBuild = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (debugBuild) {
+            try {
+                val socket = java.net.ServerSocket(8787, 4, java.net.InetAddress.getByName("127.0.0.1"))
+                while (true) {
+                    val client = withContext(Dispatchers.IO) { socket.accept() }
+                    withContext(Dispatchers.IO) {
+                        client.use {
+                            val reader = it.getInputStream().bufferedReader()
+                            val request = reader.readLine().orEmpty()
+                            while (true) { val line = reader.readLine() ?: break; if (line.isEmpty()) break }
+                            // Serve the bundled assets as well as the page, so the real KaTeX files are exercised.
+                            val path = request.split(' ').getOrNull(1)?.substringBefore('?')?.trimStart('/')
+                            val asset = path?.takeIf { it.startsWith("katex/") }?.let { name ->
+                                runCatching { context.assets.open(name).use { stream -> stream.readBytes() } }.getOrNull()
+                            }
+                            val body = if (asset != null) asset else debugKaTeXPage(KaTeXProbe, dark = request.contains("dark")).toByteArray(Charsets.UTF_8)
+                            val type = when {
+                                path == null -> "text/html; charset=utf-8"
+                                path.endsWith(".js") -> "application/javascript; charset=utf-8"
+                                path.endsWith(".css") -> "text/css; charset=utf-8"
+                                path.endsWith(".woff2") -> "font/woff2"
+                                else -> "text/html; charset=utf-8"
+                            }
+                            val header = "HTTP/1.1 200 OK\r\nContent-Type: $type\r\nCache-Control: no-store\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n"
+                            it.getOutputStream().write(header.toByteArray(Charsets.UTF_8)); it.getOutputStream().write(body); it.getOutputStream().flush()
+                        }
+                    }
+                }
+            } catch (e: CancellationException) { throw e } catch (e: Exception) { }
         }
-      }
-      if (token.isNotEmpty()) {
-        val tabs = listOf("Study", "Lessons", "Reviews", "Exams")
-        ScrollableTabRow(selectedTabIndex = tab) {
-            tabs.forEachIndexed { index, title -> Tab(selected = tab == index, onClick = { if (examDirty && index != tab) { pendingTab = index; confirmExamExit = true } else tab = index }, text = { Text(title) }) }
-        }
-        when (tab) {
-          0 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (selected != 0L) {
-                TextButton(enabled = !busy, onClick = {
-                    if (topicSourceId.isNotEmpty()) topicSourceId = ""
-                    else if (selectedTopic != 0L) { selectedTopic = 0; topicTitle = ""; resources = JSONArray() }
-                    else { selected = 0; subjectTitle = ""; topics = JSONArray() }
-                }) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
-            }
-            if (selected == 0L) {
-            Text("Your subjects", style = MaterialTheme.typography.headlineSmall)
-            Text("Choose a subject to explore its topics and resources.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (subjects.length() == 0) Text("No subjects yet. Add one below to get started.")
-            for (i in 0 until subjects.length()) {
-                val subject = subjects.getJSONObject(i)
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = !busy, onClickLabel = "Open ${subject.getString("name")}") {
-                        run { val id = subject.getLong("id"); val loaded = JSONArray(request(base, "/subjects/$id/topics", token)); selected = id; subjectTitle = subject.getString("name"); topics = loaded }
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            // One compact row: the screen title plus settings. Account actions live in Settings.
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+                    val kicker = when (tab) {
+                        1 -> scopeLabel
+                        2 -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else "Daily review"
+                        3 -> "Monthly exam"
+                        else -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else "Resources"
                     }
-                ) {
-                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("NCEA LEVEL ${subject.getInt("level")}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(subject.getString("name"), style = MaterialTheme.typography.titleLarge)
-                        Text("View topics →", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(start = 20.dp, end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                when (tab) { 1 -> "Lesson"; 2 -> "Review"; 3 -> "Exam"; else -> "Resources" },
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            if (token.isNotEmpty() && kicker != null) Text(kicker, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1)
+                        }
+                        if (error.isNotEmpty()) Text("!", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(end = 8.dp))
+                        if (token.isNotEmpty()) {
+                            val tint = if (showSettings) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            Box(
+                                Modifier.size(40.dp).clip(RoundedCornerShape(50))
+                                    .background(if (showSettings) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .clickable(role = androidx.compose.ui.semantics.Role.Button) { showSettings = true },
+                                contentAlignment = Alignment.Center,
+                            ) { SettingsIcon(tint, Modifier.size(22.dp)) }
+                        }
                     }
+                    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.secondary)
                 }
             }
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            Text("Add a subject", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(subjectName, { subjectName = it }, label = { Text("New subject") }, singleLine = true)
-            OutlinedTextField(subjectLevel, { subjectLevel = it }, label = { Text("NCEA level (1–3)") }, singleLine = true)
-            OutlinedButton(enabled = !busy && subjectName.isNotBlank(), onClick = { run {
-                val level = subjectLevel.toIntOrNull()?.takeIf { it in 1..3 } ?: throw IllegalArgumentException("Enter a level from 1 to 3")
-                request(base, "/subjects", token, JSONObject().put("name", subjectName).put("level", level))
-                subjectName = ""; subjects = JSONArray(request(base, "/subjects", token))
-            } }) { Text("Add subject") }
-            } else if (selectedTopic == 0L) {
-                Text("$subjectTitle · Topics", style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(topicName, { topicName = it }, label = { Text("New topic") }, singleLine = true)
-                OutlinedButton(enabled = !busy && topicName.isNotBlank(), onClick = { run {
-                    request(base, "/subjects/$selected/topics", token, JSONObject().put("name", topicName))
-                    topicName = ""; topics = JSONArray(request(base, "/subjects/$selected/topics", token))
-                } }) { Text("Add topic") }
-                for (i in 0 until topics.length()) {
-                    val topic = topics.getJSONObject(i)
-                    TextButton(enabled = !busy, onClick = { run { val id = topic.getLong("id"); val loaded = JSONArray(request(base, "/topics/$id/resources", token)); selectedTopic = id; topicTitle = topic.getString("name"); resources = loaded } }) { Text(topic.getString("name")) }
+        },
+        bottomBar = {
+            if (token.isNotEmpty()) StudyNavBar(current = tab) { destination ->
+                if (examDirty && destination != tab) { pendingTab = destination; confirmExamExit = true } else tab = destination
+            }
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            if (restoring) {
+                Column(Modifier.fillMaxSize().padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Spacer(Modifier.height(40.dp))
+                    Text("STUDYGUIDER", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    Text("Opening your\ntopics…", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.secondary)
                 }
-            } else {
-                Text("$topicTitle · Resources", style = MaterialTheme.typography.titleLarge)
-                if (topicSourceId.isNotEmpty()) {
-                    TextButton(onClick = { topicSourceId = "" }) { Text("‹ Close PDF") }
-                    SourceScreen(base, token, topicSourceId)
+            } else if (token.isEmpty()) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Spacer(Modifier.height(24.dp))
+                    Text("YOUR STUDY COMPANION", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    Text("Make progress,\none topic at a time.", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+                    Text("Sign in to pick up your lessons, reviews and exams.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(base, { base = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Server URL") }, singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    Button(modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(50), enabled = !busy, onClick = { run {
+                        val result = JSONObject(request(base, "/login", body = JSONObject().put("password", password)))
+                        val newToken = result.getString("token")
+                        val loaded = JSONArray(request(base, "/subjects", newToken))
+                        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                        cipher.init(Cipher.ENCRYPT_MODE, sessionCipher())
+                        prefs.edit().putString("base", base).putString("token", Base64.encodeToString(cipher.iv + cipher.doFinal(newToken.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)).apply()
+                        token = newToken; password = ""; subjects = loaded
+                    } }) { Text("Sign in") }
                 }
-                if (resourceRefreshError.isNotEmpty()) Text(resourceRefreshError, color = MaterialTheme.colorScheme.error)
-                OutlinedButton(enabled = !busy, onClick = { run {
-                    resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
-                    resourceRefreshError = ""
-                } }) { Text("Refresh resources") }
-                Button(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Upload file") }
-                for (i in 0 until resources.length()) {
-                    val item = resources.getJSONObject(i)
-                    Text("${item.getString("filename")} — ${item.getString("status")}")
-                    if (item.getString("filename").endsWith(".pdf", ignoreCase = true)) {
-                        OutlinedButton(onClick = { topicSourceId = item.getString("id") }) { Text("Open PDF") }
-                    }
-                    if (item.optString("status") == "failed") Text("Extraction failed. Retry to see the error.", color = MaterialTheme.colorScheme.error)
-                    OutlinedButton(enabled = !busy, onClick = { run {
-                        val operation = if (item.optString("status") == "failed") "retry" else "extract"
-                        request(base, "/resources/${item.getString("id")}/$operation", token, JSONObject())
+            } else when (tab) {
+                0 -> ResourceHub(
+                    base, token, subjects, topics, resources, selected, selectedTopic,
+                    subjectTitle, topicTitle, topicSourceId, resourceRefreshError, busy,
+                    subjectName = subjectName, onSubjectName = { subjectName = it },
+                    subjectLevel = subjectLevel, onSubjectLevel = { subjectLevel = it },
+                    topicName = topicName, onTopicName = { topicName = it },
+                    showAddSubject = showAddSubject, onToggleAddSubject = { showAddSubject = !showAddSubject },
+                    onOpenSubject = { id, title -> run { topics = JSONArray(request(base, "/subjects/$id/topics", token)); selected = id; subjectTitle = title; selectedTopic = 0; topicTitle = "" } },
+                    onOpenTopic = { id, title -> run { resources = JSONArray(request(base, "/topics/$id/resources", token)); selectedTopic = id; topicTitle = title } },
+                    onBack = {
+                        if (topicSourceId.isNotEmpty()) topicSourceId = ""
+                        else if (selectedTopic != 0L) { selectedTopic = 0; topicTitle = ""; resources = JSONArray() }
+                        else { selected = 0; subjectTitle = ""; topics = JSONArray() }
+                    },
+                    onAddSubject = { run {
+                        val level = subjectLevel.toIntOrNull()?.takeIf { it in 1..3 } ?: throw IllegalArgumentException("Enter a level from 1 to 3")
+                        request(base, "/subjects", token, JSONObject().put("name", subjectName).put("level", level))
+                        subjectName = ""; subjects = JSONArray(request(base, "/subjects", token)); showAddSubject = false
+                    } },
+                    onAddTopic = { run {
+                        request(base, "/subjects/$selected/topics", token, JSONObject().put("name", topicName))
+                        topicName = ""; topics = JSONArray(request(base, "/subjects/$selected/topics", token))
+                    } },
+                    onUpload = { uploadNotice = ""; picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/zip", "text/*", "image/*")) },
+                    uploadNotice = uploadNotice,
+                    onRefresh = { run { resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token)); resourceRefreshError = "" } },
+                    onExtract = { id, retry -> run {
+                        request(base, "/resources/$id/${if (retry) "retry" else "extract"}", token, JSONObject())
                         resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
-                    } }) { Text(if (item.optString("status") == "failed") "Retry extraction" else "Extract text") }
+                    } },
+                    onOpenPdf = { topicSourceId = it }, onClosePdf = { topicSourceId = "" },
+                )
+                1 -> when {
+                    selectedTopic != 0L -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                        LessonScreen(
+                            base = base, token = token, topicId = selectedTopic,
+                            topicName = topicTitle, subjectName = subjectTitle,
+                            allTopics = allTopics,
+                            onSwitchTopic = { id, title -> openTopic(id, title); subjectTitle = findSubject(id) },
+                            onOpenResources = { tab = 0 },
+                        )
+                    }
+                    else -> LessonsHome(
+                        base = base, token = token,
+                        onOpenCourse = { id, title -> openTopic(id, title); subjectTitle = findSubject(id) },
+                        onAddCourse = { showTopicPicker = true },
+                    )
+                }
+                2 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                    if (selectedTopic != 0L) ReviewDraftScreen(base, token, selectedTopic)
+                    else TopicBrowser(
+                        allTopics = allTopics,
+                        loading = allTopicsLoading,
+                        error = allTopicsError,
+                        selectedTopicId = selectedTopic,
+                        onRetry = { topicsReload++ },
+                        onOpen = { id, title -> openTopic(id, title); subjectTitle = findSubject(id) },
+                        onBrowseResources = { tab = 0 },
+                    )
+                    ReviewScreen(base, token)
+                }
+                else -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                    if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString(); sourceId = "" }
+                    else {
+                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { if (examDirty) { pendingTab = null; confirmExamExit = true } else { examId = ""; sourceId = "" } }) { Text("‹ All exams") }
+                            Spacer(Modifier.weight(1f))
+                            if (sourceId.isNotEmpty()) TextButton(onClick = { sourceId = "" }) { Text("Close source") }
+                        }
+                        if (sourceId.isNotEmpty()) SourceScreen(base, token, sourceId, sourcePage)
+                        ExamScreen(base, token, examId.toLong(), onOpenSource = { id, page -> sourceId = id; sourcePage = page }, onDirtyChange = { examDirty = it })
+                    }
                 }
             }
-          }
-          1 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-              if (selectedTopic != 0L) LessonScreen(base, token, selectedTopic) else Text("Choose a topic in Study to create a lesson.", Modifier.padding(vertical = 20.dp))
-          }
-          2 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp)) {
-              if (selectedTopic != 0L) ReviewDraftScreen(base, token, selectedTopic)
-              else Text("Choose a topic in Study to generate review questions.")
-              ReviewScreen(base, token)
-          }
-          3 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-            if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString() }
-            else {
-                TextButton(onClick = { if (examDirty) { pendingTab = null; confirmExamExit = true } else { examId = ""; sourceId = "" } }) { Text("‹ All exams") }
-                if (sourceId.isNotEmpty()) {
-                    TextButton(onClick = { sourceId = "" }) { Text("‹ Close source") }
-                    SourceScreen(base, token, sourceId, sourcePage)
-                }
-                ExamScreen(base, token, examId.toLong(), onOpenSource = { id, page -> sourceId = id; sourcePage = page }, onDirtyChange = { examDirty = it })
-            }
-          }
-        }
         }
     }
+    // App-wide errors stay visible in a single line under the header.
+    if (token.isNotEmpty() && error.isNotEmpty()) {
+        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+    }
+    if (showTopicPicker) TopicPickerSheet(
+        base = base,
+        token = token,
+        allTopics = allTopics,
+        loading = allTopicsLoading,
+        onDismiss = { showTopicPicker = false },
+        onChanged = { topicsReload++ },
+    )
+    if (showSettings) SettingsSheet(
+        base = base,
+        token = token,
+        signedIn = token.isNotEmpty(),
+        busy = busy,
+        dark = isSystemInDarkTheme(),
+        onDismiss = { showSettings = false },
+        onSignOut = { if (!busy && !examDirty) { showSettings = false; signOutConfirm = true } },
+        canSignOut = !busy && !examDirty,
+        subjectCount = subjects.length(),
+        topicCount = topics.length(),
+        onManageCourses = { showSettings = false; showTopicPicker = true },
+    )
+    if (signOutConfirm) AlertDialog(
+        onDismissRequest = { signOutConfirm = false },
+        title = { Text("Sign out?") },
+        text = { Text("You will need the password to sign in again on this device.") },
+        confirmButton = { TextButton(onClick = {
+            signOutConfirm = false
+            run { request(base, "/logout", token, JSONObject()); prefs.edit().clear().apply(); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; sourceId = ""; tab = 1 }
+        }) { Text("Sign out") } },
+        dismissButton = { TextButton(onClick = { signOutConfirm = false }) { Text("Cancel") } },
+    )
     if (confirmExamExit) AlertDialog(
         onDismissRequest = { confirmExamExit = false },
         title = { Text("Discard unsaved answers?") },
@@ -276,4 +562,432 @@ private fun StudyApp() {
         confirmButton = { TextButton(onClick = { examDirty = false; examId = ""; sourceId = ""; pendingTab?.let { tab = it }; pendingTab = null; confirmExamExit = false }) { Text("Discard") } },
         dismissButton = { TextButton(onClick = { confirmExamExit = false }) { Text("Keep editing") } }
     )
+}
+
+/**
+ * Chooses which topics to learn. Selected topics become courses, so their
+ * lessons appear on the Lessons home. Opened from the floating button, the
+ * empty state, or Settings.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TopicPickerSheet(
+    base: String,
+    token: String,
+    allTopics: List<Pair<String, JSONObject>>,
+    loading: Boolean,
+    onDismiss: () -> Unit,
+    onChanged: () -> Unit,
+) {
+    var enrolledTopicIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var busyTopic by remember { mutableStateOf<Long?>(null) }
+    var error by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val colours = LocalStudyColours.current
+    suspend fun loadCourses(): Set<Long> = withContext(Dispatchers.IO) {
+        val list = JSONArray(request(base, "/courses", token))
+        (0 until list.length()).map { list.getJSONObject(it).getLong("topic_id") }.toSet()
+    }
+    LaunchedEffect(base, token) {
+        try { enrolledTopicIds = loadCourses() } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = "Could not load your courses: ${e.message ?: "request failed"}" }
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Topics you're learning", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+            Text("Tick the topics you want lessons for. They appear on your Lessons page, starting from the basics.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (loading && allTopics.isEmpty()) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text("Loading topics…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            allTopics.groupBy({ it.first }, { it.second }).forEach { (subject, list) ->
+                Text(subject, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                list.forEach { topic ->
+                    val id = topic.getLong("id")
+                    val on = id in enrolledTopicIds
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (on) colours.containerLow else colours.container)
+                            .clickable(enabled = busyTopic == null) {
+                                scope.launch {
+                                    busyTopic = id; error = ""
+                                    try {
+                                        if (on) {
+                                            // Removing a course stops it appearing; lessons stay saved on the server.
+                                            val list2 = JSONArray(request(base, "/courses", token))
+                                            for (i in 0 until list2.length()) {
+                                                val c = list2.getJSONObject(i)
+                                                if (c.getLong("topic_id") == id) {
+                                                    request(base, "/courses/${c.getLong("id")}", token, JSONObject(), "DELETE")
+                                                    break
+                                                }
+                                            }
+                                        } else request(base, "/courses", token, JSONObject().put("topic_id", id))
+                                        enrolledTopicIds = loadCourses()
+                                        onChanged()
+                                    } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                                        error = "Could not save: ${e.message ?: "request failed"}"
+                                    } finally { busyTopic = null }
+                                }
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(topic.optString("name"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        if (busyTopic == id) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Text(if (on) "✓ Learning" else "Add", style = MaterialTheme.typography.labelMedium, color = if (on) colours.teal else MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            if (allTopics.isEmpty() && !loading) StudyCard(tone = CardTone.Low) {
+                Text("No topics yet. Add a subject and topic in Resources first.", style = MaterialTheme.typography.bodySmall)
+            }
+            Button(onClick = onDismiss, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Done") }
+        }
+    }
+}
+
+@Composable
+private fun LessonChooseTopic(
+    onChoose: () -> Unit,
+    subjectsCount: Int,
+    title: String = "Today's lesson",
+    detail: String = "Select a subject and topic to open saved lessons or create a new one.",
+) {
+    Column(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column {
+            Text(if (title == "Today's lesson") "YOUR LEARNING" else "SPACED REPETITION", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            Text(title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+        }
+        StudyCard(tone = CardTone.Container) {
+            Text("Choose what to learn", style = MaterialTheme.typography.titleLarge)
+            Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (subjectsCount == 0) Text("No subjects yet. Add one in Resources.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = onChoose, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("Open Resources") }
+        }
+    }
+}
+
+/**
+ * Lists every subject and its topics directly on the Lessons tab, so picking a
+ * topic is one tap rather than a trip through Resources.
+ */
+@Composable
+private fun TopicBrowser(
+    allTopics: List<Pair<String, JSONObject>>,
+    loading: Boolean,
+    error: String,
+    selectedTopicId: Long,
+    onRetry: () -> Unit,
+    onOpen: (Long, String) -> Unit,
+    onBrowseResources: () -> Unit,
+) {
+    val colours = LocalStudyColours.current
+    val grouped = remember(allTopics) { allTopics.groupBy({ it.first }, { it.second }) }
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("YOUR LEARNING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+        Text("Pick a topic", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+        Text("Your topics are ready — tap one to read, add files and practise.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        when {
+            loading && allTopics.isEmpty() -> {
+                StudyCard(tone = CardTone.Low) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("Loading your topics…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            error.isNotEmpty() && allTopics.isEmpty() -> StudyCard(tone = CardTone.Low) {
+                Text("Could not load your topics.", style = MaterialTheme.typography.titleSmall)
+                Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                OutlinedButton(onClick = onRetry, shape = RoundedCornerShape(50)) { Text("Try again") }
+            }
+            allTopics.isEmpty() -> StudyCard(tone = CardTone.Low) {
+                Text("No topics yet.", style = MaterialTheme.typography.titleSmall)
+                Text("Add a subject and topic in Resources, then upload a file to start learning.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = onBrowseResources, shape = RoundedCornerShape(50)) { Text("Open Resources") }
+            }
+            else -> grouped.forEach { (subject, list) ->
+                Text(subject, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                list.forEach { topic ->
+                    val id = topic.getLong("id")
+                    val selected = id == selectedTopicId
+                    Surface(
+                        onClick = { onOpen(id, topic.optString("name")) },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else colours.container,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(topic.optString("name"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Text(if (selected) "Reading" else "Open →", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Teaching style per subject. The saved profile is included in every lesson
+ * generated for that subject, so the learner can shape how lessons read.
+ */
+@Composable
+private fun TeachingStyleEditor(base: String, token: String) {
+    var subjects by remember { mutableStateOf(JSONArray()) }
+    var subjectIndex by remember { mutableIntStateOf(0) }
+    var draft by remember { mutableStateOf("") }
+    var saved by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var savedNotice by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun load(index: Int) = withContext(Dispatchers.IO) {
+        val list = JSONArray(request(base, "/subjects", token))
+        subjects = list
+        if (list.length() == 0) return@withContext
+        val id = list.getJSONObject(index.coerceIn(0, list.length() - 1)).getLong("id")
+        val body = JSONObject(request(base, "/subjects/$id/style-profile", token))
+        draft = body.optString("content"); saved = draft
+    }
+
+    LaunchedEffect(base, token) {
+        try { load(0) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+            error = "Could not load teaching style: ${e.message ?: "request failed"}"
+        }
+    }
+
+    StudyCard(tone = CardTone.Low) {
+        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Teaching style", if (draft.isBlank()) "NOT SET" else "SET", Modifier.weight(1f))
+            Text(if (expanded) "Hide" else "Edit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+        }
+        Text(
+            "Describe how you want lessons to read (pace, detail, examples, diagrams). Every lesson for the subject follows it.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        AnimatedVisibility(visible = expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (subjects.length() > 1) {
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (i in 0 until subjects.length()) {
+                            val name = subjects.getJSONObject(i).optString("name")
+                            FilterChip(
+                                selected = i == subjectIndex,
+                                onClick = {
+                                    subjectIndex = i
+                                    scope.launch {
+                                        busy = true; error = ""
+                                        try { load(i) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                                            error = "Could not load teaching style: ${e.message ?: "request failed"}"
+                                        } finally { busy = false }
+                                    }
+                                },
+                                label = { Text(name) },
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it; savedNotice = "" },
+                    label = { Text("How should lessons teach you?") },
+                    placeholder = { Text("e.g. Short sections, one worked example each, then a question. Use bullet points and show every algebra step.") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4, maxLines = 12,
+                    enabled = !busy,
+                    shape = RoundedCornerShape(12.dp),
+                )
+                Text("${draft.length}/50000 characters", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                if (savedNotice.isNotEmpty()) Text(savedNotice, style = MaterialTheme.typography.bodySmall, color = LocalStudyColours.current.teal)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !busy && draft != saved && draft.length <= 50000,
+                        shape = RoundedCornerShape(50),
+                        onClick = {
+                            scope.launch {
+                                busy = true; error = ""; savedNotice = ""
+                                try {
+                                    val id = subjects.getJSONObject(subjectIndex).getLong("id")
+                                    withContext(Dispatchers.IO) {
+                                        request(base, "/subjects/$id/style-profile", token, JSONObject().put("content", draft), method = "PUT")
+                                    }
+                                    saved = draft
+                                    savedNotice = "Saved. New lessons for this subject will follow this style."
+                                } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                                    error = "Could not save: ${e.message ?: "request failed"}"
+                                } finally { busy = false }
+                            }
+                        },
+                    ) { Text("Save style") }
+                    if (draft != saved) OutlinedButton(shape = RoundedCornerShape(50), enabled = !busy, onClick = { draft = saved; savedNotice = "" }) { Text("Revert") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsIcon(tint: Color, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val w = size.width; val h = size.height
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.1f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        val centre = androidx.compose.ui.geometry.Offset(w / 2f, h / 2f)
+        val outer = w * 0.3f; val inner = w * 0.13f
+        // Six spokes plus two rings read as a settings gear at this size.
+        repeat(6) { index ->
+            val angle = Math.toRadians(index * 60.0)
+            val dx = Math.cos(angle).toFloat(); val dy = Math.sin(angle).toFloat()
+            drawLine(tint, androidx.compose.ui.geometry.Offset(centre.x + dx * outer, centre.y + dy * outer), androidx.compose.ui.geometry.Offset(centre.x + dx * (outer + w * 0.12f), centre.y + dy * (outer + w * 0.12f)), strokeWidth = w * 0.1f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        }
+        drawCircle(tint, radius = outer, center = centre, style = stroke)
+        drawCircle(tint, radius = inner, center = centre, style = stroke)
+    }
+}
+
+/** Account and app information, kept out of the main screen. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsSheet(
+    base: String,
+    token: String,
+    signedIn: Boolean,
+    busy: Boolean,
+    dark: Boolean,
+    onDismiss: () -> Unit,
+    onSignOut: () -> Unit,
+    canSignOut: Boolean,
+    subjectCount: Int,
+    topicCount: Int,
+    onManageCourses: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Settings", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+            StudyCard(tone = CardTone.Container) {
+                SectionLabel("Account", if (signedIn) "SIGNED IN" else "SIGNED OUT")
+                Text(if (signedIn) "You are signed in to this server." else "Sign in to load your own resources.", style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (signedIn) StatusDot(LocalStudyColours.current.teal, "Session encrypted on this device")
+                }
+                Text(base, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+            }
+            StudyCard(tone = CardTone.Low) {
+                SectionLabel("Library", "YOUR CONTENT")
+                Text("$subjectCount subject(s) · $topicCount topic(s) loaded", style = MaterialTheme.typography.bodyMedium)
+                Text(if (dark) "Appearance: dark (follows the system)" else "Appearance: light (follows the system)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            StudyCard(tone = CardTone.Low) {
+                SectionLabel("Courses", "TOPICS YOU LEARN")
+                Text("Choose which topics get lessons. They appear on the Lessons page.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = { onDismiss(); onManageCourses() }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth()) { Text("Choose topics") }
+            }
+            if (signedIn) TeachingStyleEditor(base = base, token = token)
+            StudyCard(tone = CardTone.Low) {
+                SectionLabel("About", "STUDYGUIDER")
+                Text("NCEA study companion. Lessons are drafts: check them against the cited sources.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            OutlinedButton(
+                onClick = onSignOut,
+                enabled = canSignOut,
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text("Sign out") }
+            if (signedIn && !canSignOut) Text("Finish or discard your exam answers before signing out.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ResourceHub(
+    base: String, token: String, subjects: JSONArray, topics: JSONArray, resources: JSONArray,
+    selected: Long, selectedTopic: Long, subjectTitle: String, topicTitle: String, topicSourceId: String,
+    refreshError: String, busy: Boolean,
+    subjectName: String, onSubjectName: (String) -> Unit, subjectLevel: String, onSubjectLevel: (String) -> Unit,
+    topicName: String, onTopicName: (String) -> Unit, showAddSubject: Boolean, onToggleAddSubject: () -> Unit,
+    onOpenSubject: (Long, String) -> Unit, onOpenTopic: (Long, String) -> Unit, onBack: () -> Unit,
+    onAddSubject: () -> Unit, onAddTopic: () -> Unit, onUpload: () -> Unit, uploadNotice: String, onRefresh: () -> Unit,
+    onExtract: (String, Boolean) -> Unit, onOpenPdf: (String) -> Unit, onClosePdf: () -> Unit,
+) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (selected != 0L) TextButton(enabled = !busy, onClick = onBack) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
+        when {
+            selected == 0L -> {
+                Text("Resource Hub", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                Text("Choose a subject to explore its topics and resources.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (subjects.length() == 0) StudyCard(tone = CardTone.Low) { Text("No subjects yet. Add one below to get started.") }
+                for (i in 0 until subjects.length()) {
+                    val subject = subjects.getJSONObject(i)
+                    Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container, modifier = Modifier.fillMaxWidth().clickable(enabled = !busy, onClickLabel = "Open ${subject.getString("name")}") { onOpenSubject(subject.getLong("id"), subject.getString("name")) }) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("NCEA LEVEL ${subject.getInt("level")}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(subject.getString("name"), style = MaterialTheme.typography.headlineSmall)
+                                Text("↗", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Text("Explore topics & resources", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                OutlinedButton(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), onClick = onToggleAddSubject) { Text(if (showAddSubject) "Cancel" else "+  Add a subject") }
+                if (showAddSubject) StudyCard(tone = CardTone.Low) {
+                    OutlinedTextField(subjectName, onSubjectName, label = { Text("New subject") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(subjectLevel, onSubjectLevel, label = { Text("NCEA level (1–3)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Button(enabled = !busy && subjectName.isNotBlank(), onClick = onAddSubject, shape = RoundedCornerShape(50)) { Text("Add subject") }
+                }
+            }
+            selectedTopic == 0L -> {
+                Text("$subjectTitle · Topics", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                Text("Choose a topic to open its resources and lessons.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                for (i in 0 until topics.length()) {
+                    val topic = topics.getJSONObject(i)
+                    Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container, modifier = Modifier.fillMaxWidth().clickable(enabled = !busy, onClickLabel = "Open ${topic.getString("name")}") { onOpenTopic(topic.getLong("id"), topic.getString("name")) }) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(topic.getString("name"), style = MaterialTheme.typography.titleMedium)
+                            Text("View resources →", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+                }
+                StudyCard(tone = CardTone.Low) {
+                    OutlinedTextField(topicName, onTopicName, label = { Text("New topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Button(enabled = !busy && topicName.isNotBlank(), onClick = onAddTopic, shape = RoundedCornerShape(50)) { Text("Add topic") }
+                }
+            }
+            else -> {
+                Text("$topicTitle · Resources", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                if (topicSourceId.isNotEmpty()) {
+                    TextButton(onClick = onClosePdf) { Text("‹ Close PDF") }
+                    SourceScreen(base, token, topicSourceId)
+                }
+                if (refreshError.isNotEmpty()) Text(refreshError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                if (uploadNotice.isNotEmpty()) StudyChip(uploadNotice, MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(enabled = !busy, onClick = onUpload, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text("Upload files") }
+                    OutlinedButton(enabled = !busy, onClick = onRefresh, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text("Refresh") }
+                }
+                if (resources.length() == 0) StudyCard(tone = CardTone.Low) { Text("No resources yet. Upload a PDF, slide deck or photo to begin.", style = MaterialTheme.typography.bodyMedium) }
+                for (i in 0 until resources.length()) {
+                    val item = resources.getJSONObject(i)
+                    val status = item.optString("display_status", item.getString("status"))
+                    StudyCard(tone = CardTone.Container) {
+                        Text(item.getString("filename"), style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                        StatusDot(when (item.optString("status")) {
+                            "extracted" -> LocalStudyColours.current.achieved
+                            "failed" -> MaterialTheme.colorScheme.error
+                            "pending", "extracting" -> LocalStudyColours.current.amber
+                            else -> LocalStudyColours.current.outline
+                        }, status)
+                        if (item.getString("filename").endsWith(".pdf", ignoreCase = true)) OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenPdf(item.getString("id")) }) { Text("Open PDF") }
+                        if (item.optString("status") == "failed") Text("Extraction failed. Retry to see the error.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        TextButton(enabled = !busy, onClick = { onExtract(item.getString("id"), item.optString("status") == "failed") }) { Text(if (item.optString("status") == "failed") "Retry extraction" else "Extract text") }
+                    }
+                }
+            }
+        }
+    }
 }

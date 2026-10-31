@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import os
 import secrets
@@ -190,7 +191,7 @@ def model_reply(model, messages, task="general", timeout=120):
     return _gateway_request(model, messages, task, timeout)
 
 
-def model_reply_reliable(model, messages, task="general", attempts=4, timeout=120):
+def model_reply_reliable(model, messages, task="general", attempts=6, timeout=120):
     """Retry a transient gateway failure (busy upstream) with growing backoff.
 
     Use this where a failure would cost the learner real work, such as question
@@ -434,6 +435,108 @@ def delete_note(topic_id: int, note_id: int):
         if not db.execute("DELETE FROM notes WHERE id = %s AND topic_id = %s RETURNING id", (note_id, topic_id)).fetchone():
             raise HTTPException(404, "Note not found")
     return {"status": "ok"}
+
+
+SUPPORTED_UPLOAD_SUFFIXES = {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".txt", ".md", ".html", ".png", ".jpg", ".jpeg"}
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
+def _safe_member_name(name: str) -> str:
+    """Basename of a zip entry, rejecting traversal and junk paths."""
+    cleaned = name.replace("\\", "/")
+    if cleaned.startswith("/") or ".." in cleaned.split("/"):
+        raise HTTPException(400, "Zip contains an unsafe path")
+    if cleaned.endswith("/"):
+        return ""
+    return cleaned.split("/")[-1]
+
+
+def _store_resource(db, directory: Path, topic_id: int, filename: str, data: bytes, category: str):
+    """Insert one uploaded file. Returns the same shape as the upload endpoint."""
+    suffix = Path(filename).suffix.lower()
+    sha256 = hashlib.sha256(data).hexdigest()
+    duplicate = db.execute(
+        "SELECT id, filename, size, status, category, page_count FROM resources WHERE topic_id = %s AND sha256 = %s AND status != 'deleting'",
+        (topic_id, sha256),
+    ).fetchone()
+    if duplicate:
+        return {
+            "id": str(duplicate[0]), "filename": duplicate[1], "size": duplicate[2],
+            "status": duplicate[3], "category": duplicate[4], "page_count": duplicate[5],
+            "display_status": display_status(duplicate[3]), "duplicate": True,
+        }
+    resource_id = uuid.uuid4()
+    (directory / str(resource_id)).write_bytes(data)
+    db.execute(
+        "INSERT INTO resources (id, topic_id, filename, size, status, category, sha256, mime) VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s)",
+        (resource_id, topic_id, filename, len(data), category, sha256, None),
+    )
+    return {"id": str(resource_id), "filename": filename, "size": len(data), "status": "pending",
+            "category": category, "page_count": 0, "display_status": "Queued", "duplicate": False,
+            "suffix": suffix}
+
+
+@app.post("/topics/{topic_id}/resources/batch", status_code=201, dependencies=[Depends(authorised)])
+def upload_resources_batch(topic_id: int, files: list[UploadFile] = File(...), category: str = Form("extra")):
+    """Upload several files, or one .zip holding several files, in a single request.
+
+    Every file becomes an ordinary queued resource, so the existing extraction
+    worker processes them one at a time with the usual statuses.
+    """
+    if category not in {"exam_paper", "exam_answers", "slides", "extra"}:
+        raise HTTPException(400, "Invalid resource category")
+    directory = Path(os.environ.get("UPLOAD_DIR", "/data/uploads"))
+    directory.mkdir(parents=True, exist_ok=True)
+    accepted, skipped, duplicates = [], [], 0
+    with connect() as db:
+        if not db.execute("SELECT 1 FROM topics WHERE id = %s FOR UPDATE", (topic_id,)).fetchone():
+            raise HTTPException(404, "Topic not found")
+        for upload in files:
+            filename = (upload.filename or "").replace("\\", "/").split("/")[-1]
+            try:
+                data = upload.file.read(MAX_UPLOAD_BYTES + 1)
+                if len(data) > MAX_UPLOAD_BYTES:
+                    raise HTTPException(413, f"{filename} exceeds 50 MiB")
+                if not data:
+                    raise HTTPException(400, f"{filename} is empty")
+                if filename.lower().endswith(".zip"):
+                    # Only plain files inside the zip are taken; nested zips and
+                    # unknown types are reported rather than silently dropped.
+                    with ZipFile(io.BytesIO(data)) as archive:
+                        members = [info for info in archive.infolist() if not info.is_dir()]
+                        if len(members) > 200 or sum(info.file_size for info in members) > 500 * 1024 * 1024:
+                            raise HTTPException(422, f"{filename} expands beyond the allowed size")
+                        for info in members:
+                            member = _safe_member_name(info.filename)
+                            if not member:
+                                continue
+                            if Path(member).suffix.lower() not in SUPPORTED_UPLOAD_SUFFIXES:
+                                skipped.append({"filename": member, "reason": "unsupported file type"})
+                                continue
+                            with archive.open(info) as handle:
+                                payload = handle.read(MAX_UPLOAD_BYTES + 1)
+                            if len(payload) > MAX_UPLOAD_BYTES:
+                                skipped.append({"filename": member, "reason": "exceeds 50 MiB"})
+                                continue
+                            stored = _store_resource(db, directory, topic_id, member, payload, category)
+                            if stored.pop("duplicate", False):
+                                duplicates += 1
+                            accepted.append(stored)
+                    continue
+                if Path(filename).suffix.lower() not in SUPPORTED_UPLOAD_SUFFIXES:
+                    skipped.append({"filename": filename, "reason": "unsupported file type"})
+                    continue
+                stored = _store_resource(db, directory, topic_id, filename, data, category)
+                if stored.pop("duplicate", False):
+                    duplicates += 1
+                accepted.append(stored)
+            except BadZipFile:
+                skipped.append({"filename": filename, "reason": "not a valid zip archive"})
+            except HTTPException as exc:
+                skipped.append({"filename": filename, "reason": str(exc.detail)})
+            finally:
+                upload.file.close()
+    return {"accepted": accepted, "skipped": skipped, "duplicates": duplicates, "queued": len(accepted) - duplicates}
 
 
 @app.post("/topics/{topic_id}/resources", status_code=201, dependencies=[Depends(authorised)])

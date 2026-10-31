@@ -16,7 +16,7 @@ def worker_router(connect, authorised):
     def retry_resource(resource_id: UUID):
         with connect() as db:
             row = db.execute(
-                "UPDATE resources SET status = 'pending' WHERE id = %s AND status = 'failed' RETURNING id",
+                "UPDATE resources SET status = 'pending', error = NULL WHERE id = %s AND status = 'failed' RETURNING id",
                 (resource_id,),
             ).fetchone()
             if row is None:
@@ -44,10 +44,11 @@ def process_one(connect, extract):
     resource_id = row[0]
     try:
         extract(resource_id)
-    except Exception:
+    except Exception as exc:
         logger.exception("Resource extraction failed: %s", resource_id)
         with connect() as db:
-            db.execute("UPDATE resources SET status = 'failed' WHERE id = %s AND status = 'extracting'", (resource_id,))
+            db.execute("UPDATE resources SET status = 'failed', error = %s WHERE id = %s AND status = 'extracting'",
+                       (str(exc)[:2000], resource_id))
     return True
 
 

@@ -4,8 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -60,58 +60,74 @@ fun ReviewScreen(base: String, token: String) {
         try { load() } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false }
     }
 
-    val navy = Color(0xFF001F6B)
-    val lavender = Color(0xFFF2F0FC)
-    Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Surface(color = lavender, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("DAILY REVIEW", color = navy, style = MaterialTheme.typography.labelMedium)
-                Text("Due reviews", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                OutlinedButton(enabled = !busy, onClick = { refresh() }) { Text("Refresh") }
+    val colours = LocalStudyColours.current
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        StudyCard(tone = CardTone.Container) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("DAILY REVIEW", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                    Text(if (loaded) "${questions.length()} due today" else "Loading…", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                }
+                StudyChip(if (questions.length() == 0 && loaded) "All clear" else "${questions.length()} due",
+                    if (questions.length() == 0 && loaded) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onErrorContainer,
+                    if (questions.length() == 0 && loaded) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.errorContainer)
+            }
+            Text("Answer from memory, then rate how confident you felt.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(enabled = !busy, onClick = { refresh() }, shape = RoundedCornerShape(50)) { Text("Refresh") }
             }
         }
-        if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+        if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (loaded && questions.length() == 0) Text("No reviews due.")
+        if (loaded && questions.length() == 0 && !busy) StudyCard(tone = CardTone.Low) {
+            Text("Nothing due right now", style = MaterialTheme.typography.titleMedium)
+            Text("Generate review questions for a topic, or come back tomorrow.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         for (i in 0 until questions.length()) {
             val question = questions.getJSONObject(i)
             val id = question.getLong("id")
             key(id) {
                 var answer by remember(base, token, id) { mutableStateOf("") }
                 var confidence by remember(base, token, id) { mutableIntStateOf(3) }
-                Surface(color = Color.White, shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
-                  Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Due ${question.getString("due_date")} · Topic ${question.getLong("topic_id")}", color = navy, style = MaterialTheme.typography.labelMedium)
-                Text(question.getString("question"), style = MaterialTheme.typography.titleMedium)
-                HorizontalDivider()
-                Text("Your working", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(answer, { answer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Your answer") }, enabled = !busy, minLines = 3)
-                Text("Self-assessment confidence: $confidence / 5", style = MaterialTheme.typography.labelLarge)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (level in 1..5) {
-                        if (level == confidence) {
-                            Button(enabled = !busy, onClick = { confidence = level }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = navy), contentPadding = PaddingValues(0.dp)) { Text("$level") }
-                        } else {
-                            OutlinedButton(enabled = !busy, onClick = { confidence = level }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) { Text("$level") }
+                StudyCard(tone = CardTone.Container) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("DUE ${question.getString("due_date")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                        Text("TOPIC ${question.getLong("topic_id")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    MathText(question.getString("question"), formulaStyle = true)
+                    MathField(answer, { answer = it }, label = "Your working", enabled = !busy, minLines = 3, maxLines = 10)
+                    Text("How confident are you? $confidence / 5", style = MaterialTheme.typography.labelMedium)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (level in 1..5) {
+                            val selectedLevel = level <= confidence
+                            Surface(
+                                onClick = { confidence = level },
+                                enabled = !busy,
+                                shape = RoundedCornerShape(50),
+                                color = if (selectedLevel) MaterialTheme.colorScheme.primary else colours.containerHighest,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Box(Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                                    Text("$level", style = MaterialTheme.typography.labelLarge, color = if (selectedLevel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
                         }
                     }
-                }
-                Button(modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = navy), enabled = !busy && answer.isNotBlank() && answer.length <= 50000, onClick = {
-                    scope.launch {
-                        busy = true; error = ""
-                        try {
-                            reviewRequest(base, "/review-questions/$id/answers", token, JSONObject().put("answer", answer.trim()).put("confidence", confidence))
-                            // Remove the submitted question immediately, even if a later refresh fails.
-                            val remaining = JSONArray()
-                            for (index in 0 until questions.length()) {
-                                val item = questions.getJSONObject(index)
-                                if (item.getLong("id") != id) remaining.put(item)
-                            }
-                            questions = remaining
-                        } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false }
-                    }
-                }) { Text("Submit answer") }
-                  }
+                    Button(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(50), enabled = !busy && answer.isNotBlank() && answer.length <= 50000, onClick = {
+                        scope.launch {
+                            busy = true; error = ""
+                            try {
+                                reviewRequest(base, "/review-questions/$id/answers", token, JSONObject().put("answer", answer.trim()).put("confidence", confidence))
+                                // Remove the submitted question immediately, even if a later refresh fails.
+                                val remaining = JSONArray()
+                                for (index in 0 until questions.length()) {
+                                    val item = questions.getJSONObject(index)
+                                    if (item.getLong("id") != id) remaining.put(item)
+                                }
+                                questions = remaining
+                            } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false }
+                        }
+                    }) { Text("Submit answer") }
                 }
             }
         }

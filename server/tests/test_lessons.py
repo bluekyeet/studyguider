@@ -18,18 +18,21 @@ class Database:
         pass
 
     def execute(self, sql, params=()):
-        if "FROM topics t LEFT JOIN style_profiles" in sql:
-            self.result = ("Use worked examples",) if params[0] == 1 else None
+        if "COALESCE(tp.content" in sql:
+            # Subject style plus topic override; this fixture uses a subject style only.
+            self.result = ("Use worked examples", "") if params[0] == 1 else None
+        elif "FROM courses c" in sql:
+            self.result = (7, 0, 0) if params[0] == 1 else None
         elif "FROM review_questions" in sql:
             self.result = []
         elif "FROM resources WHERE id = ANY" in sql:
             self.result = [(value,) for value in params[0]]
         elif "INSERT INTO lessons" in sql:
             (topic, query, lesson, review, status, sources, standards,
-             review_focus, verdict) = params
+             review_focus, verdict, course_id, stage) = params
             self.rows.append((len(self.rows) + 1, topic, query, lesson, review, status,
                               json.loads(sources), json.loads(standards),
-                              json.loads(review_focus), verdict, 1, "2026-01-01"))
+                              json.loads(review_focus), verdict, 1, "2026-01-01", course_id, stage))
             self.result = self.rows[-1]
         elif "SELECT 1 FROM topics" in sql:
             self.result = (1,) if params[0] == 1 else None
@@ -86,7 +89,7 @@ def test_generation_snapshot_and_history():
     assert item["version"] == 1
     assert len(item["sources"][0]["content"]) == 4000
     assert json.loads(calls[0][1][1]["content"])["evidence"]["sources"] == item["sources"]
-    assert json.loads(calls[0][1][1]["content"])["teaching_style"] == "Use worked examples"
+    assert json.loads(calls[0][1][1]["content"])["teaching_style"] == "Subject teaching style:\nUse worked examples"
     source["content"] = "changed"
     assert client.get("/lessons/1").json() == item
     assert client.get("/topics/1/lessons").json() == [item]

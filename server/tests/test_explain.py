@@ -20,7 +20,11 @@ class Database:
         pass
 
     def execute(self, sql, params):
-        assert "FROM lessons WHERE id = %s" in sql
+        if "COALESCE(tp.content" in sql:
+            # Subject style plus topic override lookup; tests use none.
+            self.found = ("", "")
+            return self
+        assert "FROM lessons l WHERE l.id = %s" in sql
         self.found = self.row if params == (1,) else None
         return self
 
@@ -51,7 +55,7 @@ def test_explanation_uses_saved_snapshots_and_warns():
     assert calls[0][0] == "education"
     payload = json.loads(calls[0][1][1]["content"])
     assert payload == {"question": "Why?", "lesson_query": "query", "lesson": "unverified draft",
-                       "sources": sources, "standards": [{"number": "1"}]}
+                       "sources": sources, "standards": [{"number": "1"}], "teaching_style": ""}
     assert "not evidence" in calls[0][1][0]["content"]
 
 

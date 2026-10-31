@@ -13,7 +13,7 @@ ROW = (
     "Achieved: Correct change in momentum.",
     "paper-id", 2, "Paper page text",
     "schedule-id", 3, "Achieved: Correct change in momentum. Merit: Correct force.",
-    "Demonstrate understanding of mechanics.", "Mechanics", "Physics",
+    "Demonstrate understanding of mechanics.", "Mechanics", "Physics", 2,
 )
 
 
@@ -55,6 +55,9 @@ class DB:
 
     def execute(self, sql, params=()):
         self.queries.append((sql, params))
+        if "COALESCE(tp.content" in sql:
+            # Subject style plus topic override; this fixture uses neither.
+            return Result(("", ""))
         if "resource_pages paper" in sql:
             return Result(self.row)
         if "marking_overrides" in sql and "FROM exam_items i JOIN exam_questions q" in sql:
