@@ -1,3 +1,4 @@
+import json
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -52,10 +53,13 @@ def setup_client():
 
 
 def sample():
-    return {"topic_id": 1, "standard_number": 12345, "year": 2020,
+    return {"topic_id": 1, "standard_number": 91171, "year": 2017,
             "question_number": "1(a)", "paper_resource_id": str(uuid4()),
             "paper_page": 2, "schedule_resource_id": str(uuid4()),
-            "schedule_page": 1, "verified_against_originals": True}
+            "schedule_page": 1, "marks": 15,
+            "question_text": "Calculate the change in momentum.",
+            "schedule_text": "Achieved: Correct change in momentum.",
+            "verified_against_originals": True}
 
 
 def test_auth_and_manual_registration():
@@ -89,15 +93,18 @@ def test_verification_and_resource_checks():
 class WorkflowDatabase(Database):
     def __init__(self):
         super().__init__()
-        self.questions = {1: (1, 1, 12345, 2020, "1(a)", str(uuid4()), 2, str(uuid4()), 1, "2026-01-01T00:00:00Z")}
+        self.questions = {
+            1: (1, 1, 91171, 2017, "1(a)", "paper", 2, "schedule", 1,
+                "2026-01-01T00:00:00Z", 15, json.dumps([]), "Question", "Schedule", json.dumps([])),
+        }
         self.exams = {}
 
     def execute(self, sql, params=()):
         if "FROM exams e LEFT JOIN exam_items" in sql:
-            return Result([(exam_id, "2026-01-01T00:00:00Z", len(items))
+            return Result([(exam_id, "2026-01-01T00:00:00Z", len(items), None, "manual", 15)
                            for exam_id, items in sorted(self.exams.items())])
-        if "SELECT id FROM exam_questions WHERE id = ANY" in sql:
-            return Result([(i,) for i in params[0] if i in self.questions])
+        if "SELECT id, marks FROM exam_questions WHERE id = ANY" in sql:
+            return Result([(i, 15) for i in params[0] if i in self.questions])
         if "INSERT INTO exams" in sql:
             self.exams[1] = []
             return Result([(1, "2026-01-01T00:00:00Z")])
@@ -110,10 +117,15 @@ class WorkflowDatabase(Database):
                     item[2] = params[0]
                     return Result([(item[0],)])
             return Result([])
-        if "SELECT id, created_at FROM exams" in sql:
-            return Result([(params[0], "2026-01-01T00:00:00Z")] if params[0] in self.exams else [])
+        if "SELECT id, created_at, subject_id, kind, total_marks FROM exams" in sql:
+            return Result([(params[0], "2026-01-01T00:00:00Z", None, "manual", 15)]
+                          if params[0] in self.exams else [])
         if "FROM exam_items i JOIN exam_questions" in sql:
-            return Result([self.questions[item[0]] + (item[1], item[2]) for item in self.exams[params[0]]])
+            rows = []
+            for item in self.exams[params[0]]:
+                question = self.questions[item[0]]
+                rows.append(question[:10] + (item[1], item[2]) + question[10:])
+            return Result(rows)
         return super().execute(sql, params)
 
 
@@ -128,13 +140,14 @@ def test_exam_workflow_and_missing_questions():
     assert client.post("/exams", json={"question_ids": [1, 999]}).status_code == 404
     assert not db.exams
     assert client.post("/exams", json={"question_ids": [1]}).status_code == 201
-    assert client.get("/exams").json() == [{"id": 1, "created_at": "2026-01-01T00:00:00Z", "question_count": 1}]
+    listed = client.get("/exams").json()
+    assert listed[0]["question_count"] == 1 and listed[0]["total_marks"] == 15
     assert client.put("/exams/1/answers/999", json={"answer": "x"}).status_code == 404
     assert client.put("/exams/1/answers/1", json={"answer": "My answer"}).status_code == 200
     question = client.get("/exams/1").json()["questions"][0]
     assert question["answer"] == "My answer"
     assert question["paper_page"] == 2 and question["schedule_page"] == 1
-    assert "mark" not in question
+    assert question["marks"] == 15
     assert client.get("/exams/2").status_code == 404
 
 

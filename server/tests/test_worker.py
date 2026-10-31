@@ -39,7 +39,7 @@ class Database:
                     return Result((key,))
             return Result()
         if "status = 'failed'" in query:
-            key = params[0]
+            key = params[-1]
             if self.statuses.get(key) == "extracting":
                 self.statuses[key] = "failed"
             return Result()

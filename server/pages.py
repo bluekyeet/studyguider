@@ -32,6 +32,8 @@ def page_router(connect, authorised):
             cached = CACHE.get(key)
         if cached is None:
             path = Path(f"/data/uploads/{resource_id}")
+            if not path.is_file():
+                raise HTTPException(404, "Stored file missing; restore from backup")
             try:
                 with pymupdf.open(path) as document:
                     if page < 1 or page > document.page_count:

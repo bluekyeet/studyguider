@@ -17,7 +17,7 @@ HEADING = re.compile(r"QUESTION\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|
 # A part label followed by its printed mark total, for example "(a) 3 marks" or "(b) (i) 2 marks".
 PART_MARKS = re.compile(r"\(([a-z])\)(?:\s*\(([ivx]+)\))?\s*(\d{1,3})\s*marks?\b", re.IGNORECASE)
 PART = re.compile(r"\(([a-z])\)", re.IGNORECASE)
-QUESTION_TOTAL = re.compile(r"QUESTION\s+(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN|\d+)[^\n]{0,40}?\b(\d{1,3})\s+marks?\b", re.IGNORECASE)
+QUESTION_TOTAL = re.compile(r"QUESTION\s+(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN|\d+)[\s\S]{0,200}?\b(\d{1,3})\s+marks?\b", re.IGNORECASE)
 DEFAULT_MARKS = {"91170": 15, "91171": 15, "91173": 15, "91164": 15, "91165": 15, "91166": 15}
 
 
@@ -164,7 +164,8 @@ def _schedule_for(schedule, number):
                     continue
                 line_end = text.find("\n", match.end())
                 remainder = text[match.end():line_end if line_end != -1 else len(text)]
-                if re.match(r"\s*(?:\([a-z]\)|\([ivx]+\)|[.:—–-])", remainder):
+                # A heading either introduces parts or owns its line outright.
+                if not remainder.strip() or re.match(r"\s*(?:\([a-z]\)|\([ivx]+\)|[.:—–-])", remainder):
                     return page, text
     return (schedule[0][0] if schedule else 1), (schedule[0][1] if schedule else "")
 

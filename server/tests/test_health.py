@@ -18,11 +18,14 @@ class HealthTest(unittest.TestCase):
     def test_gateway_requests_non_streaming_json(self):
         response = MagicMock()
         response.read.return_value = b'{"choices":[{"message":{"content":"hello"}}]}'
-        with patch.dict("os.environ", {"ROUTER_BASE_URL": "https://example.invalid/v1", "ROUTER_API_KEY": "test"}), patch("app.urllib.request.urlopen") as urlopen:
+        with patch.dict("os.environ", {"ROUTER_BASE_URL": "https://example.invalid/v1", "ROUTER_API_KEY": "test"}), \
+                patch("app.urllib.request.urlopen") as urlopen, patch("app.log_run") as log_run:
             urlopen.return_value.__enter__.return_value = response
             self.assertEqual(model_reply("education", [{"role": "user", "content": "hi"}]), "hello")
             import json
             self.assertIs(json.loads(urlopen.call_args.args[0].data)["stream"], False)
+            log_run.assert_called_once()
+            self.assertEqual(log_run.call_args.args[0], "general")
 
     def test_health(self):
         self.assertEqual(health(), {"status": "ok"})
@@ -57,7 +60,7 @@ class HealthTest(unittest.TestCase):
             path = Path(directory) / str(resource_id)
             path.write_bytes(b"existing")
             with self.assertRaises(FileExistsError):
-                upload_resource(1, UploadFile(filename="new.txt", file=io.BytesIO(b"new")))
+                upload_resource(1, UploadFile(filename="new.txt", file=io.BytesIO(b"new")), category="extra")
             self.assertEqual(path.read_bytes(), b"existing")
 
     def test_subject_and_topic_validation(self):

@@ -24,6 +24,9 @@ class Database:
         self.found = self.row if params == (1,) else None
         return self
 
+    def fetchall(self):
+        return []
+
     def fetchone(self):
         return self.found
 
@@ -37,10 +40,10 @@ def client_for(row, reply, authorised=lambda: None):
 def test_explanation_uses_saved_snapshots_and_warns():
     sources = [{"resource_id": "abc", "page": 2, "content": "saved evidence"}]
     calls = []
-    def reply(model, messages):
+    def reply(model, messages, task="general"):
         calls.append((model, messages))
         return "Explanation [abc, page 2]"
-    client = client_for(("query", "unverified draft", sources, [{"number": "1"}]), reply)
+    client = client_for((1, "query", "unverified draft", sources, [{"number": "1"}]), reply)
     response = client.post("/lessons/1/explain", json={"question": " Why? "})
     assert response.status_code == 200
     assert response.json()["status"] == "draft"
@@ -53,16 +56,16 @@ def test_explanation_uses_saved_snapshots_and_warns():
 
 
 def test_errors_and_authorisation():
-    row = ("query", "lesson", [{"content": "evidence"}], [])
-    client = client_for(row, lambda *_: " ")
+    row = (1, "query", "lesson", [{"content": "evidence"}], [])
+    client = client_for(row, lambda *args, **kwargs: " ")
     assert client.post("/lessons/2/explain", json={"question": "Why?"}).status_code == 404
     assert client.post("/lessons/1/explain", json={"question": "   "}).status_code == 422
     assert client.post("/lessons/1/explain", json={"question": "Why?"}).status_code == 502
-    assert client_for(("q", "l", [], []), lambda *_: "answer").post(
+    assert client_for((1, "q", "l", [], []), lambda *args, **kwargs: "answer").post(
         "/lessons/1/explain", json={"question": "Why?"}).status_code == 422
-    assert client_for(row, lambda *_: "x" * 100001).post(
+    assert client_for(row, lambda *args, **kwargs: "x" * 100001).post(
         "/lessons/1/explain", json={"question": "Why?"}).status_code == 502
     def deny():
         raise HTTPException(401, "Unauthorised")
-    assert client_for(row, lambda *_: "answer", deny).post(
+    assert client_for(row, lambda *args, **kwargs: "answer", deny).post(
         "/lessons/1/explain", json={"question": "Why?"}).status_code == 401

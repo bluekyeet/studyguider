@@ -18,7 +18,8 @@ class ReviewGenerationTests(unittest.TestCase):
     def test_grounded_draft(self):
         result = self.endpoint(3, ReviewGeneration(query=" osmosis "))
         self.assertEqual(result["status"], "generated")
-        self.assertEqual(result["questions"], ["What is osmosis?"])
+        self.assertEqual(result["questions"][0]["question"], "What is osmosis?")
+        self.assertEqual(result["questions"][0]["expected_answer"], "")
         self.assertEqual(result["sources"][0]["page"], 2)
         self.search.assert_called_once_with(3, "osmosis")
         messages = self.model.call_args.args[1]

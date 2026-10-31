@@ -17,28 +17,36 @@ class Database:
     def __exit__(self, *args):
         pass
 
-    def execute(self, sql, params):
-        if "SELECT id FROM lessons" in sql:
-            self.result = (params[0],) if any(r[0] == params[0] for r in self.rows) else None
-        elif "UPDATE lesson_schedule_runs" in sql:
-            self.result = None
-        elif "DELETE FROM lessons" in sql:
-            self.rows = [r for r in self.rows if r[0] != params[0]]
+    def execute(self, sql, params=()):
+        if "FROM topics t LEFT JOIN style_profiles" in sql:
+            self.result = ("Use worked examples",) if params[0] == 1 else None
+        elif "FROM review_questions" in sql:
+            self.result = []
         elif "FROM resources WHERE id = ANY" in sql:
             self.result = [(value,) for value in params[0]]
-        elif "FROM topics t LEFT JOIN style_profiles" in sql:
-            self.result = ("Use worked examples",) if params[0] == 1 else None
         elif "INSERT INTO lessons" in sql:
-            topic, query, lesson, review, status, sources, standards = params
+            (topic, query, lesson, review, status, sources, standards,
+             review_focus, verdict) = params
             self.rows.append((len(self.rows) + 1, topic, query, lesson, review, status,
-                              json.loads(sources), json.loads(standards), "2026-01-01"))
+                              json.loads(sources), json.loads(standards),
+                              json.loads(review_focus), verdict, 1, "2026-01-01"))
             self.result = self.rows[-1]
         elif "SELECT 1 FROM topics" in sql:
             self.result = (1,) if params[0] == 1 else None
-        elif "WHERE topic_id" in sql:
+        elif "FROM lessons WHERE topic_id" in sql:
             self.result = [r for r in reversed(self.rows) if r[1] == params[0]][params[2]:params[2] + params[1]]
-        else:
+        elif "UPDATE lesson_schedule_runs" in sql:
+            self.result = None
+        elif "DELETE FROM lessons" in sql:
+            found = [r for r in self.rows if r[0] == params[0]]
+            self.rows = [r for r in self.rows if r[0] != params[0]]
+            self.result = (params[0],) if found else None
+        elif "SELECT id FROM lessons WHERE id" in sql:
+            self.result = (params[0],) if any(r[0] == params[0] for r in self.rows) else None
+        elif "FROM lessons WHERE id" in sql:
             self.result = next((r for r in self.rows if r[0] == params[0]), None)
+        else:
+            raise AssertionError(sql)
         return self
 
     def fetchone(self):
@@ -51,23 +59,31 @@ class Database:
 def setup(reply, sources=None):
     db = Database()
     app = FastAPI()
-    source = {"resource_id": "abc", "filename": "source.pdf", "page": 2, "content": "x" * 5000}
-    app.include_router(lesson_router(lambda: db, lambda: None, reply,
+    source = {"resource_id": "abc", "filename": "source.pdf", "page": 2,
+              "standard_number": 91171, "content": "x" * 5000}
+    def model(model_name, messages, task="general"):
+        return reply(model_name, messages)
+
+    app.include_router(lesson_router(lambda: db, lambda: None, model,
         lambda topic, q: [source] if sources is None else sources,
-        lambda topic: [{"number": 1, "title": "Standard", "description": "description"}]))
+        lambda topic: [{"number": 91171, "title": "Standard", "description": "description"}]))
     return TestClient(app), db, source
 
 
 def test_generation_snapshot_and_history():
     calls = []
-    def reply(model, messages):
-        calls.append((model, messages))
+
+    def reply(model, messages, task="general"):
+        calls.append((model, messages, task))
         return "draft" if model == "education" else "check citations"
+
     client, db, source = setup(reply)
     response = client.post("/topics/1/lessons", json={"query": " algebra "})
     assert response.status_code == 201
     item = response.json()
     assert item["status"] == "draft" and item["review_status"] == "completed"
+    assert item["reviewer_verdict"] == "completed"
+    assert item["version"] == 1
     assert len(item["sources"][0]["content"]) == 4000
     assert json.loads(calls[0][1][1]["content"])["evidence"]["sources"] == item["sources"]
     assert json.loads(calls[0][1][1]["content"])["teaching_style"] == "Use worked examples"
@@ -83,10 +99,11 @@ def test_generation_snapshot_and_history():
 
 
 def test_review_failure_keeps_draft():
-    def reply(model, messages):
+    def reply(model, messages, task="general"):
         if model == "education-reviewer":
             raise HTTPException(502, "failed")
         return "draft"
+
     client, _, _ = setup(reply)
     item = client.post("/topics/1/lessons", json={"query": "test"}).json()
     assert item["review"] is None and item["review_status"] == "unavailable"
@@ -102,3 +119,12 @@ def test_generation_errors_do_not_save():
     assert client.post("/topics/1/lessons", json={"query": "test"}).status_code == 502
     assert client.post("/topics/1/lessons", json={"query": "   "}).status_code == 422
     assert not db.rows
+
+
+def test_reviewer_endpoint_is_advisory():
+    client, _, _ = setup(lambda *_: "review text")
+    response = client.post("/review/lesson", json={"lesson": "draft", "evidence": [],
+                                                   "standards": []})
+    assert response.status_code == 200
+    assert response.json()["status"] == "reviewed"
+    assert "advisory" in response.json()["warning"]

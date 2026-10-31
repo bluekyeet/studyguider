@@ -19,7 +19,10 @@ class Result:
 
 class Database:
     def __init__(self):
-        self.questions = {1: [1, 2, 3], 2: [4]}
+        self.questions = {
+            1: [(1, "91171", 5), (2, "91171", 5), (3, "91170", 5), (4, "91173", 5)],
+            2: [(5, "91164", 5)],
+        }
         self.exams = []
 
     def execute(self, sql, params=()):
@@ -29,7 +32,10 @@ class Database:
             return Result([(1,)] if params[0] in self.questions else [])
         if "FROM exam_questions q" in sql:
             used = {q: index for index, exam in enumerate(self.exams, 1) for q in exam}
-            return Result([(q,) for q in sorted(self.questions[params[0]], key=lambda q: (used.get(q, 0), q))])
+            rows = [(q, standard, marks, used.get(q, 0))
+                    for q, standard, marks in self.questions[params[0]]]
+            rows.sort(key=lambda row: (row[3], row[0]))
+            return Result(rows)
         if sql.startswith("INSERT INTO exams"):
             self.exams.append([])
             return Result([(len(self.exams), "now")])
@@ -50,15 +56,23 @@ class MonthlyExamTests(unittest.TestCase):
         router = exam_router(connect, lambda: None)
         self.create = next(route.endpoint for route in router.routes if route.path == "/exams/monthly")
 
-    def test_selection_and_shortage(self):
-        request = MonthlyExam(subject_id=1, question_count=2)
-        self.assertEqual(self.create(request)["question_ids"], [1, 2])
-        self.assertEqual(self.create(request)["question_ids"], [3, 1])
-        self.assertEqual(self.create(MonthlyExam(subject_id=2, question_count=1))["question_ids"], [4])
+    def test_selection_covers_standards_and_avoids_repeats(self):
+        first = self.create(MonthlyExam(subject_id=1, question_count=2))
+        self.assertEqual(len(first["question_ids"]), 2)
+        self.assertEqual(len(first["standards"]), 2)
+        self.assertEqual(first["total_marks"], 10)
+
+        second = self.create(MonthlyExam(subject_id=1, question_count=2))
+        self.assertEqual(len(second["question_ids"]), 2)
+        self.assertFalse(set(first["question_ids"]) & set(second["question_ids"]))
+
+        single = self.create(MonthlyExam(subject_id=2, question_count=1))
+        self.assertEqual(single["question_ids"], [5])
+
         with self.assertRaises(HTTPException) as error:
-            self.create(MonthlyExam(subject_id=1, question_count=4))
-        self.assertEqual(error.exception.detail["available"], 3)
-        self.assertEqual(len(self.db.exams), 3)
+            self.create(MonthlyExam(subject_id=1, question_count=5))
+        self.assertEqual(error.exception.detail["available"], 4)
+
         with self.assertRaises(HTTPException) as error:
             self.create(MonthlyExam(subject_id=99, question_count=1))
         self.assertEqual(error.exception.status_code, 404)
