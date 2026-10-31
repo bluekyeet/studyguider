@@ -3,6 +3,7 @@ import json
 import os
 import http.client
 import io
+import time
 import urllib.error
 import urllib.request
 
@@ -25,7 +26,7 @@ def request(method, path, data=None, token=None):
         headers["Authorization"] = "Bearer " + token
     req = urllib.request.Request("http://api:8000" + path, data=None if data is None else json.dumps(data).encode(), headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=5) as response:
             return response.status, json.load(response)
     except urllib.error.HTTPError as response:
         return response.code, json.load(response)
@@ -100,6 +101,28 @@ for filename, content, expected in [("sample.docx", doc_bytes.getvalue(), "Chemi
     assert request("POST", f'/resources/{doc_resource["id"]}/extract', token=token)[0] == 200
     assert expected in request("GET", f'/resources/{doc_resource["id"]}/pages', token=token)[1][0]["content"]
     assert request("DELETE", f'/resources/{doc_resource["id"]}', token=token)[0] == 200
+payload = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="automatic.txt"\r\nContent-Type: text/plain\r\n\r\nautomatic worker example\r\n--{boundary}--\r\n').encode()
+upload = urllib.request.Request(f'http://api:8000/topics/{topic["id"]}/resources', data=payload, headers={"Authorization": "Bearer " + token, "Content-Type": "multipart/form-data; boundary=" + boundary}, method="POST")
+with urllib.request.urlopen(upload, timeout=5) as response:
+    automatic_resource = json.load(response)
+    assert response.status == 201
+automatic_id = automatic_resource["id"]
+deadline = time.monotonic() + 30
+while True:
+    status, resources = request("GET", f'/topics/{topic["id"]}/resources', token=token)
+    assert status == 200
+    matches = [item for item in resources if item["id"] == automatic_id]
+    assert len(matches) == 1, f"Automatic resource {automatic_id} disappeared"
+    state = matches[0]["status"]
+    assert state in ("pending", "extracting", "extracted"), f"Automatic extraction ended in {state}"
+    if state == "extracted":
+        break
+    remaining = deadline - time.monotonic()
+    assert remaining > 0, f"Automatic extraction timed out in {state}"
+    time.sleep(min(0.25, remaining))
+assert request("GET", f'/resources/{automatic_id}/text', token=token) == (200, {"content": "automatic worker example"})
+assert request("GET", f'/resources/{automatic_id}/pages', token=token) == (200, [{"page": 1, "content": "automatic worker example"}])
+assert request("DELETE", f'/resources/{automatic_id}', token=token)[0] == 200
 assert request("DELETE", base + "/topics/" + str(topic["id"]), token=token)[0] == 409
 # Keep the resource and topic: this check uses a disposable database and volume.
 assert request("DELETE", base, token=token)[0] == 409

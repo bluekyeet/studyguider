@@ -166,6 +166,13 @@
           <button id="refresh-runs" class="secondary" type="button">Reload saved settings and run status</button>
           <p id="schedule-status" role="status" aria-live="polite"></p><ul id="schedule-runs"></ul>
         </section>
+        <section class="card wide" aria-labelledby="review-drafts-heading">
+          <div class="section-heading"><span class="section-number">11</span><h2 id="review-drafts-heading">Review question drafts</h2></div>
+          <p class="hint">Generating uses AI: matching resource excerpts are sent to the configured external education model provider. Drafts may be wrong; compare them with the sources and edit before approving each question. Nothing is saved automatically.</p>
+          <form id="generate-review"><label for="review-query">Search terms for the selected topic</label><input id="review-query" maxlength="200" required><button id="generate-review-button">Generate drafts</button></form>
+          <h3>Source excerpts</h3><ul id="review-sources"></ul>
+          <h3>Drafts to approve</h3><ul id="review-drafts"></ul>
+        </section>
       </div>
     </main>
   </div>
@@ -268,7 +275,7 @@
       token = result.token; $('password').value = ''; $('login').hidden = true; $('manager').hidden = false;
       await loadSubjects(); await loadStandards(); await loadExamQuestions();
     });
-    $('logout').onclick = run(async () => { await api('/logout', { method: 'POST' }); token = ''; $('manager').hidden = true; $('login').hidden = false; $('verified').checked = false; $('exam-view').replaceChildren(); $('exam-questions').replaceChildren(); });
+    $('logout').onclick = run(async () => { await api('/logout', { method: 'POST' }); token = ''; $('manager').hidden = true; $('login').hidden = false; $('verified').checked = false; $('exam-view').replaceChildren(); $('exam-questions').replaceChildren(); $('review-drafts').replaceChildren(); $('review-sources').replaceChildren(); });
     $('add-subject').onsubmit = run(async () => { await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; await loadSubjects(); });
     $('subjects').onchange = run(loadTopics);
     $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; await loadTopics(); });
@@ -406,6 +413,50 @@
       await loadSchedule(); message('Schedule saved.');
     });
     $('refresh-runs').onclick = run(loadSchedule);
+    let reviewSaveInFlight = false;
+    $('generate-review').onsubmit = run(async () => {
+      const topic = $('topics').value, query = $('review-query').value.trim();
+      if (!topic || !query) throw new Error('Select a topic and enter search terms first');
+      if (!confirm('Send matching resource excerpts to the configured external education model provider to generate AI drafts?')) return;
+      const button = $('generate-review-button');
+      if (button.disabled) return;
+      button.disabled = true;
+      try {
+        const result = await api(`/topics/${topic}/review-questions/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
+        if (topic !== $('topics').value) throw new Error('Topic changed; drafts discarded. Generate again for the selected topic.');
+        $('review-sources').replaceChildren(); $('review-drafts').replaceChildren();
+        for (const source of result.sources) {
+          const item = document.createElement('li'), title = document.createElement('strong'), text = document.createElement('p');
+          title.textContent = `${source.filename}, reference ${source.page} (resource ${source.resource_id})`;
+          text.textContent = source.content; text.style.whiteSpace = 'pre-wrap'; item.append(title, text); $('review-sources').append(item);
+        }
+        for (const question of result.questions) {
+          const item = document.createElement('li'), label = document.createElement('label'), input = document.createElement('textarea'), save = document.createElement('button');
+          label.textContent = 'Review and edit question'; input.value = question; input.maxLength = 5000; input.rows = 3; label.append(input);
+          save.type = 'button'; save.textContent = 'Approve and save to queue';
+          save.onclick = run(async () => {
+            if (save.disabled || reviewSaveInFlight) return;
+            if (topic !== $('topics').value) throw new Error('Select the original topic before saving this draft');
+            const question = input.value.trim();
+            if (!question || question.length > 5000) throw new Error('Enter a question of up to 5000 characters');
+            save.disabled = true; reviewSaveInFlight = true;
+            try {
+              // ponytail: client-side duplicate checks can race; add a server constraint for concurrent saves.
+              const existing = await api('/review-questions/due?as_of=9999-12-31');
+              if (existing.some(q => String(q.topic_id) === topic && q.question.trim().toLocaleLowerCase() === question.toLocaleLowerCase())) throw new Error('This question is already in the queue for this topic');
+              const now = new Date();
+              const due_date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+              try {
+                await api(`/topics/${topic}/review-questions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, due_date }) });
+              } catch (error) { throw new Error(`${error.message}. The save may have succeeded; check the queue before retrying.`); }
+              input.disabled = true; save.textContent = 'Saved to queue'; message('Approved question saved to the queue.');
+            } finally { reviewSaveInFlight = false; if (!input.disabled) save.disabled = false; }
+          });
+          item.append(label, save); $('review-drafts').append(item);
+        }
+        message(result.warning);
+      } finally { button.disabled = false; }
+    });
   </script>
 </body>
 </html>

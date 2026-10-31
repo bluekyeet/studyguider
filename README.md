@@ -38,6 +38,9 @@ topic. Saving an existing number replaces its title and notes.
 The API also supports manually created review questions and recorded answers
 with confidence-based rescheduling. Confidence is self-assessed, not AI marking;
 review history prevents topic deletion.
+The web manager and Android app can generate review-question drafts from
+matching resources. Check and approve each question before adding it to the queue;
+generation sends source excerpts to the configured model provider.
 
 ## Android preview
 

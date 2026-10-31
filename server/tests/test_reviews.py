@@ -29,6 +29,7 @@ class ReviewTests(unittest.TestCase):
         self.assertIn('FOR UPDATE', calls[0].args[0])
         self.assertEqual(calls[1].args[1], (7, 'answer', 4))
         self.assertEqual(calls[2].args[1], (16, 16, 7))
+        self.assertIn("Pacific/Auckland", calls[2].args[0])
 
     def test_validation(self):
         self.assertEqual(ReviewQuestion(question="Why?", due_date="2026-10-31").due_date, date(2026, 10, 31))

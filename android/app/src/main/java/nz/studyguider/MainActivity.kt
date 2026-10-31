@@ -216,7 +216,11 @@ private fun StudyApp() {
             }
           }
           1 -> if (selectedTopic != 0L) LessonScreen(base, token, selectedTopic) else Text("Choose a topic in Study to create a lesson.", Modifier.padding(20.dp))
-          2 -> ReviewScreen(base, token)
+          2 -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp)) {
+              if (selectedTopic != 0L) ReviewDraftScreen(base, token, selectedTopic)
+              else Text("Choose a topic in Study to generate review questions.")
+              ReviewScreen(base, token)
+          }
           3 -> Column(Modifier.fillMaxSize()) {
             Column(Modifier.padding(20.dp)) {
             OutlinedTextField(examId, { examId = it }, label = { Text("Open exam ID") }, singleLine = true)

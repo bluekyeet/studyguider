@@ -57,7 +57,7 @@ def review_router(connect, authorised):
                 raise HTTPException(404, "Review question not found")
             row = db.execute("INSERT INTO review_answers (question_id, answer, confidence) VALUES (%s, %s, %s) RETURNING id, answered_at", (question_id, body.answer.strip(), body.confidence)).fetchone()
             interval = next_interval(question[0], body.confidence)
-            db.execute("UPDATE review_questions SET interval_days = %s, due_date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date + %s WHERE id = %s", (interval, interval, question_id))
+            db.execute("UPDATE review_questions SET interval_days = %s, due_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date + %s WHERE id = %s", (interval, interval, question_id))
         return {"id": row[0], "question_id": question_id, "answer": body.answer.strip(), "confidence": body.confidence, "answered_at": row[1]}
 
     @router.get("/review-questions/{question_id}/answers")
