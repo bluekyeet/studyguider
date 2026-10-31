@@ -47,11 +47,10 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Current blockers and design caveats
 
-- The acceptance data path in the request is still the literal placeholder
-  `[PATH TO MY LOCAL DATA FOLDER, outside the repo]`; no papers, schedules or
-  slides have been supplied for the required six-standard run.
-- Real 9Router endpoint/credentials and the deployed tunnel/domain are not
-  provided in the request. Do not record secrets or private material here.
+- The user identified a local acceptance-data folder; it is inside the workspace
+  rather than outside the repository. Keep its contents untracked and private.
+- The user will enter the 9Router endpoint and key in the ignored `.env` file.
+  The tunnel/domain acceptance test is explicitly deferred by the user.
 - `AGENTS.md` is absent; `DESIGN.md` and `writeup.md` were read.
 - The existing application is a prototype; its advisory model feedback does not
   establish deterministic marking or official NZQA grades. Low temperature alone

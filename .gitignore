@@ -8,6 +8,7 @@ __pycache__/
 uploads/
 *.db
 shots/
+drive-download-*/
 *.pem
 *.key
 *.jks
