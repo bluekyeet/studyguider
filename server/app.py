@@ -29,6 +29,7 @@ from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
 from worker import start_worker, worker_router
 from explain import explain_router
 from review_generation import review_generation_router
+from styles import create_style_tables, style_router
 
 
 def connect():
@@ -41,6 +42,7 @@ async def lifespan(app):
         db.execute("CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS sessions (token_hash text PRIMARY KEY, expires timestamptz NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS subjects (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name text NOT NULL, level integer NOT NULL CHECK (level BETWEEN 1 AND 3))")
+        create_style_tables(db)
         db.execute("CREATE TABLE IF NOT EXISTS topics (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, subject_id bigint NOT NULL REFERENCES subjects(id) ON DELETE CASCADE, name text NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS resources (id uuid PRIMARY KEY, topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT, filename text NOT NULL, size bigint NOT NULL, status text NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS resource_text (resource_id uuid PRIMARY KEY REFERENCES resources(id) ON DELETE CASCADE, content text NOT NULL)")
@@ -143,6 +145,7 @@ app.include_router(review_router(connect, authorised))
 app.include_router(exam_router(connect, authorised))
 app.include_router(scheduler_router(connect, authorised))
 app.include_router(worker_router(connect, authorised))
+app.include_router(style_router(connect, authorised))
 
 
 @app.get("/health")

@@ -18,7 +18,9 @@ class Database:
         pass
 
     def execute(self, sql, params):
-        if "INSERT INTO lessons" in sql:
+        if "FROM topics t LEFT JOIN style_profiles" in sql:
+            self.result = ("Use worked examples",) if params[0] == 1 else None
+        elif "INSERT INTO lessons" in sql:
             topic, query, lesson, review, status, sources, standards = params
             self.rows.append((len(self.rows) + 1, topic, query, lesson, review, status,
                               json.loads(sources), json.loads(standards), "2026-01-01"))
@@ -60,6 +62,7 @@ def test_generation_snapshot_and_history():
     assert item["status"] == "draft" and item["review_status"] == "completed"
     assert len(item["sources"][0]["content"]) == 4000
     assert json.loads(calls[0][1][1]["content"])["evidence"]["sources"] == item["sources"]
+    assert json.loads(calls[0][1][1]["content"])["teaching_style"] == "Use worked examples"
     source["content"] = "changed"
     assert client.get("/lessons/1").json() == item
     assert client.get("/topics/1/lessons").json() == [item]
