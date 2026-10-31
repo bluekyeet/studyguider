@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF355C4D), secondary = Color(0xFF816044), surface = Color(0xFFFAF9F4), background = Color(0xFFFAF9F4))) {
+            MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF1E3A8A), onPrimary = Color.White, secondary = Color(0xFF006A61), surface = Color(0xFFFBF8FF), background = Color(0xFFFBF8FF), surfaceVariant = Color(0xFFEEEDF7))) {
                 Surface(Modifier.fillMaxSize()) { StudyApp() }
             }
         }

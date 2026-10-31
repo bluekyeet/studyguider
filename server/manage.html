@@ -49,14 +49,45 @@
     li p { margin: .5rem 0; }
     li button { font-size: .85rem; padding: .4rem .65rem; margin: .5rem .35rem 0 0; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: #f8fbfa; border: 1px solid #e2ece9; border-radius: .6rem; padding: .85rem; min-height: 3rem; margin: 0; }
-    @media (max-width: 650px) { .shell { padding-left: 1rem; padding-right: 1rem; } .hero { padding: 2rem 0; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 1.15rem; } }
+    /* Dashboard palette and layout follow the resource ingestion hub. */
+    :root { color: #1a1b22; background: #fbf8ff; }
+    .shell { max-width: 100rem; }
+    .hero { background: #fff; color: #00236f; padding: .8rem 0; border-bottom: 1px solid #e8e7f1; }
+    .hero .shell { display: flex; align-items: center; gap: 1rem; }
+    .hero .eyebrow { background: #00236f; color: #fff; border-radius: .55rem; padding: .55rem; margin: 0; letter-spacing: .04em; }
+    .hero h1 { font-size: 1.15rem; letter-spacing: -.02em; margin: 0; }
+    .hero p:last-child { color: #444651; font-size: .8rem; margin-left: auto; }
+    .content { padding-top: 1.5rem; }
+    .manager-top { background: #1e3a8a; color: #fff; border-radius: .75rem; padding: 1rem 1.25rem; margin: 0 0 1.5rem; }
+    .manager-top p { color: #fff; }
+    .manager-layout { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    .manager-nav { background: #f4f2fd; border-radius: .75rem; padding: 1rem .75rem; position: sticky; top: 1rem; }
+    .manager-nav p { color: #444651; font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin: 0 .5rem .6rem; }
+    .manager-nav a { display: block; color: #00236f; text-decoration: none; font-size: .85rem; padding: .55rem .6rem; border-radius: .4rem; }
+    .manager-nav a:hover { background: #dce1ff; }
+    .manager-nav a:focus-visible { outline: 3px solid #e3a934; outline-offset: 2px; }
+    .grid { gap: 1.25rem; }
+    .card { border-color: #eeedf7; border-radius: .75rem; box-shadow: 0 1px 2px rgba(0, 35, 111, .05); }
+    .section-number { color: #006a61; }
+    h2 { color: #00236f; }
+    .hint { color: #444651; }
+    input, select, textarea { background: #f4f2fd; border-color: #d3d4e1; color: #1a1b22; }
+    input[type=file]::file-selector-button { background: #dce1ff; color: #00236f; }
+    button { background: #1e3a8a; border-color: #1e3a8a; }
+    button:hover { background: #00236f; }
+    .secondary, li button { background: #eeedf7; color: #00236f; border-color: #d3d4e1; }
+    .secondary:hover, li button:hover { background: #dce1ff; }
+    .divider { border-color: #e8e7f1; }
+    li, pre { background: #f4f2fd; border-color: #e8e7f1; }
+    @media (max-width: 800px) { .manager-layout { grid-template-columns: 1fr; } .manager-nav { position: static; } .manager-nav div { display: flex; flex-wrap: wrap; } }
+    @media (max-width: 650px) { .shell { padding-left: 1rem; padding-right: 1rem; } .hero .shell { flex-wrap: wrap; } .hero p:last-child { flex-basis: 100%; margin: 0; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 1.15rem; } }
   </style>
 </head>
 <body>
   <header class="hero"><div class="shell">
-    <p class="eyebrow">StudyGuider ? Resource manager</p>
-    <h1>Make space for learning.</h1>
-    <p>Organise subjects, connect standards and bring your teaching resources together.</p>
+    <p class="eyebrow" aria-hidden="true">SG</p>
+    <h1>StudyGuider <small>Resource manager</small></h1>
+    <p>Organise subjects, standards and teaching resources.</p>
   </div></header>
   <div class="shell content">
     <p id="message" role="status" aria-live="polite"></p>
@@ -68,7 +99,11 @@
       <button>Sign in</button>
     </form>
     <main id="manager" hidden>
-      <div class="manager-top"><p>Manage your learning content below.</p><button id="logout" class="secondary" type="button">Sign out</button></div>
+      <div class="manager-top"><p><strong>Resource pipeline &amp; standards hub</strong><br>Manage your learning content below.</p><button id="logout" class="secondary" type="button">Sign out</button></div>
+      <div class="manager-layout">
+      <nav class="manager-nav" aria-label="Resource manager sections"><p>Resource manager</p><div>
+        <a href="#subjects-heading">Subjects</a><a href="#topics-heading">Topics</a><a href="#standards-heading">NZQA standards</a><a href="#resources-heading">Resources</a><a href="#search-heading">Search resources</a><a href="#notes-heading">Topic notes</a><a href="#draft-heading">Lesson draft</a><a href="#question-heading">Register question</a><a href="#exam-heading">Exam assembly</a><a href="#scheduler-heading">Scheduled lessons</a><a href="#saved-lessons-heading">Saved lessons</a><a href="#review-drafts-heading">Review drafts</a>
+      </div></nav>
       <div class="grid">
         <section class="card" aria-labelledby="subjects-heading">
           <div class="section-heading"><span class="section-number">01</span><h2 id="subjects-heading">Subjects</h2></div>
@@ -192,6 +227,7 @@
           <h3>Source excerpts</h3><ul id="review-sources"></ul>
           <h3>Drafts to approve</h3><ul id="review-drafts"></ul>
         </section>
+      </div>
       </div>
     </main>
   </div>

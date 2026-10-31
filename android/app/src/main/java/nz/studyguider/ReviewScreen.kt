@@ -1,11 +1,12 @@
 package nz.studyguider
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -59,11 +60,18 @@ fun ReviewScreen(base: String, token: String) {
         try { load() } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false }
     }
 
-    Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Due reviews", style = MaterialTheme.typography.headlineMedium)
+    val navy = Color(0xFF001F6B)
+    val lavender = Color(0xFFF2F0FC)
+    Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Surface(color = lavender, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("DAILY REVIEW", color = navy, style = MaterialTheme.typography.labelMedium)
+                Text("Due reviews", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                OutlinedButton(enabled = !busy, onClick = { refresh() }) { Text("Refresh") }
+            }
+        }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        Button(enabled = !busy, onClick = { refresh() }) { Text("Refresh") }
         if (loaded && questions.length() == 0) Text("No reviews due.")
         for (i in 0 until questions.length()) {
             val question = questions.getJSONObject(i)
@@ -71,20 +79,24 @@ fun ReviewScreen(base: String, token: String) {
             key(id) {
                 var answer by remember(base, token, id) { mutableStateOf("") }
                 var confidence by remember(base, token, id) { mutableIntStateOf(3) }
+                Surface(color = Color.White, shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+                  Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Due ${question.getString("due_date")} · Topic ${question.getLong("topic_id")}", color = navy, style = MaterialTheme.typography.labelMedium)
                 Text(question.getString("question"), style = MaterialTheme.typography.titleMedium)
-                Text("Due ${question.getString("due_date")} · Topic ${question.getLong("topic_id")}")
-                OutlinedTextField(answer, { answer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Your answer") }, enabled = !busy)
-                Text("Confidence: $confidence / 5")
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                HorizontalDivider()
+                Text("Your working", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(answer, { answer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Your answer") }, enabled = !busy, minLines = 3)
+                Text("Self-assessment confidence: $confidence / 5", style = MaterialTheme.typography.labelLarge)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (level in 1..5) {
                         if (level == confidence) {
-                            Button(enabled = !busy, onClick = { confidence = level }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("$level") }
+                            Button(enabled = !busy, onClick = { confidence = level }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = navy), contentPadding = PaddingValues(0.dp)) { Text("$level") }
                         } else {
-                            OutlinedButton(enabled = !busy, onClick = { confidence = level }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("$level") }
+                            OutlinedButton(enabled = !busy, onClick = { confidence = level }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) { Text("$level") }
                         }
                     }
                 }
-                Button(enabled = !busy && answer.isNotBlank() && answer.length <= 50000, onClick = {
+                Button(modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = navy), enabled = !busy && answer.isNotBlank() && answer.length <= 50000, onClick = {
                     scope.launch {
                         busy = true; error = ""
                         try {
@@ -99,6 +111,8 @@ fun ReviewScreen(base: String, token: String) {
                         } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false }
                     }
                 }) { Text("Submit answer") }
+                  }
+                }
             }
         }
     }

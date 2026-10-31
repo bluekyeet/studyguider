@@ -4,9 +4,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -86,8 +89,11 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
         }
     }
 
-    Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Experimental lesson draft", style = MaterialTheme.typography.headlineMedium)
+    Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("TODAY’S LESSON", style = MaterialTheme.typography.labelSmall, color = Color(0xFF001C64))
+        Text("Experimental lesson draft", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        HorizontalDivider(color = Color(0xFF001C64), thickness = 3.dp)
+        LessonCard {
         Text("Generating sends your query, up to five matching source excerpts and linked standards to the configured education and education-reviewer model providers.")
         Text("This lesson is saved as a draft. AI review is not verification; check claims and citations against the original sources.", color = MaterialTheme.colorScheme.error)
         OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Lesson topic or search") }, enabled = !busy, supportingText = { Text("1–200 characters") })
@@ -109,6 +115,41 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
             Text("Generating and reviewing the draft may take several minutes.")
         }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+        }
+        result?.let { draft ->
+            Text(draft.optString("query"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("DRAFT LESSON", style = MaterialTheme.typography.labelSmall, color = Color(0xFF001C64))
+            LessonCard {
+                // ponytail: plain text preserves all content; add audited offline KaTeX rendering for formulas.
+                SelectionContainer { Text(draft.optString("lesson")) }
+            }
+            LessonCard {
+                Text("AI REVIEW", style = MaterialTheme.typography.labelMedium, color = Color(0xFF001C64))
+                Text(if (draft.isNull("review")) "Review unavailable" else draft.optString("review"))
+                Text(draft.optString("warning"), color = MaterialTheme.colorScheme.error)
+            }
+            LessonCard {
+                OutlinedTextField(followUp, { followUp = it }, label = { Text("Ask for an explanation") }, modifier = Modifier.fillMaxWidth())
+                Button(enabled = !busy && followUp.isNotBlank() && followUp.length <= 2000, onClick = {
+                    scope.launch {
+                        busy = true; error = ""; explanation = ""
+                        try { explanation = explainLesson(base, token, draft.getLong("id"), followUp) }
+                        catch (e: Exception) { error = e.message ?: "Explanation failed" }
+                        finally { busy = false }
+                    }
+                }) { Text("Explain in detail") }
+                if (explanation.isNotEmpty()) Text(explanation)
+            }
+            LessonCard {
+                Text("SOURCES", style = MaterialTheme.typography.labelMedium, color = Color(0xFF001C64))
+                val sources = draft.optJSONArray("sources")
+                if (sources != null) for (i in 0 until sources.length()) {
+                    val source = sources.getJSONObject(i)
+                    Text("${source.optString("filename")} · Resource ${source.optString("resource_id")} · Page/slide/section ${source.optInt("page")}")
+                }
+            }
+        }
+        LessonCard {
         Text("Saved lessons", style = MaterialTheme.typography.titleLarge)
         // ponytail: The API defaults to the latest 50; add pagination when older drafts are needed.
         Text("Showing up to the 50 most recent saved lessons.")
@@ -120,29 +161,13 @@ fun LessonScreen(base: String, token: String, topicId: Long) {
                 Text("${draft.optString("query")} · ${draft.optString("created_at")}")
             }
         }
-        result?.let { draft ->
-            Text("Draft lesson", style = MaterialTheme.typography.titleLarge)
-            // ponytail: plain text preserves all content; add audited offline KaTeX rendering for formulas.
-            SelectionContainer { Text(draft.optString("lesson")) }
-            Text("AI review", style = MaterialTheme.typography.titleLarge)
-            Text(if (draft.isNull("review")) "Review unavailable" else draft.optString("review"))
-            Text(draft.optString("warning"), color = MaterialTheme.colorScheme.error)
-            OutlinedTextField(followUp, { followUp = it }, label = { Text("Ask for an explanation") }, modifier = Modifier.fillMaxWidth())
-            Button(enabled = !busy && followUp.isNotBlank() && followUp.length <= 2000, onClick = {
-                scope.launch {
-                    busy = true; error = ""; explanation = ""
-                    try { explanation = explainLesson(base, token, draft.getLong("id"), followUp) }
-                    catch (e: Exception) { error = e.message ?: "Explanation failed" }
-                    finally { busy = false }
-                }
-            }) { Text("Explain in detail") }
-            if (explanation.isNotEmpty()) Text(explanation)
-            Text("Sources", style = MaterialTheme.typography.titleLarge)
-            val sources = draft.optJSONArray("sources")
-            if (sources != null) for (i in 0 until sources.length()) {
-                val source = sources.getJSONObject(i)
-                Text("${source.optString("filename")} · Resource ${source.optString("resource_id")} · Page/slide/section ${source.optInt("page")}")
-            }
         }
+    }
+}
+
+@Composable
+private fun LessonCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFFF4F4FA), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
     }
 }

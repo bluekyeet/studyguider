@@ -7,12 +7,17 @@ backed by PostgreSQL. Public deployment requires TLS and a security review.
 The database is private to the Compose network. The API binds to localhost by
 default. No uploads, credentials or personal study material belong in the repo.
 
-Current milestone: authenticated subjects, topics and standards, resource uploads,
-limited text extraction, topic-scoped search, and experimental unsaved lesson
-drafts. Reviewer output is advisory, not an approval or factual guarantee.
-Public deployment, the complete Android app, ingestion of scans, durable lessons, review and exam
-systems remain outstanding. Validate browser workflows and real gateway calls
-before treating the prototype as usable for study.
+Current prototype: authenticated subjects, topics and standards, resource
+uploads and text extraction, search, saved lesson drafts, confidence-based
+review scheduling, and manually verified exam references. AI feedback is
+advisory, not an official mark or factual guarantee. Public deployment, scan
+ingestion and complete exam workflows remain outstanding. Validate browser
+workflows and real gateway calls before relying on the prototype for study.
 
-Android now has a Compose preview with login and subject/topic browsing. The
-API has manual review questions and answers, but no marking or rescheduling.
+## Visual direction
+
+The supplied Stitch designs guide presentation: deep indigo (`#1E3A8A`), teal
+(`#006A61`), pale neutral surfaces (`#FBF8FF`), rounded cards, and generous
+reading space. The screenshots are visual references, not live data: do not
+show invented status, verification, grades, metrics, or sample study content.
+Use native Material 3 controls and accessible contrast and touch targets.
