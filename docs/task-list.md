@@ -28,6 +28,9 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Add retry of independent visual review for an existing diagram without regenerating its image.
 - [ ] Add actual formula parsing beyond the existing delimiter/brace checks.
 - [ ] Evaluate semantic retrieval against keyword search; add embeddings if needed.
+  - Read-only 12-query six-topic probe: strict search had three empty plain-language queries;
+    ranked OR-term fallback now returns in-topic matches for all three. Relevance/semantic
+    benchmark remains open; non-empty results do not prove evidence quality.
 - [x] Add an optional exam timer (local-device start/pause/reset; runtime checks pending).
 - [x] Add editing of saved topic notes with safe conflict handling (conditional original-content update; HTTP 409 retains draft).
 - [x] Add visible warnings when model-call failures rise (usage panel, at least ten calls and 20% errors).
@@ -148,7 +151,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 163 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 164 passed, six warnings, six subtests passed.
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.

@@ -760,6 +760,19 @@ def search_resources(topic_id: int, q: str):
                 ORDER BY ts_rank(to_tsvector('english', p.content), plainto_tsquery('english', %s)) DESC, r.id, p.page
                 LIMIT 20
             """, (topic_id, q, q)).fetchall()
+        if not rows:
+            # ponytail: keyword recall fallback, not semantic retrieval; evaluate
+            # embeddings if ranked lexical matches still miss relevant evidence.
+            rows = db.execute("""
+                SELECT c.id, r.id, r.filename, c.page, c.content, c.standard_number
+                FROM resource_chunks c JOIN resources r ON r.id = c.resource_id
+                WHERE c.topic_id = %s AND r.status = 'extracted'
+                  AND to_tsvector('english', c.content) @@
+                    replace(plainto_tsquery('english', %s)::text, ' & ', ' | ')::tsquery
+                ORDER BY ts_rank(to_tsvector('english', c.content),
+                    replace(plainto_tsquery('english', %s)::text, ' & ', ' | ')::tsquery) DESC, c.id
+                LIMIT 20
+            """, (topic_id, q, q)).fetchall()
     return [{"chunk_id": row[0], "resource_id": str(row[1]), "filename": row[2], "page": row[3],
              "content": row[4], "standard_number": row[5]} for row in rows]
 

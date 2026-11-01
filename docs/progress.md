@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Read-only retrieval probe: twelve technical/plain-language queries across six
+  topics; all results topic-isolated but three plain-language queries were empty.
+  Added native ranked OR-term chunk fallback only after strict chunk/page search
+  yields nothing, preserving source/topic/status filtering. No embedding dependency.
+  Deployed live rerun: previously empty queries for topics 3/4/6 each return twenty
+  in-topic matches. This proves recall/non-empty results, NOT relevance or semantic
+  quality; task remains open for a proper relevance benchmark. 164 server tests
+  passed, six warnings/six subtests; API rebuilt/deployed. No emulator changes.
+
 - Added one Sources action to lesson reader header, displaying saved evidence
   filenames, page numbers and excerpts with a clear advisory warning; no inline
   marker clutter restored, no new API/model call. Debug and test APK builds passed.
