@@ -14,6 +14,14 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -82,9 +90,13 @@ fun DailyReminderSetting() {
         save(granted)
         notice = if (granted) "" else "Notifications are not permitted. Enable them in Android Settings to use reminders."
     }
-    Column {
-        Text("Daily study reminder — around 7 pm local time")
-        Text("Optional; Android battery saving may delay delivery. No connection required.")
+    StudyCard {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.weight(1f)) {
+                Text("Daily reminder", style = MaterialTheme.typography.titleMedium)
+                Text("Around 7 pm · local time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(12.dp))
         Switch(modifier = Modifier.semantics { contentDescription = "Daily study reminder around 7 pm" }, checked = enabled, onCheckedChange = { value ->
             notice = ""
             if (value && Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -93,6 +105,8 @@ fun DailyReminderSetting() {
                 notice = "Notifications are blocked. Enable them in Android Settings."
             } else save(value)
         })
-        if (notice.isNotEmpty()) Text(notice)
+        }
+        Text("Works offline. Battery saving may delay delivery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (notice.isNotEmpty()) Text(notice, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
 }

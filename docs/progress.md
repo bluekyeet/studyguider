@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Learning layout follow-up: reminder and AI usage now use the existing full-width
+  StudyCard instead of loose text / wrap-content Surface. Reminder toggle sits
+  beside its title/time, supporting text uses secondary small typography, and
+  usage has separate title/period plus View/Refresh actions. Debug build passed;
+  APK installed on emulator-5554. Updated layout not yet visually checked.
+  Exam year selection also changed from separate outlined chips to a single
+  full-width Available papers list with dividers, year headings, standard/count
+  subtitles and accessible single-selection radio rows. Build/install passed;
+  runtime selection and visual layout remain unverified.
+
 - 2026-11-02: Added Android Learning AI usage card (manual load/refresh, last
   30 days), showing calls/errors, reported input/output tokens and calls without
   complete token counts. /usage explicitly returns cost=null and explains absent

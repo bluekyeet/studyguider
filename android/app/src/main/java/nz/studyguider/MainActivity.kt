@@ -878,9 +878,9 @@ private fun AiUsageCard(base: String, token: String) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("AI usage — last 30 days", style = MaterialTheme.typography.titleMedium)
+    StudyCard {
+            Text("AI usage", style = MaterialTheme.typography.titleMedium)
+            Text("Last 30 days", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(enabled = !busy, onClick = {
                 scope.launch {
                     busy = true; error = ""
@@ -889,7 +889,7 @@ private fun AiUsageCard(base: String, token: String) {
                     catch (e: Exception) { error = e.message ?: "Could not load AI usage" }
                     finally { busy = false }
                 }
-            }) { Text(if (busy) "Loading…" else "Load / refresh usage") }
+            }) { Text(if (busy) "Loading…" else if (usage == null) "View usage" else "Refresh usage") }
             usage?.let { data ->
                 Text("${data.optLong("calls")} calls · ${data.optLong("errors")} errors")
                 Text("Reported tokens: ${data.optLong("prompt_tokens")} input · ${data.optLong("completion_tokens")} output")
@@ -898,7 +898,6 @@ private fun AiUsageCard(base: String, token: String) {
                 Text(data.optString("cost_notice", "Cost unavailable; gateway pricing is not configured."), style = MaterialTheme.typography.bodySmall)
             }
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-        }
     }
 }
 
