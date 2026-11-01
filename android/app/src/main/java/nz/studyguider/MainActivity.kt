@@ -750,8 +750,10 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
     var lessons by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var deleting by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<JSONObject?>(null) }
+    var scheduleTopic by remember { mutableStateOf<JSONObject?>(null) }
     val scope = rememberCoroutineScope()
     val pageScroll = rememberScrollState()
+    scheduleTopic?.let { selected -> NightlyStatus(base, token, selected, onDismiss = { scheduleTopic = null }) }
     LaunchedEffect(page, managerDay) { pageScroll.scrollTo(0) }
     BackHandler(enabled = page.isNotEmpty()) { if (managerDay != null) managerDay = null else page = "" }
     LaunchedEffect(base, token, revision, retry) {
@@ -786,7 +788,9 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             Column {
                 courses.forEachIndexed { index, course ->
                     if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    ListItem(headlineContent = { Text(course.optString("topic")) }, supportingContent = { Text(course.optString("subject")) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+                    ListItem(headlineContent = { Text(course.optString("topic")) }, supportingContent = { Text(course.optString("subject")) }, trailingContent = {
+                        TextButton(onClick = { scheduleTopic = course }) { Text("Nightly status") }
+                    }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 }
             }
         }
@@ -877,6 +881,40 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             }
         }) { Text("Delete") } }, dismissButton = { TextButton(enabled = !deleting, onClick = { deleteTarget = null }) { Text("Cancel") } },
     ) }
+}
+
+@Composable
+internal fun NightlyStatus(base: String, token: String, topic: JSONObject, onDismiss: () -> Unit) {
+    var runs by remember(base, token, topic) { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf("") }
+    var retry by remember { mutableIntStateOf(0) }
+    LaunchedEffect(base, token, topic, retry) {
+        loading = true; error = ""
+        try {
+            val rows = JSONArray(request(base, "/topics/${topic.getLong("topic_id")}/schedule/runs", token))
+            runs = (0 until minOf(rows.length(), 7)).map { rows.getJSONObject(it) }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: "Could not load nightly runs" }
+        finally { loading = false }
+    }
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text("Nightly lessons · ${topic.optString("topic")}") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Latest seven runs. Completed means generation finished, not that AI review passed.", style = MaterialTheme.typography.bodySmall)
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+            if (!loading && error.isEmpty() && runs.isEmpty()) Text("No scheduled runs recorded yet.")
+            runs.forEach { run ->
+                Text("${run.optString("run_date")} · ${run.optString("status")}", style = MaterialTheme.typography.titleSmall)
+                if (!run.isNull("error") && run.optString("error").isNotBlank()) Text(run.optString("error"), color = MaterialTheme.colorScheme.error)
+                if (!run.isNull("lesson_id")) Text("Lesson ${run.optLong("lesson_id")}", style = MaterialTheme.typography.bodySmall)
+                HorizontalDivider()
+            }
+        } },
+        confirmButton = { TextButton(enabled = !loading, onClick = { retry++ }) { Text("Refresh") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable

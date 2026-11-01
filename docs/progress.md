@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Learning topics now expose Nightly status: latest seven scheduled runs, recorded
+  errors and generated lesson IDs via existing /schedule/runs endpoint. UI states
+  explicitly that completed generation is not passed AI review. Includes refresh,
+  loading/error/empty states. Debug/test APK builds passed; new stub-backed
+  NightlyStatusTest compiled but not run (emulator remains off). No GPU changes,
+  emulator startup or install attempted. No scheduler/retry semantics changed.
+
 - Topic notes now have Delete with confirmation, using the existing scoped DELETE
   endpoint. Cancel preserves the note; failed requests retain it; successful
   requests remove the card. Original lesson/source data is untouched. Debug and
