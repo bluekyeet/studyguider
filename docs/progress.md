@@ -8,6 +8,18 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- 2026-11-02: Passed lesson diagrams now have an Explain this diagram button,
+  opening the existing streaming Explain panel with diagram_id. Server checks
+  positive ID, lesson/topic ownership and passed review before any model call.
+  Diagram description/SVG structure is supplied as untrusted illustration context
+  alongside saved lesson source evidence; prompt explicitly disallows treating
+  it as factual evidence or claiming rendered-pixel inspection. Paragraph/global
+  Explain clears diagram focus so context does not leak between actions. No new
+  dependency or separate chat UI. Checks: 148 server tests passed, six warnings/
+  six subtests; assembleDebug passed; API rebuilt/redeployed and /health ok;
+  APK installed on emulator-5554. Real gateway diagram explanation, streaming UI
+  interaction and visual validation remain untested. Reminders are next.
+
 - 2026-11-02: Exercised real gateway diagram generation with saved mechanics
   lesson 18: authenticated POST returned 201, lesson-filtered listing returned
   200 and contained the generated row, image GET returned 200 with a valid PNG

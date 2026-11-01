@@ -108,3 +108,45 @@ def test_stream_does_not_silently_ignore_save_to_notes():
     response = client.post("/lessons/1/explain?stream=1",
                            json={"question": "Explain g", "save_to_notes": True})
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("diagram,status", [
+    (("Force arrows", "<svg>labelled force</svg>", "passed"), 200),
+    (("Force arrows", "<svg/>", "flagged"), 422),
+    (None, 404),
+])
+def test_diagram_explanation_is_lesson_scoped_and_grounded(diagram, status):
+    captured = []
+
+    class DiagramDB(FakeDB):
+        def execute(self, sql, params=()):
+            if "FROM diagrams" in sql:
+                assert "lesson_id = %s AND topic_id = %s" in sql
+                assert params == (9, 1, 1)
+                self._last = "diagram"
+                return self
+            return super().execute(sql, params)
+
+        def fetchone(self):
+            return diagram if self._last == "diagram" else super().fetchone()
+
+    def reply(model, messages, **kwargs):
+        captured.append(json.loads(messages[-1]["content"]))
+        return "The arrow represents force."
+
+    app = FastAPI()
+    app.include_router(explain_router(DiagramDB, lambda: None, reply))
+    response = TestClient(app).post("/lessons/1/explain", json={"question": "Explain arrows", "diagram_id": 9})
+    assert response.status_code == status
+    if status == 200:
+        assert captured[0]["diagram_in_focus"]["svg"] == diagram[1]
+        assert captured[0]["sources"]
+        assert "unverified AI illustration" in captured[0]["instruction"]
+    else:
+        assert not captured
+
+
+def test_diagram_id_must_be_positive():
+    client, calls = make_client()
+    assert client.post("/lessons/1/explain", json={"question": "Explain", "diagram_id": 0}).status_code == 422
+    assert not calls

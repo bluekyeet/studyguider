@@ -58,7 +58,7 @@ private suspend fun requestLessonHistory(base: String, token: String, topicId: L
     } finally { connection.disconnect() }
 }
 
-private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String, paragraph: String = "", onText: (suspend (String) -> Unit)? = null): String = withContext(Dispatchers.IO) {
+private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String, paragraph: String = "", diagramId: Long? = null, onText: (suspend (String) -> Unit)? = null): String = withContext(Dispatchers.IO) {
     val connection = URL(base.trimEnd('/') + "/lessons/$lessonId/explain" + if (onText != null) "?stream=1" else "").openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000; connection.readTimeout = 100000
@@ -66,6 +66,7 @@ private suspend fun explainLesson(base: String, token: String, lessonId: Long, q
         connection.setRequestProperty("Authorization", "Bearer $token")
         connection.setRequestProperty("Content-Type", "application/json")
         val body = JSONObject().put("question", question)
+        if (diagramId != null) body.put("diagram_id", diagramId)
         if (paragraph.isNotEmpty()) body.put("paragraph", paragraph.take(4000))
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         val status = connection.responseCode
@@ -331,6 +332,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     var helpAnswer by remember(draft) { mutableStateOf("") }
     var helpBusy by remember(draft) { mutableStateOf(false) }
     var helpParagraph by remember(draft) { mutableStateOf("") }
+    var helpDiagramId by remember(draft) { mutableStateOf<Long?>(null) }
     val helpScope = rememberCoroutineScope()
     var finishBusy by remember(draft) { mutableStateOf(false) }
     var finishError by remember(draft) { mutableStateOf("") }
@@ -405,6 +407,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                                     MathText(content, modifier = Modifier.weight(1f))
                                     IconButton(onClick = {
                                         helpParagraph = content.take(4000)
+                                        helpDiagramId = null
                                         helpQuestion = "Explain this part of the lesson."
                                         helpAnswer = ""
                                         showHelp = true
@@ -415,7 +418,13 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                                 }
                             }
                         }
-                        if (!practice) LessonDiagram(base, token, draft, chunk)
+                        if (!practice) LessonDiagram(base, token, draft, chunk, onExplain = { diagramId ->
+                            helpDiagramId = diagramId
+                            helpParagraph = ""
+                            helpQuestion = "Explain this diagram's labels and relationships."
+                            helpAnswer = ""
+                            showHelp = true
+                        })
                         CompositionLocalProvider(LocalAnswerPending provides pendingAnswers) {
                             if (practice) PracticePanel(base, token, draft, chunk)
                             if (!practice && !chunk.title.contains("worked", true) && !chunk.body.contains("Solution:", true)) SectionQuestion(base, token, draft, chunk)
@@ -449,7 +458,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         }
     }
     }
-    ExtendedFloatingActionButton(onClick = { helpParagraph = ""; showHelp = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
+    ExtendedFloatingActionButton(onClick = { helpParagraph = ""; helpDiagramId = null; showHelp = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
     }
     if (showHelp) AlertDialog(
         onDismissRequest = { showHelp = false },
@@ -463,7 +472,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
             helpScope.launch {
                 helpBusy = true
                 helpAnswer = ""
-                try { helpAnswer = explainLesson(base, token, draft.getLong("id"), helpQuestion, helpParagraph, onText = { helpAnswer = it }) }
+                try { helpAnswer = explainLesson(base, token, draft.getLong("id"), helpQuestion, helpParagraph, diagramId = helpDiagramId, onText = { helpAnswer = it }) }
                 catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (e: Exception) { helpAnswer += "\n\n${e.message ?: "Could not get an explanation"}" }
                 finally { helpBusy = false }
@@ -494,7 +503,7 @@ private suspend fun lessonDiagrams(base: String, token: String, topicId: Long, l
 }
 
 @Composable
-private fun LessonDiagram(base: String, token: String, draft: JSONObject, chunk: LessonChunk) {
+private fun LessonDiagram(base: String, token: String, draft: JSONObject, chunk: LessonChunk, onExplain: (Long) -> Unit) {
     val lessonId = draft.getLong("id")
     val topicId = draft.getLong("topic_id")
     val description = "Illustrate this lesson section: ${chunk.title}\n${chunk.body}".take(2000)
@@ -513,6 +522,7 @@ private fun LessonDiagram(base: String, token: String, draft: JSONObject, chunk:
     if (diagram?.optString("status") == "passed") {
         Text("AI diagram — independently AI-reviewed, not verified", style = MaterialTheme.typography.labelSmall)
         AuthorisedImage(base, token, "/diagrams/${diagram!!.getLong("id")}/image", Modifier.fillMaxWidth(), contentDescription = "AI-generated diagram for ${chunk.title}")
+        TextButton(onClick = { onExplain(diagram!!.getLong("id")) }) { Text("Explain this diagram") }
     } else {
         if (diagram != null) Text("Diagram withheld: independent review did not pass.", style = MaterialTheme.typography.bodySmall)
         OutlinedButton(enabled = !busy, onClick = {
