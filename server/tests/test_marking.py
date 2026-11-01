@@ -218,7 +218,7 @@ def test_missing_answer_or_schedule_does_not_call_model():
         assert not calls
 
 
-def test_invalid_model_outputs_are_rejected():
+def test_invalid_model_outputs_are_rejected_after_retry():
     outputs = [
         "not json",
         marking_json(quote="invented quote"),
@@ -226,8 +226,17 @@ def test_invalid_model_outputs_are_rejected():
         json.dumps({"outcome": "achieved", "feedback": "ok", "evidence": []}),
     ]
     for output in outputs:
-        client, _, _ = make_client(replies=[output])
+        client, calls, _ = make_client(replies=[output, output])
         assert client.post("/exams/1/answers/2/feedback").status_code == 502
+        assert len(calls) == 2  # one bounded retry before giving up
+
+
+def test_invalid_json_is_recovered_on_retry():
+    client, calls, _ = make_client(replies=["not json", marking_json(marks=5)])
+    response = client.post("/exams/1/answers/2/feedback")
+    assert response.status_code == 200
+    assert response.json()["marks_awarded"] == 5
+    assert len(calls) == 2
 
 
 def test_second_review_and_self_override_are_advisory():
