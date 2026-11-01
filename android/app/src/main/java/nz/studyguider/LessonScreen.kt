@@ -345,6 +345,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     val progress = animateFloatAsState(if (chunks.isEmpty()) 0f else (openIndex + 1).toFloat() / chunks.size, label = "lesson progress")
     val colours = LocalStudyColours.current
     var showHelp by remember(draft) { mutableStateOf(false) }
+    var showSources by remember(draft) { mutableStateOf(false) }
     var helpQuestion by remember(draft) { mutableStateOf("") }
     var helpAnswer by remember(draft) { mutableStateOf("") }
     var helpBusy by remember(draft) { mutableStateOf(false) }
@@ -371,6 +372,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         Column(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 TextButton(enabled = canLeave, onClick = onExit, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("‹ Save & exit") }
+                TextButton(onClick = { showSources = true }) { Text("Sources") }
                 Text("${openIndex + 1} / ${chunks.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(draft.optString("query"), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
@@ -491,6 +493,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         helpDiagramId = null; helpHistory = emptyList(); helpAnswer = ""; helpNote = ""; showHelp = true
     }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
     }
+    if (showSources) LessonSourcesDialog(draft, onDismiss = { showSources = false })
     if (showHelp) AlertDialog(
         onDismissRequest = { showHelp = false },
         title = { Text(if (helpDiagramId != null) "Explain this diagram" else "Explain this section") },
@@ -536,6 +539,26 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     )
 
     // Reviewer output stays on the server; the learner only sees the draft warning.
+}
+
+@Composable
+internal fun LessonSourcesDialog(draft: JSONObject, onDismiss: () -> Unit) {
+    val sources = draft.optJSONArray("sources") ?: JSONArray()
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text("Lesson sources") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Saved evidence supplied to this lesson, not proof that every AI claim is correct. Excerpts may be incomplete; check original documents.", style = MaterialTheme.typography.bodySmall)
+            if (sources.length() == 0) Text("No saved evidence available.")
+            for (i in 0 until sources.length()) {
+                val source = sources.getJSONObject(i)
+                Text(source.optString("filename").ifBlank { "Source ${i + 1}" }, style = MaterialTheme.typography.titleSmall)
+                Text("Page ${source.optInt("page", 1)}", style = MaterialTheme.typography.labelMedium)
+                source.optString("content").takeIf { it.isNotBlank() }?.let { MathText(withoutSourceMarkers(it)) }
+                if (i < sources.length() - 1) HorizontalDivider()
+            }
+        } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 private suspend fun lessonDiagrams(base: String, token: String, topicId: Long, lessonId: Long): String = withContext(Dispatchers.IO) {

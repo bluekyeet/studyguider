@@ -8,6 +8,12 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added one Sources action to lesson reader header, displaying saved evidence
+  filenames, page numbers and excerpts with a clear advisory warning; no inline
+  marker clutter restored, no new API/model call. Debug and test APK builds passed.
+  LessonSourcesTest compiled, not run: emulator still off, GPU unchanged, no
+  installation attempted. Original-page navigation/visual verification not added.
+
 - Added Android note Edit dialog and authenticated scoped PUT notes endpoint.
   Conditional update compares original content atomically; stale edits return 409,
   missing/deleted notes 404. Errors leave editor/draft intact; explicit Discard
