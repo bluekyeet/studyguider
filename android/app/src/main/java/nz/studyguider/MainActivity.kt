@@ -422,7 +422,10 @@ private fun StudyApp() {
         bottomBar = {
             if (token.isNotEmpty()) StudyNavBar(current = tab) { destination ->
                 if (lessonPending && destination != tab) error = "Your lesson answer is not saved yet. Wait for saving or resolve the save error before changing tabs."
-                else if (examDirty && destination != tab) { pendingTab = destination; confirmExamExit = true } else tab = destination
+                else if (examDirty && destination != tab) { pendingTab = destination; confirmExamExit = true } else {
+                    if (error == "Your lesson answer is not saved yet. Wait for saving or resolve the save error before changing tabs." && !lessonPending) error = ""
+                    tab = destination
+                }
             }
         },
     ) { padding ->

@@ -13,6 +13,7 @@ class ExplanationNoteTest {
     @Test fun hidesOnlySourceMarkersWithoutChangingMaths() {
         assertEquals("Rate increases. Next.", withoutSourceMarkers("Rate increases [S1]. Next [S2 p. 6; S3 p. 1]."))
         assertEquals("[Na+] and [0, 1] with \$x_{1}$", withoutSourceMarkers("[Na+] and [0, 1] with \$x_{1}$"))
+        assertEquals("Hydrocarbons contain carbon.", withoutSourceMarkers("Hydrocarbons contain carbon (abd958b6-7763-4c58-81c0-95f60e54ebed)."))
     }
     @Test fun savesExactDisplayedExplanationWithoutModelRequest() = runBlocking {
         val content = "Lesson 18 - Why?\n\nFrequency is constant: $ f = 0.4 $ Hz.\n\nAI-generated; not verified."

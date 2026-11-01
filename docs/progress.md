@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Notes display now hides raw UUID source citations too, without changing saved
+  note/evidence content. Added regression sample from reported hydrocarbon note.
+  Successful tab navigation clears the stale unsaved-lesson navigation warning
+  once lessonPending is false; active save guards remain intact. Debug build and
+  two ExplanationNoteTest emulator tests passed. Explicit install Success;
+  relaunch Status timeout / WaitTime 11772. Visual and save-guard interaction untested.
+
 - Added Learning > Topic notes so saved explanations can actually be read in
   Android: topic dropdown, refresh, date-labelled full-width note cards, Markdown/
   maths rendering and empty/error/loading states. Uses existing notes API, no DB
