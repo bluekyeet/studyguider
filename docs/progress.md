@@ -8,6 +8,21 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Fixed a live user-reported bug: exam marking failed with 502 "Model returned
+  invalid marking JSON" on AS 91170 2026 Exam 7 Q1(a). Root cause was the JSON
+  validator being too brittle: it required the whole reply to be pure JSON (no
+  tolerance for a stray sentence of prose), used strict type validation (no
+  tolerance for e.g. marks_awarded as 5.0), and compared evidence quotes against
+  the schedule byte-for-byte (no tolerance for typographic quote/dash variants
+  the model may retype). Added _extract_json_object (first balanced {...} span),
+  switched to strict=False validation, and normalise quotes/dashes before the
+  exact-quotation check. Also added one bounded retry specifically on a 502 from
+  _validate (both text marking and the new vision_mark() helper covering first
+  and second image review), re-prompting with an explicit JSON-only instruction
+  before giving up — separate from model_reply_reliable's existing retry for
+  transient gateway failures. 119 server tests pass (renamed test plus one new
+  recovery-path test). Rebuilt and redeployed the API; live and healthy.
+
 - Deployed API build with scan-revision locking, NCEA scale detection and cut-score
   extraction. Ran /admin/backfill-cut-scores live against the real database: 44 of
   60 standard/year schedules extracted boundaries, 16 not_found (pre-2015 schedules
