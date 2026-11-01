@@ -8,6 +8,22 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- 2026-11-02: Exercised real gateway diagram generation with saved mechanics
+  lesson 18: authenticated POST returned 201, lesson-filtered listing returned
+  200 and contained the generated row, image GET returned 200 with a valid PNG
+  signature (50,357 bytes). Independent review rejected incorrect velocity units
+  and an ambiguous displacement arrow; status correctly remained flagged.
+  Extended the existing three-attempt loop to feed visual-review issues into
+  regeneration, not just SVG/render failures. Reviewer outages stop without
+  claiming success. Regression check verifies rejected drawing -> correction ->
+  independent pass. Full suite: 144 passed, six warnings/six subtests. API rebuilt
+  and deployed, health ok. Second live pipeline run rendered a 44,454-byte PNG
+  but visual review was unavailable; remained flagged. Cairo emitted
+  `Fontconfig error: No writable cache directories`; rendering still returned PNG.
+  Both test diagram rows/files removed, temporary HTTP session revoked. No human
+  visual validation or successful live correction cycle claimed. Android UI
+  interaction remains untested; next task is diagram Explain / reminder work.
+
 - 2026-11-02: Added on-demand reviewed diagrams to non-practice Android lesson
   sections, reusing existing diagram storage/rendering/image endpoints. Generated
   diagrams are linked to the lesson and recovered by description when reopening;

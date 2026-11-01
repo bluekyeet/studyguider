@@ -106,6 +106,8 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
         last_error = ""
         source = ""
         png = None
+        status = "flagged"
+        review = None
         for attempt in range(3):
             prompt = (f"Draw one clear, labelled educational diagram for this NCEA topic: {body.description}. "
                       "Return only a valid standalone SVG document, with viewBox, readable text labels, no scripts, "
@@ -122,13 +124,11 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
             try:
                 source = _sanitise(raw)
                 png = _render(source)
-                last_error = ""
-                break
             except ValueError as exc:
+                png = None
                 last_error = str(exc)
-        status = "flagged"
-        review = None
-        if png:
+                review = last_error
+                continue
             try:
                 reply = model_reply_vision("education-reviewer",
                     ("Review this educational diagram. Check labels, spelling, scientific correctness and readability. "
@@ -140,10 +140,17 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
                         and all(isinstance(issue, str) for issue in verdict["issues"])):
                     status = "passed" if verdict["pass"] and not verdict["issues"] else "flagged"
                     review = json.dumps(verdict, ensure_ascii=False)[:10000]
+                    if status == "passed":
+                        break
+                    last_error = review
                 else:
                     review = "Reviewer returned an invalid verdict."
+                    last_error = review
             except Exception:
                 review = "Visual review was unavailable; the diagram is flagged for you to check."
+                # Provider outages are not evidence of a drawing fault; preserve
+                # this draft rather than spend two more generation calls.
+                break
         directory = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / "diagrams"
         directory.mkdir(parents=True, exist_ok=True)
         image_path = None

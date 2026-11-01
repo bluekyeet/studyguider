@@ -91,3 +91,36 @@ def test_lesson_diagram_is_grounded_and_only_clean_review_passes(monkeypatch, tm
     assert response.status_code == 201
     assert response.json()["status"] == expected
     assert all("Source evidence" in prompt for prompt in captured)
+
+
+def test_visual_review_failure_is_corrected_before_passing(monkeypatch, tmp_path):
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("diagrams._render", lambda svg: b"test PNG")
+    generated = []
+    reviews = iter([
+        '{"pass": false, "issues": ["Velocity must use m/s, not m/s squared"]}',
+        '{"pass": true, "issues": []}',
+    ])
+
+    class Database:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params=()):
+            self.sql, self.params = sql, params
+            return self
+        def fetchone(self):
+            if "SELECT name" in self.sql: return ("Mechanics",)
+            if "SELECT lesson" in self.sql: return ("Draft", [{"content": "Velocity uses m/s"}], [])
+            return (1,) + self.params + ("today",)
+
+    def generate(model, messages, task):
+        generated.append(messages[-1]["content"])
+        return SAFE
+
+    app = FastAPI()
+    app.include_router(diagram_router(Database, lambda: None, generate, lambda *args, **kwargs: next(reviews)))
+    response = TestClient(app).post("/topics/2/diagrams", json={"lesson_id": 18, "description": "Show velocity"})
+    assert response.status_code == 201
+    assert response.json()["status"] == "passed"
+    assert len(generated) == 2
+    assert "Velocity must use m/s" in generated[1]
