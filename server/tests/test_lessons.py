@@ -38,6 +38,32 @@ class Database:
             self.result = (7, 0, 0) if params[0] == 1 else None
         elif "UPDATE lessons SET completed_at" in sql:
             self.result = ("2026-11-01T00:00:00Z",) if any(r[0] == params[0] for r in self.rows) else None
+        elif "SELECT section, revision FROM lesson_progress" in sql:
+            self.result = getattr(self, "progress", None)
+        elif "INSERT INTO lesson_progress" in sql:
+            self.result = None if hasattr(self, "progress") else (1,)
+            if self.result:
+                self.progress = (params[1], 1)
+        elif "UPDATE lesson_progress" in sql:
+            self.result = None
+            if self.progress[1] == params[2]:
+                self.progress = (params[0], params[2] + 1)
+                self.result = (self.progress[1],)
+        elif "INSERT INTO lesson_answers" in sql:
+            self.result = None if hasattr(self, "saved_answer") else (1,)
+            if self.result:
+                self.saved_answer = params
+                self.answer_revision = 1
+        elif "UPDATE lesson_answers" in sql:
+            if params[5] != self.answer_revision:
+                self.result = None
+            else:
+                self.answer_revision += 1
+                self.saved_answer = (params[3], params[4], params[0], params[1], params[2])
+                self.result = (self.answer_revision,)
+        elif "FROM lesson_answers" in sql:
+            a = getattr(self, "saved_answer", None)
+            self.result = [(a[1], a[2], a[3], a[4], "2026-11-01", self.answer_revision)] if a and a[0] == params[0] else []
         elif "FROM review_questions" in sql:
             self.result = []
         elif "FROM resources WHERE id = ANY" in sql:
@@ -95,15 +121,16 @@ def test_generation_snapshot_and_history():
 
     def reply(model, messages, task="general"):
         calls.append((model, messages, task))
-        return "draft" if model == "education" else "check citations"
+        return "draft" if model == "education" else json.dumps({"pass": True, "issues": []})
 
     client, db, source = setup(reply)
     response = client.post("/topics/1/lessons", json={"query": " algebra "})
     assert response.status_code == 201
     item = response.json()
-    assert item["status"] == "draft" and item["review_status"] == "completed"
-    assert item["reviewer_verdict"] == "completed"
+    assert item["status"] == "draft" and item["review_status"] == "passed"
+    assert item["reviewer_verdict"] == "passed"
     assert item["version"] == 1
+    assert "Relevant formulae" in calls[0][1][0]["content"]
     assert len(item["sources"][0]["content"]) == 4000
     assert json.loads(calls[0][1][1]["content"])["evidence"]["sources"] == item["sources"]
     assert json.loads(calls[0][1][1]["content"])["teaching_style"] == "Subject teaching style:\nUse worked examples"
@@ -113,6 +140,18 @@ def test_generation_snapshot_and_history():
     assert client.post("/lessons/1/complete").status_code == 200
     assert client.post("/lessons/1/complete").json() == {"completed_at": "2026-11-01T00:00:00Z"}
     assert client.post("/lessons/999/complete").status_code == 404
+    assert client.get("/lessons/1/progress").json() == {"section": 0, "revision": 0}
+    assert client.put("/lessons/1/progress", json={"section": 2}).status_code == 200
+    assert client.put("/lessons/1/progress", json={"section": 3}).status_code == 409
+    assert client.put("/lessons/1/progress", json={"section": 3, "revision": 1}).status_code == 200
+    assert client.get("/lessons/1/progress").json() == {"section": 3, "revision": 2}
+    assert client.put("/lessons/1/answers/section1", json={"question": "Explain force", "answer": "A push", "feedback": "Partly correct"}).status_code == 200
+    assert client.get("/lessons/1/answers").json()[0]["answer"] == "A push"
+    assert client.put("/lessons/1/answers/section1", json={"question": "Explain force", "answer": "stale"}).status_code == 409
+    assert client.put("/lessons/1/answers/section1", json={"question": "Explain force", "answer": "A push or pull", "revision": 1}).status_code == 200
+    assert client.get("/lessons/1/answers").json()[0]["answer"] == "A push or pull"
+    assert client.put("/lessons/1/answers/bad.key", json={"question": "Why?", "answer": ""}).status_code == 422
+    assert client.get("/lessons/999/answers").status_code == 404
     assert client.get("/lessons/2").status_code == 404
     assert client.get("/topics/2/lessons").status_code == 404
     assert client.get("/topics/1/lessons?limit=101").status_code == 422
