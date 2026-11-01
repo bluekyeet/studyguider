@@ -328,6 +328,15 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None):
                 GROUP BY e.id ORDER BY e.id DESC""").fetchall()
         return [dict(zip(("id", "created_at", "question_count", "subject_id", "kind", "total_marks"), row)) for row in rows]
 
+    @router.delete("/exams/{exam_id}", status_code=204)
+    def delete_exam(exam_id: int):
+        with connect() as db:
+            # Attempt-owned answers, scans and marks cascade; bank questions stay.
+            row = db.execute("DELETE FROM exams WHERE id = %s RETURNING id", (exam_id,)).fetchone()
+            if not row:
+                raise HTTPException(404, "Exam not found")
+        return Response(status_code=204)
+
     @router.post("/exams", status_code=201)
     def assemble_exam(body: ExamAssembly):
         with connect() as db:

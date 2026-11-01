@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Saved exams now have Delete with an explicit permanent-deletion confirmation.
+  Authenticated DELETE /exams/{id} returns 204 (404 if missing); existing database
+  cascades remove attempt items/scans/markings/overrides while preserving bank
+  questions/resources. Android removes the card only after successful response;
+  failures retain it and surface an error. 152 server tests passed, six warnings/
+  six subtests; debug build passed; API rebuilt/deployed, health ok; emulator APK
+  installed. No actual user exam deleted; live cascade/UI behaviour not tested.
+
 - Exam UI correction: user meant a year dropdown, not an expanded radio list.
   Replaced it with Choose a year / selected year dropdown; entries retain standard
   and question count. Past paper, Collated paper and AI-written practice now share

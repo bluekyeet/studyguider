@@ -19,10 +19,11 @@ import java.net.URL
 
 private data class ExamSummary(val id: Long, val createdAt: String, val questionCount: Int, val kind: String, val totalMarks: Int, val title: String)
 
-private suspend fun examMenuRequest(base: String, token: String, path: String, body: JSONObject? = null): String = withContext(Dispatchers.IO) {
+private suspend fun examMenuRequest(base: String, token: String, path: String, body: JSONObject? = null, method: String = if (body == null) "GET" else "POST"): String = withContext(Dispatchers.IO) {
     val c = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
     try {
         c.connectTimeout = 10000; c.readTimeout = 200000
+        c.requestMethod = method
         c.setRequestProperty("Authorization", "Bearer $token")
         if (body != null) {
             c.requestMethod = "POST"; c.doOutput = true; c.setRequestProperty("Content-Type", "application/json")
@@ -68,6 +69,8 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
     var paper by remember { mutableStateOf<JSONObject?>(null) }
     var topicMenu by remember { mutableStateOf(false) }
     var paperMenu by remember { mutableStateOf(false) }
+    var deleteTarget by remember { mutableStateOf<ExamSummary?>(null) }
+    var deleting by remember { mutableStateOf(false) }
     LaunchedEffect(base, token) {
         try {
             val subjects = JSONArray(examMenuRequest(base, token, "/subjects"))
@@ -173,9 +176,32 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
                     Text(exam.title, style = MaterialTheme.typography.titleLarge)
                     Text(exam.kind.replace('-', ' ').replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodySmall)
                     Text("${exam.questionCount} ${if (exam.questionCount == 1) "question" else "questions"} · created ${exam.createdAt.take(10)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(shape = RoundedCornerShape(50), onClick = { onChooseExam(exam.id) }) { Text("Open exam") }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Button(enabled = !deleting, shape = RoundedCornerShape(50), onClick = { onChooseExam(exam.id) }) { Text("Open exam") }
+                        TextButton(enabled = !deleting, onClick = { deleteTarget = exam }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    }
                 }
             }
         }
+    }
+    deleteTarget?.let { exam ->
+        AlertDialog(
+            onDismissRequest = { if (!deleting) deleteTarget = null },
+            title = { Text("Delete saved exam?") },
+            text = { Text("${exam.title}\n\nThis permanently removes this attempt, its answers, scans and feedback. Original papers and bank questions are kept.") },
+            confirmButton = { TextButton(enabled = !deleting, onClick = {
+                scope.launch {
+                    deleting = true; error = ""
+                    try {
+                        examMenuRequest(base, token, "/exams/${exam.id}", method = "DELETE")
+                        exams = exams?.filterNot { it.id == exam.id }
+                        deleteTarget = null
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { error = e.message ?: "Could not delete exam"; deleteTarget = null }
+                    finally { deleting = false }
+                }
+            }) { Text(if (deleting) "Deleting…" else "Delete", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(enabled = !deleting, onClick = { deleteTarget = null }) { Text("Cancel") } },
+        )
     }
 }
