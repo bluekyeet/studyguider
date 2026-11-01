@@ -888,6 +888,9 @@ internal fun TopicNotes(base: String, token: String) {
     var busy by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
+    var deleteNote by remember(base, token, topic) { mutableStateOf<JSONObject?>(null) }
+    var deletingNote by remember { mutableStateOf(false) }
+    val noteScope = rememberCoroutineScope()
     LaunchedEffect(base, token) {
         busy = true; error = ""
         try {
@@ -919,18 +922,21 @@ internal fun TopicNotes(base: String, token: String) {
     }
     Text("Topic notes", style = MaterialTheme.typography.titleLarge)
     Box {
-        OutlinedButton(onClick = { menu = true }, modifier = Modifier.fillMaxWidth()) { Text(topic?.first ?: "Choose a topic") }
+        OutlinedButton(enabled = !deletingNote, onClick = { menu = true }, modifier = Modifier.fillMaxWidth()) { Text(topic?.first ?: "Choose a topic") }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             topics.forEach { item -> DropdownMenuItem(text = { Text(item.first) }, onClick = { topic = item; menu = false }) }
         }
     }
-    TextButton(enabled = !busy, onClick = { reload++ }) { Text("Refresh") }
+    TextButton(enabled = !busy && !deletingNote, onClick = { reload++ }) { Text("Refresh") }
     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
     if (!busy && error.isEmpty() && topic != null && notes.isEmpty()) Text("No notes saved for this topic yet.")
     notes.forEach { note ->
         StudyCard {
-            Text(note.optString("created_at").take(10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(note.optString("created_at").take(10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(enabled = !deletingNote, onClick = { deleteNote = note }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            }
             val text = withoutSourceMarkers(shortCitations(note.optString("content"), emptyList()))
             markdownBlocks(text).forEach { (kind, runs) ->
                 val content = runs.joinToString("") { it.text }
@@ -938,6 +944,27 @@ internal fun TopicNotes(base: String, token: String) {
                 else MathText(content)
             }
         }
+    }
+    deleteNote?.let { note ->
+        AlertDialog(
+            onDismissRequest = { if (!deletingNote) deleteNote = null },
+            title = { Text("Delete note?") },
+            text = { Text("This permanently deletes this saved note. The original lesson and its sources are kept.") },
+            confirmButton = { TextButton(enabled = !deletingNote, onClick = {
+                val topicId = topic?.second ?: return@TextButton
+                noteScope.launch {
+                    deletingNote = true; error = ""
+                    try {
+                        request(base, "/topics/$topicId/notes/${note.getLong("id")}", token, method = "DELETE")
+                        notes = notes.filterNot { it.getLong("id") == note.getLong("id") }
+                        deleteNote = null
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { error = e.message ?: "Could not delete note"; deleteNote = null }
+                    finally { deletingNote = false }
+                }
+            }) { Text(if (deletingNote) "Deleting…" else "Delete note", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(enabled = !deletingNote, onClick = { deleteNote = null }) { Text("Cancel") } },
+        )
     }
 }
 

@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Topic notes now have Delete with confirmation, using the existing scoped DELETE
+  endpoint. Cancel preserves the note; failed requests retain it; successful
+  requests remove the card. Original lesson/source data is untouched. Debug and
+  instrumentation APK builds passed. Extended TopicNotesTest covers cancel and
+  confirmed deletion, but NOT RUN: emulator remains off as requested. No install
+  or launch attempted; normal GPU settings unchanged.
+
 - Notes display now hides raw UUID source citations too, without changing saved
   note/evidence content. Added regression sample from reported hydrocarbon note.
   Successful tab navigation clears the stale unsaved-lesson navigation warning
