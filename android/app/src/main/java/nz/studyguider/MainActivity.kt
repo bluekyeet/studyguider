@@ -796,8 +796,12 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
                 ListItem(headlineContent = { Text("Lesson manager") }, supportingContent = { Text("Open or delete saved lessons") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Lesson manager" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 ListItem(headlineContent = { Text("Lesson history") }, supportingContent = { Text("Completed lessons used for your reviews") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Lesson history" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                ListItem(headlineContent = { Text("Topic notes") }, supportingContent = { Text("Read your saved explanations and notes") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Topic notes" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
             }
         }
+        } else if (page == "Topic notes") {
+            TopicNotes(base, token)
         } else {
             if (managerDay == null) Text(page, style = MaterialTheme.typography.titleLarge)
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -870,6 +874,68 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             }
         }) { Text("Delete") } }, dismissButton = { TextButton(enabled = !deleting, onClick = { deleteTarget = null }) { Text("Cancel") } },
     ) }
+}
+
+@Composable
+internal fun TopicNotes(base: String, token: String) {
+    var topics by remember(base, token) { mutableStateOf<List<Pair<String, Long>>>(emptyList()) }
+    var topic by remember(base, token) { mutableStateOf<Pair<String, Long>?>(null) }
+    var notes by remember(base, token) { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var menu by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf("") }
+    var reload by remember { mutableIntStateOf(0) }
+    LaunchedEffect(base, token) {
+        busy = true; error = ""
+        try {
+            val subjects = JSONArray(request(base, "/subjects", token))
+            val found = mutableListOf<Pair<String, Long>>()
+            for (i in 0 until subjects.length()) {
+                val subject = subjects.getJSONObject(i)
+                val rows = JSONArray(request(base, "/subjects/${subject.getLong("id")}/topics", token))
+                for (j in 0 until rows.length()) {
+                    val item = rows.getJSONObject(j)
+                    found.add("${subject.optString("name")} · ${item.optString("name")}" to item.getLong("id"))
+                }
+            }
+            topics = found
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: "Could not load topics" }
+        finally { busy = false }
+    }
+    LaunchedEffect(base, token, topic, reload) {
+        notes = emptyList()
+        val selected = topic ?: return@LaunchedEffect
+        busy = true; error = ""
+        try {
+            val rows = JSONArray(request(base, "/topics/${selected.second}/notes", token))
+            notes = (0 until rows.length()).map { rows.getJSONObject(it) }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: "Could not load notes" }
+        finally { busy = false }
+    }
+    Text("Topic notes", style = MaterialTheme.typography.titleLarge)
+    Box {
+        OutlinedButton(onClick = { menu = true }, modifier = Modifier.fillMaxWidth()) { Text(topic?.first ?: "Choose a topic") }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            topics.forEach { item -> DropdownMenuItem(text = { Text(item.first) }, onClick = { topic = item; menu = false }) }
+        }
+    }
+    TextButton(enabled = !busy, onClick = { reload++ }) { Text("Refresh") }
+    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+    if (!busy && error.isEmpty() && topic != null && notes.isEmpty()) Text("No notes saved for this topic yet.")
+    notes.forEach { note ->
+        StudyCard {
+            Text(note.optString("created_at").take(10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val text = withoutSourceMarkers(shortCitations(note.optString("content"), emptyList()))
+            markdownBlocks(text).forEach { (kind, runs) ->
+                val content = runs.joinToString("") { it.text }
+                if (kind == "heading") Text(content, style = MaterialTheme.typography.titleSmall)
+                else MathText(content)
+            }
+        }
+    }
 }
 
 @Composable

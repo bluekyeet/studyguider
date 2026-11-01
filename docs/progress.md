@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added Learning > Topic notes so saved explanations can actually be read in
+  Android: topic dropdown, refresh, date-labelled full-width note cards, Markdown/
+  maths rendering and empty/error/loading states. Uses existing notes API, no DB
+  changes or new dependencies. Debug build passed; targeted TopicNotesTest passed
+  on emulator (one test: choose topic, fetch/display saved note via local stub).
+  Explicit APK install Success; launch returned Status timeout / WaitTime 14714.
+  Production note loading and visual appearance untested; editing/deletion skipped.
+
 - Fixed false Explain interruption: live gateway probe returned finish_reason=stop
   followed by EOF, without [DONE]. Reader now accepts explicit stop+EOF as normal
   completion, while rejecting length/content-filter/other finish reasons and
