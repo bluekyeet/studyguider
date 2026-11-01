@@ -154,6 +154,10 @@ class Note(BaseModel):
     content: str = Field(min_length=1, max_length=50000, pattern=r"\S")
 
 
+class NoteEdit(Note):
+    original_content: str = Field(min_length=1, max_length=50000)
+
+
 def _gateway_request(model, messages, task, timeout=120):
     base = os.environ.get("ROUTER_BASE_URL", "").rstrip("/")
     key = os.environ.get("ROUTER_API_KEY", "")
@@ -517,6 +521,19 @@ def list_notes(topic_id: int):
             raise HTTPException(404, "Topic not found")
         rows = db.execute("SELECT id, content, created_at FROM notes WHERE topic_id = %s ORDER BY id DESC", (topic_id,)).fetchall()
     return [{"id": row[0], "content": row[1], "created_at": row[2]} for row in rows]
+
+
+@app.put("/topics/{topic_id}/notes/{note_id}", dependencies=[Depends(authorised)])
+def edit_note(topic_id: int, note_id: int, body: NoteEdit):
+    with connect() as db:
+        row = db.execute("""UPDATE notes SET content=%s WHERE id=%s AND topic_id=%s
+            AND content=%s RETURNING id, content, created_at""",
+            (body.content.strip(), note_id, topic_id, body.original_content)).fetchone()
+        if not row:
+            if not db.execute("SELECT 1 FROM notes WHERE id=%s AND topic_id=%s", (note_id, topic_id)).fetchone():
+                raise HTTPException(404, "Note not found")
+            raise HTTPException(409, "Note changed elsewhere. Your draft has not overwritten it; reload before editing again.")
+    return {"id": row[0], "content": row[1], "created_at": row[2]}
 
 
 @app.delete("/topics/{topic_id}/notes/{note_id}", dependencies=[Depends(authorised)])

@@ -933,6 +933,10 @@ internal fun TopicNotes(base: String, token: String) {
     var reload by remember { mutableIntStateOf(0) }
     var deleteNote by remember(base, token, topic) { mutableStateOf<JSONObject?>(null) }
     var deletingNote by remember { mutableStateOf(false) }
+    var editingNote by remember(base, token, topic) { mutableStateOf<JSONObject?>(null) }
+    var noteDraft by rememberSaveable { mutableStateOf("") }
+    var noteEditError by remember { mutableStateOf("") }
+    var savingNote by remember { mutableStateOf(false) }
     val noteScope = rememberCoroutineScope()
     LaunchedEffect(base, token) {
         busy = true; error = ""
@@ -978,6 +982,7 @@ internal fun TopicNotes(base: String, token: String) {
         StudyCard {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(note.optString("created_at").take(10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(enabled = !deletingNote, onClick = { editingNote = note; noteDraft = note.getString("content"); noteEditError = "" }) { Text("Edit") }
                 TextButton(enabled = !deletingNote, onClick = { deleteNote = note }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             }
             val text = withoutSourceMarkers(shortCitations(note.optString("content"), emptyList()))
@@ -987,6 +992,32 @@ internal fun TopicNotes(base: String, token: String) {
                 else MathText(content)
             }
         }
+    }
+    editingNote?.let { note ->
+        AlertDialog(
+            onDismissRequest = { if (!savingNote && noteDraft == note.getString("content")) editingNote = null },
+            title = { Text("Edit note") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(noteDraft, { noteDraft = it }, enabled = !savingNote, label = { Text("Note (Markdown / LaTeX)") }, modifier = Modifier.fillMaxWidth(), minLines = 5, maxLines = 12)
+                if (noteEditError.isNotEmpty()) Text(noteEditError, color = MaterialTheme.colorScheme.error)
+                Text("Edits preserve stored source citations unless you remove them. Discard closes without saving.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { TextButton(enabled = !savingNote && noteDraft.isNotBlank() && noteDraft.length <= 50000, onClick = {
+                val topicId = topic?.second ?: return@TextButton
+                noteScope.launch {
+                    savingNote = true; noteEditError = ""
+                    try {
+                        val updated = JSONObject(request(base, "/topics/$topicId/notes/${note.getLong("id")}", token,
+                            JSONObject().put("content", noteDraft).put("original_content", note.getString("content")), "PUT"))
+                        notes = notes.map { if (it.getLong("id") == note.getLong("id")) updated else it }
+                        editingNote = null
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { noteEditError = "${e.message}\nYour draft is retained here. Copy it before closing if you need to reload the latest note." }
+                    finally { savingNote = false }
+                }
+            }) { Text(if (savingNote) "Saving…" else "Save") } },
+            dismissButton = { TextButton(enabled = !savingNote, onClick = { editingNote = null }) { Text("Discard") } },
+        )
     }
     deleteNote?.let { note ->
         AlertDialog(

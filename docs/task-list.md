@@ -29,7 +29,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Add actual formula parsing beyond the existing delimiter/brace checks.
 - [ ] Evaluate semantic retrieval against keyword search; add embeddings if needed.
 - [x] Add an optional exam timer (local-device start/pause/reset; runtime checks pending).
-- [ ] Add editing of saved topic notes with safe conflict handling.
+- [x] Add editing of saved topic notes with safe conflict handling (conditional original-content update; HTTP 409 retains draft).
 - [x] Add visible warnings when model-call failures rise (usage panel, at least ten calls and 20% errors).
 - [ ] Resume website study-workflow parity when requested.
 - [ ] Notification reminders
@@ -148,7 +148,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 162 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 163 passed, six warnings, six subtests passed.
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.

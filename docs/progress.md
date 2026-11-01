@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added Android note Edit dialog and authenticated scoped PUT notes endpoint.
+  Conditional update compares original content atomically; stale edits return 409,
+  missing/deleted notes 404. Errors leave editor/draft intact; explicit Discard
+  closes without saving. No migration/new table. Compare-by-content deliberately
+  permits equivalent content after an intervening edit (not a revision history).
+  163 server tests passed, six warnings/six subtests; debug/test APK builds passed.
+  API rebuilt/deployed, health ok. Emulator off; no install or UI test attempted.
+
 - Added optional local exam countdown (1–360 minutes) with start/pause/resume/reset.
   Uses elapsedRealtime so wall-clock changes do not distort running time; stores
   state per server/exam to continue after screen navigation. Device reboot pauses
