@@ -33,6 +33,8 @@ def create_review_tables(db):
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS standard_number integer REFERENCES standards(number) ON DELETE SET NULL")
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS concept text NOT NULL DEFAULT ''")
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS mastery real NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS exam_origin text")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS review_questions_exam_origin_idx ON review_questions(exam_origin)")
     db.execute("ALTER TABLE review_answers ADD COLUMN IF NOT EXISTS correct boolean")
     db.execute("ALTER TABLE review_answers ADD COLUMN IF NOT EXISTS feedback text")
     db.execute("ALTER TABLE review_answers ADD COLUMN IF NOT EXISTS outcome text")

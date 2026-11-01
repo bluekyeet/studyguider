@@ -20,6 +20,34 @@ SAFE = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
         '<text x="5" y="40">Force</text></svg>')
 
 
+@pytest.mark.parametrize("verdict,status", [('{"pass":true,"issues":[]}', 200), ('invalid', 502)])
+def test_retry_reviews_saved_image_without_generation(monkeypatch, tmp_path, verdict, status):
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+    (tmp_path / "saved.png").write_bytes(b"unchanged PNG")
+    updates = []
+
+    class Database:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params=()):
+            self.sql = sql
+            if "UPDATE diagrams" in sql: updates.append(params)
+            return self
+        def fetchone(self):
+            return (8,) if "UPDATE diagrams" in self.sql else ("Force", "saved.png", "flagged", None, None, None)
+
+    def vision(model, prompt, image, task):
+        assert image == b"unchanged PNG"
+        return verdict
+
+    app = FastAPI()
+    app.include_router(diagram_router(Database, lambda: None, None, vision))
+    response = TestClient(app).post("/diagrams/8/review")
+    assert response.status_code == status
+    assert bool(updates) == (status == 200)
+    assert (tmp_path / "saved.png").read_bytes() == b"unchanged PNG"
+
+
 def test_safe_svg_is_kept_verbatim():
     assert _sanitise(SAFE) == SAFE
 

@@ -1031,6 +1031,7 @@ private fun AiUsageCard(base: String, token: String) {
             }) { Text(if (busy) "Loading…" else if (usage == null) "View usage" else "Refresh usage") }
             usage?.let { data ->
                 Text("${data.optLong("calls")} calls · ${data.optLong("errors")} errors")
+                if (!data.isNull("failure_warning")) Text(data.optString("failure_warning"), color = MaterialTheme.colorScheme.error)
                 Text("Reported tokens: ${data.optLong("prompt_tokens")} input · ${data.optLong("completion_tokens")} output")
                 Text("${data.optLong("calls_without_token_counts")} calls without complete token counts", style = MaterialTheme.typography.bodySmall)
                 Text(data.optString("warning"), style = MaterialTheme.typography.bodySmall)

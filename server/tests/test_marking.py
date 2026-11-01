@@ -54,6 +54,14 @@ class DB:
         pass
 
     def execute(self, sql, params=()):
+        if "SELECT answer FROM exam_items" in sql:
+            return Result((self.row[0],) if self.row else None)
+        if "SELECT revision, confirmed FROM exam_answer_scans" in sql:
+            return Result()
+        if "SELECT 1 FROM marking_overrides" in sql:
+            return Result()
+        if "INSERT INTO review_questions" in sql:
+            return Result()
         self.queries.append((sql, params))
         if "UPDATE markings SET answer_text" in sql:
             return Result()

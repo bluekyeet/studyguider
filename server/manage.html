@@ -981,6 +981,19 @@
           item.append(image);
         }
         if (diagram.review) { const review = document.createElement('p'); review.textContent = diagram.review; item.append(review); }
+        if (diagram.status === 'flagged' && diagram.image_path) {
+          const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Retry visual review';
+          retry.onclick = async () => {
+            retry.disabled = true; message('Reviewing saved diagram…');
+            try {
+              const result = await api(`/diagrams/${diagram.id}/review`, { method: 'POST' });
+              message(`Diagram ${result.id}: ${result.status}. ${result.warning}`);
+              await loadDiagrams();
+            } catch (error) { message(error.message); }
+            finally { retry.disabled = false; }
+          };
+          item.append(retry);
+        }
         list.append(item);
       }
     }
@@ -998,6 +1011,7 @@
     $('usage-form').onsubmit = run(async () => {
       const days = $('usage-days').value;
       const data = await api(`/usage?days=${encodeURIComponent(days)}`);
+      if (data.failure_warning) message(data.failure_warning);
       $('usage-summary').textContent = `${data.calls} call(s), ${data.errors} error(s), ${data.prompt_tokens} prompt token(s), ${data.completion_tokens} completion token(s) in ${data.days} day(s).\n${data.warning}\n\n` +
         data.by_model.map(row => `${row.model}: ${row.calls} call(s), ${row.errors} error(s)`).join('\n');
       const recent = await api('/usage/recent?limit=20');

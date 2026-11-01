@@ -55,6 +55,7 @@ def test_usage_reports_missing_counts_without_fabricating_cost():
     assert data["calls_without_token_counts"] == 2
     assert data["prompt_tokens"] == 120
     assert data["cost"] is None
+    assert data["failure_warning"] is None
 
 
 @pytest.mark.parametrize("ending", ["done", "stop", "length", "truncated"])

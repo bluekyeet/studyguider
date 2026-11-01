@@ -187,6 +187,37 @@ def clean_transcription(raw):
     return text
 
 
+def queue_exam_review(connect, exam_id, question_id, row, result, schedule, scan_revision=None, disagreement=False):
+    """Reuse the original question/rubric, not a newly invented model question."""
+    if (disagreement or result.get("outcome") == "uncertain" or result.get("confidence", 0) < 0.7
+            or result["marks_awarded"] >= result["marks_available"]):
+        return
+    question = row[5] or row[9] or ""
+    if not question.strip() or len(question) > 20000 or not schedule.strip() or len(schedule) > 20000:
+        return
+    source = [{"resource_id": str(row[10]) if row[10] else None, "page": row[11],
+               "content": schedule, "exam_id": exam_id, "question_id": question_id,
+               "rubric_type": "official schedule" if row[7] else "unofficial AI practice rubric"}]
+    with connect() as db:
+        # Lock the current answer against replacement while linking its mistake.
+        current = db.execute("SELECT answer FROM exam_items WHERE exam_id=%s AND question_id=%s FOR UPDATE",
+                             (exam_id, question_id)).fetchone()
+        if not current or current[0] != row[0]:
+            return
+        scan = db.execute("SELECT revision, confirmed FROM exam_answer_scans WHERE exam_id=%s AND question_id=%s FOR UPDATE",
+                          (exam_id, question_id)).fetchone()
+        if (scan and (not scan[1] or scan[0] != scan_revision)) or (scan_revision is not None and not scan):
+            return
+        if db.execute("SELECT 1 FROM marking_overrides WHERE exam_id=%s AND question_id=%s", (exam_id, question_id)).fetchone():
+            return
+        db.execute("""INSERT INTO review_questions
+            (topic_id,question,due_date,expected_answer,source,standard_number,concept,exam_origin)
+            VALUES (%s,%s,(CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date,%s,%s::jsonb,%s,%s,%s)
+            ON CONFLICT (exam_origin) DO NOTHING""",
+            (row[16], question, schedule, json.dumps(source), row[2],
+             (result.get("missing") or [f"Exam question {row[1]}"])[0][:200], f"{exam_id}:{question_id}"))
+
+
 def marking_router(connect, authorised, model_reply, model_reply_vision=None):
     router = APIRouter(dependencies=[Depends(authorised)])
 
@@ -407,6 +438,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                     db.execute("""INSERT INTO markings (exam_id,question_id,answer_hash,kind,result,model,answer_text,scan_revision)
                         VALUES (%s,%s,%s,'second',%s::jsonb,'education-reviewer',%s,%s)
                         ON CONFLICT (exam_id,question_id,answer_hash,kind) DO NOTHING""", (exam_id,question_id,digest,json.dumps(second),row[0],scan[2]))
+            queue_exam_review(connect, exam_id, question_id, row, result, schedule, scan[2],
+                              bool(second and (second['marks_awarded'], second['outcome']) != (result['marks_awarded'], result['outcome'])))
             return {"exam_id": exam_id, "question_id": question_id, **result, "experimental": True,
                     "cached": bool(cached_scan), "second_review": second, "automatic_second_review": automatic,
                     "disagreement": bool(second and (second['marks_awarded'],second['outcome']) != (result['marks_awarded'],result['outcome'])),
@@ -471,6 +504,7 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
         if request.self_override is not None:
             response["self_override"] = request.self_override
             response["self_override_disclaimer"] = "Your self-assessment, not an AI or official grade; not saved here."
+        queue_exam_review(connect, exam_id, question_id, row, first, schedule, disagreement=disagreement)
         return response
 
     @router.get("/exams/{exam_id}/answers/{question_id}/feedback")

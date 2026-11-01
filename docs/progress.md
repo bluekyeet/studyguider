@@ -8,6 +8,19 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Task-list batch: missed exam questions now create one due review per exam/question
+  with the original question and rubric/source snapshot, no extra model call.
+  Unique exam_origin prevents duplicates. Current answer/confirmed scan are locked
+  and checked; uncertain/low-confidence/disputed marks and overridden attempts
+  are skipped. Oversized question/rubric snapshots are skipped rather than truncated.
+  No historical backfill; retained review snapshots survive deletion of the attempt.
+  Added POST /diagrams/{id}/review plus manager Retry visual review using unchanged
+  image bytes; invalid/unavailable reviews do not promote status. Usage panel warns
+  for >=10 calls and >=20% errors in the selected reporting period. Full suite 162
+  passed, six warnings/six subtests; Android debug and test APK builds passed;
+  browser image-auth check passed. API rebuilt/deployed, health ok. No emulator
+  startup/install; live full learning cycle and new UI interactions untested.
+
 - Fixed manager image 401: authorisedImage was sending Bearer cookie-session
   (a UI placeholder), overriding the valid HttpOnly cookie. Fetch now explicitly
   uses same-origin cookies without a bearer header, matching other manager calls.

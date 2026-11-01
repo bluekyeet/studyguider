@@ -71,6 +71,9 @@ def usage_router(connect, authorised, model_reply, model_reply_vision):
         return {
             "days": days,
             "calls": totals[0], "errors": totals[1],
+            # ponytail: fixed advisory threshold; tune only after real usage evidence.
+            "failure_warning": ("Model failures are elevated: at least 20% of calls failed in this period. Check the gateway before starting more generation."
+                                if totals[0] >= 10 and totals[1] / totals[0] >= 0.2 else None),
             "prompt_tokens": totals[2], "completion_tokens": totals[3],
             "calls_without_token_counts": totals[4],
             "cost": None,
