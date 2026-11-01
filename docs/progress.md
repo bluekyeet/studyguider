@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Explain display follow-up: reused TutorText Markdown block rendering instead
+  of one MathText for the full response, so headings/paragraph breaks are parsed.
+  Prompt defaults to 120–180 words with short paragraphs and no standard-number
+  preamble, expanding when requested. 156 server tests and debug build passed;
+  API rebuilt/deployed; explicit emulator install Success. Launch reported
+  Status timeout (WaitTime 10939); subsequent pidof returned 5693. No visual
+  success claimed; live response length/formatting remains unverified.
+
 - Explain focus correction: reader FAB now sends the current open section title/
   body rather than an empty focus, prefills Explain this section in more detail,
   and labels the dialog Explain this section. Prompt only uses Correct/Partly

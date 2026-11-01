@@ -501,7 +501,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                 TextButton(enabled = !helpBusy && !noteBusy, onClick = { helpHistory = emptyList(); helpAnswer = ""; helpNote = "" }) { Text("New conversation") }
             }
             if (helpBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (helpAnswer.isNotBlank()) MathText(withoutSourceMarkers(shortCitations(helpAnswer, citedIds)))
+            if (helpAnswer.isNotBlank()) TutorText(helpAnswer, draft)
             if (helpNote.isNotEmpty()) {
                 TextButton(enabled = !helpBusy && !noteBusy && !noteSaved && helpNote.length <= 50000, onClick = {
                     helpScope.launch {
