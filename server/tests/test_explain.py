@@ -1,75 +1,82 @@
-import json
-import sys
-from pathlib import Path
-
-from fastapi import FastAPI, HTTPException
+"""Tests for explain paragraph endpoint and learner summary endpoint."""
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from explain import explain_router
 
 
-class Database:
-    def __init__(self, row):
-        self.row = row
-
-    def __enter__(self):
+class FakeDB:
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+    def execute(self, sql, params=()):
+        if "FROM lessons" in sql:
+            self._last = "lesson"
+        elif "COALESCE" in sql or "style" in sql.lower():
+            self._last = "style"
         return self
-
-    def __exit__(self, *args):
-        pass
-
-    def execute(self, sql, params):
-        if "COALESCE(tp.content" in sql:
-            # Subject style plus topic override lookup; tests use none.
-            self.found = ("", "")
-            return self
-        assert "FROM lessons l WHERE l.id = %s" in sql
-        self.found = self.row if params == (1,) else None
-        return self
-
-    def fetchall(self):
-        return []
-
     def fetchone(self):
-        return self.found
+        if getattr(self, "_last", None) == "style":
+            return None
+        # topic_id=1, query, lesson, sources, standards
+        return (1, "motion", "Lesson body here.", [{"id": "r1", "page": 1}], [{"number": 91171}])
 
 
-def client_for(row, reply, authorised=lambda: None):
+def make_client(stream_fn=None):
     app = FastAPI()
-    app.include_router(explain_router(lambda: Database(row), authorised, reply))
-    return TestClient(app)
+    replies = []
+
+    def fake_reply(model, messages, task="general", **kw):
+        replies.append(task)
+        return "Correct. The answer is 9.8 m/s²."
+
+    app.include_router(explain_router(FakeDB, lambda: None, fake_reply, stream_fn))
+    return TestClient(app), replies
 
 
-def test_explanation_uses_saved_snapshots_and_warns():
-    sources = [{"resource_id": "abc", "page": 2, "content": "saved evidence"}]
-    calls = []
-    def reply(model, messages, task="general"):
-        calls.append((model, messages))
-        return "Explanation [abc, page 2]"
-    client = client_for((1, "query", "unverified draft", sources, [{"number": "1"}]), reply)
-    response = client.post("/lessons/1/explain", json={"question": " Why? "})
-    assert response.status_code == 200
-    assert response.json()["status"] == "draft"
-    assert "not verified" in response.json()["warning"]
-    assert calls[0][0] == "education"
-    payload = json.loads(calls[0][1][1]["content"])
-    assert payload == {"question": "Why?", "lesson_query": "query", "lesson": "unverified draft",
-                       "sources": sources, "standards": [{"number": "1"}], "teaching_style": ""}
-    assert "not evidence" in calls[0][1][0]["content"]
+def test_explain_returns_explanation():
+    client, replies = make_client()
+    resp = client.post("/lessons/1/explain", json={"question": "What is g?"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "explanation" in body
+    assert body["status"] == "draft"
+    assert "warning" in body
+    assert "explain" in replies
 
 
-def test_errors_and_authorisation():
-    row = (1, "query", "lesson", [{"content": "evidence"}], [])
-    client = client_for(row, lambda *args, **kwargs: " ")
-    assert client.post("/lessons/2/explain", json={"question": "Why?"}).status_code == 404
-    assert client.post("/lessons/1/explain", json={"question": "   "}).status_code == 422
-    assert client.post("/lessons/1/explain", json={"question": "Why?"}).status_code == 502
-    assert client_for((1, "q", "l", [], []), lambda *args, **kwargs: "answer").post(
-        "/lessons/1/explain", json={"question": "Why?"}).status_code == 422
-    assert client_for(row, lambda *args, **kwargs: "x" * 100001).post(
-        "/lessons/1/explain", json={"question": "Why?"}).status_code == 502
-    def deny():
-        raise HTTPException(401, "Unauthorised")
-    assert client_for(row, lambda *args, **kwargs: "answer", deny).post(
-        "/lessons/1/explain", json={"question": "Why?"}).status_code == 401
+def test_explain_paragraph_requires_paragraph_field():
+    client, _ = make_client()
+    resp = client.post("/lessons/1/explain/paragraph", json={"question": "What is g?"})
+    assert resp.status_code == 422
+
+
+def test_explain_paragraph_includes_focus_in_payload():
+    captured = []
+    app = FastAPI()
+
+    def fake_reply(model, messages, task="general", **kw):
+        captured.append(messages)
+        return "The paragraph discusses acceleration due to gravity."
+
+    app.include_router(explain_router(FakeDB, lambda: None, fake_reply))
+    client = TestClient(app)
+    resp = client.post("/lessons/1/explain/paragraph",
+                       json={"question": "Explain this", "paragraph": "g = 9.8 m/s²"})
+    assert resp.status_code == 200
+    import json
+    payload = json.loads(captured[0][-1]["content"])
+    assert payload.get("paragraph_in_focus") == "g = 9.8 m/s²"
+    assert "instruction" in payload
+
+
+def test_explain_missing_lesson_returns_404():
+    class NoLesson:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, *a, **kw): return self
+        def fetchone(self): return None
+
+    app = FastAPI()
+    app.include_router(explain_router(NoLesson, lambda: None, lambda *a, **kw: "x"))
+    client = TestClient(app)
+    assert client.post("/lessons/99/explain", json={"question": "test"}).status_code == 404

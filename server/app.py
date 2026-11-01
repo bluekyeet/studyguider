@@ -193,6 +193,52 @@ def model_reply(model, messages, task="general", timeout=120):
     return _gateway_request(model, messages, task, timeout)
 
 
+def model_reply_stream(model, messages, task="general", timeout=120):
+    """Yield SSE data lines from the gateway using stream=true.
+
+    Each yielded string is a complete `data: ...\n\n` SSE line ready to write.
+    Stops on [DONE]. Raises HTTPException on config/connection failure; the
+    caller's StreamingResponse catches nothing — the error must be caught before
+    returning StreamingResponse or callers must buffer first.
+    ponytail: full error-recovery mid-stream; add reconnect support when needed.
+    """
+    base = os.environ.get("ROUTER_BASE_URL", "").rstrip("/")
+    key = os.environ.get("ROUTER_API_KEY", "")
+    if not base or not key:
+        raise HTTPException(503, "Model gateway is not configured")
+    import http.client, ssl, urllib.parse
+    parsed = urllib.parse.urlparse(base)
+    host = parsed.netloc
+    path = parsed.path + "/chat/completions"
+    body = json.dumps({"model": model, "messages": messages, "temperature": 0, "stream": True}).encode()
+    headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json",
+                "Accept": "text/event-stream", "Content-Length": str(len(body))}
+    ctx = ssl.create_default_context() if parsed.scheme == "https" else None
+    conn = http.client.HTTPSConnection(host, timeout=timeout) if ctx else http.client.HTTPConnection(host, timeout=timeout)
+    try:
+        conn.request("POST", path, body=body, headers=headers)
+        resp = conn.getresponse()
+        if resp.status != 200:
+            conn.close()
+            raise HTTPException(502, f"Gateway stream error {resp.status}")
+        for raw in resp:
+            line = raw.decode("utf-8", errors="replace").rstrip("\n\r")
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if payload == "[DONE]":
+                break
+            try:
+                chunk = json.loads(payload)
+                delta = chunk["choices"][0]["delta"].get("content", "")
+            except Exception:
+                continue
+            if delta:
+                yield f"data: {json.dumps({'text': delta})}\n\n"
+    finally:
+        conn.close()
+
+
 def model_reply_reliable(model, messages, task="general", attempts=6, timeout=120):
     """Retry a transient gateway failure (busy upstream) with growing backoff.
 
@@ -885,6 +931,23 @@ def extract_resource(resource_id: uuid.UUID):
     return result
 
 
+@app.post("/topics/{topic_id}/import-papers", dependencies=[Depends(authorised)])
+def import_papers(topic_id: int):
+    """Re-run PDF-layout paper import for one topic. Safe to repeat."""
+    from paper_import import import_topic_papers
+    with connect() as db:
+        if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
+            raise HTTPException(404, "Topic not found")
+    return {"results": import_topic_papers(connect, topic_id)}
+
+
+@app.post("/admin/backfill-cut-scores", dependencies=[Depends(authorised)])
+def backfill_cut_scores_endpoint():
+    """Scan all imported schedules and populate missing exam_grade_rules rows."""
+    from paper_import import backfill_cut_scores
+    return {"results": backfill_cut_scores(connect)}
+
+
 def _extract_into_database(resource_id: uuid.UUID):
     with connect() as db:
         row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting' FOR UPDATE", (resource_id,)).fetchone()
@@ -1039,6 +1102,78 @@ def topic_mastery(topic_id: int):
             "weak_concepts": [item[0] for item in weak]}
 
 
+@app.get("/learner/summary", dependencies=[Depends(authorised)])
+def learner_summary():
+    """Aggregated cross-topic summary: repeated mistake patterns, strengths, and
+    preferred explanation styles drawn from review history and saved lesson answers.
+    Numbers only — no AI inference here; the client or a separate AI call may
+    narrate this data.
+    """
+    with connect() as db:
+        # Per-topic correct/wrong review counts
+        topic_rows = db.execute("""
+            SELECT t.id, t.name, s.name,
+                COUNT(ra.id) FILTER (WHERE ra.correct)     AS correct,
+                COUNT(ra.id) FILTER (WHERE NOT ra.correct) AS wrong
+            FROM topics t
+            JOIN subjects s ON s.id = t.subject_id
+            LEFT JOIN review_questions rq ON rq.topic_id = t.id
+            LEFT JOIN review_answers ra ON ra.question_id = rq.id
+            GROUP BY t.id, t.name, s.name
+            ORDER BY (COUNT(ra.id) FILTER (WHERE NOT ra.correct)) DESC
+        """).fetchall()
+
+        # Top repeated mistake concepts across all topics (last 50 wrong answers)
+        mistake_concepts = db.execute("""
+            SELECT rq.concept, COUNT(*) AS times
+            FROM review_answers ra
+            JOIN review_questions rq ON rq.id = ra.question_id
+            WHERE NOT ra.correct AND rq.concept IS NOT NULL AND rq.concept != ''
+              AND ra.id IN (SELECT id FROM review_answers WHERE NOT correct ORDER BY id DESC LIMIT 50)
+            GROUP BY rq.concept
+            ORDER BY times DESC LIMIT 15
+        """).fetchall()
+
+        # Strength concepts: answered correctly ≥3 times, never wrong recently
+        strength_concepts = db.execute("""
+            SELECT rq.concept, COUNT(*) AS times
+            FROM review_answers ra
+            JOIN review_questions rq ON rq.id = ra.question_id
+            WHERE ra.correct AND rq.concept IS NOT NULL AND rq.concept != ''
+              AND rq.id NOT IN (
+                SELECT question_id FROM review_answers WHERE NOT correct ORDER BY id DESC LIMIT 100)
+            GROUP BY rq.concept
+            HAVING COUNT(*) >= 3
+            ORDER BY times DESC LIMIT 10
+        """).fetchall()
+
+        # Recent lesson answer activity: how many saved answers across topics
+        lesson_activity = db.execute("""
+            SELECT t.name, COUNT(la.lesson_id) AS saved_answers
+            FROM lesson_answers la
+            JOIN lessons l ON l.id = la.lesson_id
+            JOIN topics t ON t.id = l.topic_id
+            GROUP BY t.name
+            ORDER BY saved_answers DESC LIMIT 10
+        """).fetchall()
+
+        # Total reviews completed today (Auckland time)
+        today_reviews = db.execute("""
+            SELECT COUNT(*) FROM review_answers
+            WHERE answered_at::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date
+        """).fetchone()[0]
+
+    return {
+        "topics": [{"id": r[0], "name": r[1], "subject": r[2],
+                    "correct": r[3] or 0, "wrong": r[4] or 0} for r in topic_rows],
+        "repeated_mistakes": [{"concept": r[0], "times_wrong": r[1]} for r in mistake_concepts],
+        "strengths": [{"concept": r[0], "times_correct": r[1]} for r in strength_concepts],
+        "lesson_activity": [{"topic": r[0], "saved_answers": r[1]} for r in lesson_activity],
+        "reviews_today": today_reviews,
+        "notice": "Counts from AI-marked reviews; not an official NZQA assessment record.",
+    }
+
+
 @app.get("/resources/{resource_id}/text", dependencies=[Depends(authorised)])
 def get_resource_text(resource_id: uuid.UUID):
     with connect() as db:
@@ -1083,7 +1218,7 @@ def delete_resource(resource_id: uuid.UUID):
 lessons_router = lesson_router(connect, authorised, model_reply, search_resources, topic_standards)
 app.include_router(lessons_router)
 app.include_router(marking_router(connect, authorised, model_reply, model_reply_vision))
-app.include_router(explain_router(connect, authorised, model_reply))
+app.include_router(explain_router(connect, authorised, model_reply, model_reply_stream))
 app.include_router(review_generation_router(authorised, model_reply, search_resources, connect))
 
 

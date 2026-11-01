@@ -76,3 +76,48 @@ def import_topic_papers(connect, topic_id):
                 detail=EXCLUDED.detail,parser_version=4,updated_at=now()""", (paper_id, schedule_id, status, detail))
             results.append({"standard": standard, "year": year, "status": status, "detail": detail})
     return results
+
+
+def backfill_cut_scores(connect):
+    """Scan every imported schedule for cut-score tables and insert missing rules.
+
+    Safe to run multiple times; ON CONFLICT DO NOTHING skips already-extracted rows.
+    Returns a list of {standard, year, status} dicts.
+    """
+    import fitz
+    root = Path(os.environ.get('UPLOAD_DIR', '/data/uploads'))
+    with connect() as db:
+        rows = db.execute("""
+            SELECT DISTINCT q.standard_number, q.year, q.schedule_resource_id, r.filename
+            FROM exam_questions q
+            JOIN resources r ON r.id = q.schedule_resource_id
+            WHERE q.source = 'pdf-layout'
+            ORDER BY q.standard_number, q.year
+        """).fetchall()
+    results = []
+    for standard, year, schedule_id, filename in rows:
+        path = root / str(schedule_id)
+        if not path.is_file():
+            results.append({"standard": standard, "year": year, "status": "missing_file"})
+            continue
+        found = False
+        try:
+            with fitz.open(path) as doc:
+                for page_index, page in enumerate(doc):
+                    boundaries = cut_scores(page.get_text(sort=True))
+                    if boundaries:
+                        with connect() as db:
+                            db.execute("""INSERT INTO exam_grade_rules
+                                (standard_number,year,schedule_resource_id,page,achieved,merit,excellence,total,quote)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                                (standard, year, schedule_id, page_index + 1,
+                                 boundaries['achieved'], boundaries['merit'],
+                                 boundaries['excellence'], boundaries['total'], boundaries['quote']))
+                        found = True
+                        break
+        except Exception as exc:
+            results.append({"standard": standard, "year": year, "status": "error", "detail": str(exc)[:200]})
+            continue
+        results.append({"standard": standard, "year": year,
+                        "status": "extracted" if found else "not_found"})
+    return results
