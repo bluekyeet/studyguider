@@ -789,6 +789,7 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
         }
         TeachingStyleEditor(base, token)
         DailyReminderSetting()
+        AiUsageCard(base, token)
         LearnerSummaryCard(base, token)
         Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
             Column {
@@ -869,6 +870,36 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             }
         }) { Text("Delete") } }, dismissButton = { TextButton(enabled = !deleting, onClick = { deleteTarget = null }) { Text("Cancel") } },
     ) }
+}
+
+@Composable
+private fun AiUsageCard(base: String, token: String) {
+    var usage by remember(base, token) { mutableStateOf<JSONObject?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("AI usage — last 30 days", style = MaterialTheme.typography.titleMedium)
+            TextButton(enabled = !busy, onClick = {
+                scope.launch {
+                    busy = true; error = ""
+                    try { usage = JSONObject(request(base, "/usage?days=30", token)) }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { error = e.message ?: "Could not load AI usage" }
+                    finally { busy = false }
+                }
+            }) { Text(if (busy) "Loading…" else "Load / refresh usage") }
+            usage?.let { data ->
+                Text("${data.optLong("calls")} calls · ${data.optLong("errors")} errors")
+                Text("Reported tokens: ${data.optLong("prompt_tokens")} input · ${data.optLong("completion_tokens")} output")
+                Text("${data.optLong("calls_without_token_counts")} calls without complete token counts", style = MaterialTheme.typography.bodySmall)
+                Text(data.optString("warning"), style = MaterialTheme.typography.bodySmall)
+                Text(data.optString("cost_notice", "Cost unavailable; gateway pricing is not configured."), style = MaterialTheme.typography.bodySmall)
+            }
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+        }
+    }
 }
 
 /** Cross-topic learner summary: repeated mistakes, strengths, review activity. */

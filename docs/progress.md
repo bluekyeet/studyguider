@@ -8,6 +8,19 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- 2026-11-02: Added Android Learning AI usage card (manual load/refresh, last
+  30 days), showing calls/errors, reported input/output tokens and calls without
+  complete token counts. /usage explicitly returns cost=null and explains absent
+  gateway-alias billing rates; no invented estimate or claimed budget enforcement.
+  Streaming gateway calls now request usage chunks and log tokens/response chars;
+  [DONE] marks success, truncation/failure records an error. No historical stream
+  backfill possible. 151 server tests passed (six warnings/six subtests), debug
+  build passed; deployed API healthy and APK installed on emulator-5554. Live
+  endpoint-function SQL check: 436 calls, 101 errors, 2,700,514 input / 826,492
+  output reported tokens, 102 calls missing complete counts, cost null. Actual
+  gateway stream usage compatibility and Android card interaction untested.
+  Dollar cost/budget controls require reliable pricing, and remain outstanding.
+
 - 2026-11-02: Added opt-in daily Android study reminder to Learning, default off,
   around 7 pm device-local time using native inexact alarms (no new dependency,
   network, exact-alarm permission or server change). Requests Android notification

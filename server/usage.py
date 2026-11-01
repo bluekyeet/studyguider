@@ -55,7 +55,8 @@ def usage_router(connect, authorised, model_reply, model_reply_vision):
         with connect() as db:
             totals = db.execute("""SELECT COUNT(*),
                 COUNT(*) FILTER (WHERE outcome = 'error'),
-                COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0)
+                COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0),
+                COUNT(*) FILTER (WHERE prompt_tokens IS NULL OR completion_tokens IS NULL)
                 FROM ai_runs WHERE created_at >= now() - (%s || ' days')::interval""", (days,)).fetchone()
             by_model = db.execute("""SELECT model, COUNT(*), COUNT(*) FILTER (WHERE outcome = 'error'),
                 COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0)
@@ -71,6 +72,9 @@ def usage_router(connect, authorised, model_reply, model_reply_vision):
             "days": days,
             "calls": totals[0], "errors": totals[1],
             "prompt_tokens": totals[2], "completion_tokens": totals[3],
+            "calls_without_token_counts": totals[4],
+            "cost": None,
+            "cost_notice": "Cost unavailable: gateway model aliases do not provide billing rates. No dollar estimate or budget enforcement is applied.",
             "warning": "Token counts are reported by the gateway when available; they are not a billing statement.",
             "by_model": [dict(zip(("model", "calls", "errors", "prompt_tokens", "completion_tokens"), row)) for row in by_model],
             "by_task": [dict(zip(("task", "calls", "errors"), row)) for row in by_task],

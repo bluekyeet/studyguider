@@ -208,11 +208,15 @@ def model_reply_stream(model, messages, task="general", timeout=120):
     parsed = urllib.parse.urlparse(base)
     host = parsed.netloc
     path = parsed.path + "/chat/completions"
-    body = json.dumps({"model": model, "messages": messages, "temperature": 0, "stream": True}).encode()
+    body = json.dumps({"model": model, "messages": messages, "temperature": 0, "stream": True,
+                       "stream_options": {"include_usage": True}}).encode()
     headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json",
                 "Accept": "text/event-stream", "Content-Length": str(len(body))}
     ctx = ssl.create_default_context() if parsed.scheme == "https" else None
     conn = http.client.HTTPSConnection(host, timeout=timeout) if ctx else http.client.HTTPConnection(host, timeout=timeout)
+    usage = {}
+    response_chars = 0
+    outcome = "error"
     try:
         conn.request("POST", path, body=body, headers=headers)
         resp = conn.getresponse()
@@ -225,17 +229,26 @@ def model_reply_stream(model, messages, task="general", timeout=120):
                 continue
             payload = line[5:].strip()
             if payload == "[DONE]":
+                outcome = "ok"
                 return
             try:
                 chunk = json.loads(payload)
+                if isinstance(chunk.get("usage"), dict):
+                    usage = chunk["usage"]
+                if not chunk.get("choices"):
+                    continue
                 delta = chunk["choices"][0]["delta"].get("content", "")
             except Exception:
                 continue
             if delta:
+                response_chars += len(delta)
                 yield f"data: {json.dumps({'text': delta})}\n\n"
         raise HTTPException(502, "Gateway explanation stream ended early")
     finally:
         conn.close()
+        log_run(task, model, sum(len(str(m.get("content", ""))) for m in messages),
+                response_chars, outcome, None if outcome == "ok" else "Stream interrupted or failed",
+                usage.get("prompt_tokens"), usage.get("completion_tokens"))
 
 
 def model_reply_reliable(model, messages, task="general", attempts=6, timeout=120):
