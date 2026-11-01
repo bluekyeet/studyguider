@@ -415,7 +415,8 @@ private fun FeedbackCard(result: JSONObject) {
         val evidence = result.optJSONArray("evidence")
         if (evidence != null) for (j in 0 until evidence.length()) {
             val item = evidence.getJSONObject(j)
-            Text("Schedule quotation: “${item.optString("quote")}”", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text("Schedule quotation:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            MathText("“${item.optString("quote")}”")
             Text(item.optString("explanation"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text("Feedback is not saved. Check the original schedule using the reference above.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
