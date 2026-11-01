@@ -57,15 +57,18 @@ def test_usage_reports_missing_counts_without_fabricating_cost():
     assert data["cost"] is None
 
 
-@pytest.mark.parametrize("complete", [True, False])
-def test_stream_records_usage_only_completion_is_success(monkeypatch, complete):
+@pytest.mark.parametrize("ending", ["done", "stop", "length", "truncated"])
+def test_stream_records_usage_only_completion_is_success(monkeypatch, ending):
     import app
     import http.client
     from fastapi import HTTPException
 
     lines = [b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
              b'data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":3}}\n']
-    if complete:
+    complete = ending in ("done", "stop")
+    if ending in ("stop", "length"):
+        lines.append(('data: '+json.dumps({"choices": [{"delta": {}, "finish_reason": ending}]})+'\n').encode())
+    if ending == "done":
         lines.append(b'data: [DONE]\n')
 
     class Response:

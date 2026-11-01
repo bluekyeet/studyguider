@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Fixed false Explain interruption: live gateway probe returned finish_reason=stop
+  followed by EOF, without [DONE]. Reader now accepts explicit stop+EOF as normal
+  completion, while rejecting length/content-filter/other finish reasons and
+  missing terminal signals. 158 server tests passed (six warnings/six subtests),
+  API rebuilt/deployed. Live model_reply_stream check completed successfully with
+  four chunks. Server-only fix, no APK update needed. UI interaction untested.
+
 - Explain display follow-up: reused TutorText Markdown block rendering instead
   of one MathText for the full response, so headings/paragraph breaks are parsed.
   Prompt defaults to 120–180 words with short paragraphs and no standard-number

@@ -197,7 +197,7 @@ def model_reply_stream(model, messages, task="general", timeout=120):
     """Yield SSE data lines from the gateway using stream=true.
 
     Each yielded string is a complete `data: ...\n\n` SSE line ready to write.
-    Requires [DONE] so a truncated reply cannot be reported as complete.
+    Requires [DONE] or finish_reason=stop so truncation is not called complete.
     ponytail: no automatic reconnect; retry explicitly to avoid duplicate text.
     """
     base = os.environ.get("ROUTER_BASE_URL", "").rstrip("/")
@@ -217,6 +217,7 @@ def model_reply_stream(model, messages, task="general", timeout=120):
     usage = {}
     response_chars = 0
     outcome = "error"
+    finished = False
     try:
         conn.request("POST", path, body=body, headers=headers)
         resp = conn.getresponse()
@@ -237,12 +238,21 @@ def model_reply_stream(model, messages, task="general", timeout=120):
                     usage = chunk["usage"]
                 if not chunk.get("choices"):
                     continue
-                delta = chunk["choices"][0]["delta"].get("content", "")
+                choice = chunk["choices"][0]
+                reason = choice.get("finish_reason")
+                delta = choice.get("delta", {}).get("content", "")
             except Exception:
                 continue
+            if reason and reason != "stop":
+                raise HTTPException(502, "Gateway explanation did not finish normally")
+            if reason == "stop":
+                finished = True
             if delta:
                 response_chars += len(delta)
                 yield f"data: {json.dumps({'text': delta})}\n\n"
+        if finished:
+            outcome = "ok"
+            return
         raise HTTPException(502, "Gateway explanation stream ended early")
     finally:
         conn.close()
