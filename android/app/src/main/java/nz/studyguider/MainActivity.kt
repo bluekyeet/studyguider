@@ -62,6 +62,7 @@ private fun sessionCipher(): javax.crypto.SecretKey {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        scheduleReminder(this)
         // Transparent system bars with icons that follow the theme, so the status bar never shows as a white strip.
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
@@ -787,6 +788,7 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             }
         }
         TeachingStyleEditor(base, token)
+        DailyReminderSetting()
         LearnerSummaryCard(base, token)
         Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
             Column {

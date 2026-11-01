@@ -48,7 +48,7 @@ class LessonDeletionTest {
                     }
                     seen
                 }
-                compose.setContent { Column(Modifier.verticalScroll(rememberScrollState())) { LessonScreen("http://127.0.0.1:${server.localPort}", "fake-token", 1) } }
+                compose.setContent { Column(Modifier.verticalScroll(rememberScrollState())) { LessonScreen("http://127.0.0.1:${server.localPort}", "fake-token", 1, "Waves", "Physics", emptyList(), { _, _ -> }, {}) } }
                 compose.waitUntil(15000) { compose.onAllNodesWithText("Waves · today").fetchSemanticsNodes().isNotEmpty() }
                 compose.onNodeWithText("Waves · today").performScrollTo().performClick()
                 compose.onNodeWithText("Delete lesson").performScrollTo().performClick()

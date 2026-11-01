@@ -8,6 +8,18 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- 2026-11-02: Added opt-in daily Android study reminder to Learning, default off,
+  around 7 pm device-local time using native inexact alarms (no new dependency,
+  network, exact-alarm permission or server change). Requests Android notification
+  permission when needed, reports blocked permissions, cancels on disable and
+  reschedules after delivery, boot, clock/timezone changes and app replacement.
+  Notifications open the app without claiming reviews are due. assembleDebug and
+  targeted connectedDebugAndroidTest ReminderTest passed on Pixel_10_Pro emulator
+  (one test, Auckland daylight-saving timing). Physical recovery device skipped.
+  Two stale lesson instrumentation call sites needed required screen arguments
+  to compile the test APK; those tests were not run. Delivery/permission/reboot UI
+  behaviour remains unverified. Fixed 7 pm is deliberate; time picker deferred.
+
 - 2026-11-02: Passed lesson diagrams now have an Explain this diagram button,
   opening the existing streaming Explain panel with diagram_id. Server checks
   positive ID, lesson/topic ownership and passed review before any model call.

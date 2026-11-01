@@ -67,7 +67,7 @@ class LessonScreenshotTest {
                                     }
                                 }
                                 Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-                                    LessonScreen("http://127.0.0.1:${server.localPort}", "fake-token", 1)
+                                    LessonScreen("http://127.0.0.1:${server.localPort}", "fake-token", 1, "Waves", "Physics", emptyList(), { _, _ -> }, {})
                                 }
                             }
                         }
