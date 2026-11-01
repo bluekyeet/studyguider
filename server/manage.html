@@ -386,11 +386,11 @@
       }
       return response.json();
     }
-    // Images cannot send the bearer token, so fetch the bytes and show an object URL.
+    // Use the same HttpOnly session cookie as API calls; never send a placeholder bearer.
     async function authorisedImage(image, path) {
       image.alt = image.alt || 'Original page';
       try {
-        const response = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        const response = await fetch(path, { credentials: 'same-origin' });
         if (!response.ok) throw new Error(`Page image failed (${response.status})`);
         const url = URL.createObjectURL(await response.blob());
         image.onload = () => URL.revokeObjectURL(url);

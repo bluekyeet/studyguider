@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Fixed manager image 401: authorisedImage was sending Bearer cookie-session
+  (a UI placeholder), overriding the valid HttpOnly cookie. Fetch now explicitly
+  uses same-origin cookies without a bearer header, matching other manager calls.
+  node tests/image-auth-check.cjs passed. API rebuilt/deployed; live cookie-only
+  GET /diagrams/8/image returned 200, PNG signature valid, 108,283 bytes; temporary
+  session revoked. Diagram remains flagged because visual review was unavailable;
+  no review bypass or fabricated approval. Browser reload/visual check outstanding.
+
 - Nightly run history now joins the generated lesson's review_status and displays
   it separately from job completion in Android. A completed/flagged draft is not
   represented as reviewed-ready. No new tables or generation changes. 159 server
