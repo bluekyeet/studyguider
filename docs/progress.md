@@ -8,6 +8,17 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Explain panel now offers Save to notes for a successfully completed reply,
+  using the existing topic-notes endpoint without regenerating the answer. Saves
+  question, lesson ID, full answer/citations and an unverified-AI notice. Partial
+  streams cannot be saved; oversized notes are blocked rather than truncated;
+  save failures preserve the reply and warn about checking for duplicate notes.
+  Per user request inline [S1]/page-source markers are hidden in reader/tutor/
+  Explain presentation only, leaving stored evidence and saved citations intact.
+  Debug build and two targeted emulator instrumentation tests passed (exact note
+  request and marker removal preserving chemistry/maths brackets). Installed by
+  connected test run; physical-device/UI end-to-end interaction not verified.
+
 - Reader UI correction: removed ubiquitous Create reviewed diagram / Retry
   diagram controls from lesson sections. Reader only displays already attached
   passed diagrams plus Explain, or a notice for an attached flagged diagram.

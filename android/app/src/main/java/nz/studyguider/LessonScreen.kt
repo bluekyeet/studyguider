@@ -96,6 +96,22 @@ private suspend fun explainLesson(base: String, token: String, lessonId: Long, q
     } finally { connection.disconnect() }
 }
 
+internal suspend fun saveExplanationNote(base: String, token: String, topicId: Long, content: String) = withContext(Dispatchers.IO) {
+    require(content.isNotBlank() && content.length <= 50000) { "Explanation is too long to save as a note" }
+    val connection = URL(base.trimEnd('/') + "/topics/$topicId/notes").openConnection() as HttpURLConnection
+    try {
+        connection.connectTimeout = 10000; connection.readTimeout = 20000
+        connection.requestMethod = "POST"; connection.doOutput = true
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.outputStream.use { it.write(JSONObject().put("content", content).toString().toByteArray(Charsets.UTF_8)) }
+        val status = connection.responseCode
+        val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        check(status in 200..299) { "Note save failed ($status): $text" }
+        JSONObject(text).getLong("id")
+    } finally { connection.disconnect() }
+}
+
 private suspend fun deleteLesson(base: String, token: String, lessonId: Long) = withContext(Dispatchers.IO) {
     val connection = URL(base.trimEnd('/') + "/lessons/$lessonId").openConnection() as HttpURLConnection
     try {
@@ -297,7 +313,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     // The reviewer runs in the background on the server; the learner is not shown reviewer output.
     // Citations become S1, S2… so the prose stays readable and still points at a source.
     val citedIds = remember(draft) { citedResourceIds(draft) }
-    val chunks = remember(draft) { lessonChunks(shortCitations(draft.optString("lesson"), citedIds)).filterNot { Regex("^(?:\\d+[.)]\\s*)?answers?(?:\\s|$)", RegexOption.IGNORE_CASE).containsMatchIn(it.title) } }
+    val chunks = remember(draft) { lessonChunks(withoutSourceMarkers(shortCitations(draft.optString("lesson"), citedIds))).filterNot { Regex("^(?:\\d+[.)]\\s*)?answers?(?:\\s|$)", RegexOption.IGNORE_CASE).containsMatchIn(it.title) } }
     val context = androidx.compose.ui.platform.LocalContext.current
     val progressPrefs = remember { context.getSharedPreferences("lesson_progress", android.content.Context.MODE_PRIVATE) }
     val progressKey = "${base}:${draft.optLong("id")}"
@@ -333,6 +349,10 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     var helpBusy by remember(draft) { mutableStateOf(false) }
     var helpParagraph by remember(draft) { mutableStateOf("") }
     var helpDiagramId by remember(draft) { mutableStateOf<Long?>(null) }
+    var helpNote by remember(draft) { mutableStateOf("") }
+    var noteBusy by remember(draft) { mutableStateOf(false) }
+    var noteSaved by remember(draft) { mutableStateOf(false) }
+    var noteError by remember(draft) { mutableStateOf("") }
     val helpScope = rememberCoroutineScope()
     var finishBusy by remember(draft) { mutableStateOf(false) }
     var finishError by remember(draft) { mutableStateOf("") }
@@ -410,6 +430,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                                         helpDiagramId = null
                                         helpQuestion = "Explain this part of the lesson."
                                         helpAnswer = ""
+                                        helpNote = ""
                                         showHelp = true
                                     }, modifier = Modifier.size(28.dp)) {
                                         Text("?", style = MaterialTheme.typography.labelSmall,
@@ -423,6 +444,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                             helpParagraph = ""
                             helpQuestion = "Explain this diagram's labels and relationships."
                             helpAnswer = ""
+                            helpNote = ""
                             showHelp = true
                         })
                         CompositionLocalProvider(LocalAnswerPending provides pendingAnswers) {
@@ -466,13 +488,31 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             OutlinedTextField(helpQuestion, { helpQuestion = it }, label = { Text("What would you like explained?") }, enabled = !helpBusy)
             if (helpBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (helpAnswer.isNotBlank()) MathText(shortCitations(helpAnswer, citedIds))
+            if (helpAnswer.isNotBlank()) MathText(withoutSourceMarkers(shortCitations(helpAnswer, citedIds)))
+            if (helpNote.isNotEmpty()) {
+                TextButton(enabled = !helpBusy && !noteBusy && !noteSaved && helpNote.length <= 50000, onClick = {
+                    helpScope.launch {
+                        noteBusy = true; noteError = ""
+                        try { saveExplanationNote(base, token, draft.getLong("topic_id"), helpNote); noteSaved = true }
+                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: Exception) { noteError = "${e.message}. If the connection failed, check topic notes before retrying to avoid duplicates." }
+                        finally { noteBusy = false }
+                    }
+                }) { Text(if (noteBusy) "Saving…" else if (noteSaved) "Saved to topic notes" else "Save to notes") }
+                if (helpNote.length > 50000) Text("This explanation exceeds the note size limit.", style = MaterialTheme.typography.bodySmall)
+                if (noteError.isNotEmpty()) Text(noteError, color = MaterialTheme.colorScheme.error)
+            }
         } },
-        confirmButton = { TextButton(enabled = !helpBusy && helpQuestion.isNotBlank() && helpQuestion.length <= 2000, onClick = {
+        confirmButton = { TextButton(enabled = !helpBusy && !noteBusy && helpQuestion.isNotBlank() && helpQuestion.length <= 2000, onClick = {
             helpScope.launch {
                 helpBusy = true
                 helpAnswer = ""
-                try { helpAnswer = explainLesson(base, token, draft.getLong("id"), helpQuestion, helpParagraph, diagramId = helpDiagramId, onText = { helpAnswer = it }) }
+                helpNote = ""; noteSaved = false; noteError = ""
+                val askedQuestion = helpQuestion
+                try {
+                    helpAnswer = explainLesson(base, token, draft.getLong("id"), askedQuestion, helpParagraph, diagramId = helpDiagramId, onText = { helpAnswer = it })
+                    helpNote = "Lesson ${draft.getLong("id")} — $askedQuestion\n\n$helpAnswer\n\nAI-generated explanation; not verified. Check the original sources."
+                }
                 catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (e: Exception) { helpAnswer += "\n\n${e.message ?: "Could not get an explanation"}" }
                 finally { helpBusy = false }
@@ -711,7 +751,7 @@ private suspend fun answerRequest(base: String, token: String, path: String, bod
 
 @Composable
 private fun TutorText(text: String, draft: JSONObject) {
-    val cleaned = shortCitations(text, citedResourceIds(draft))
+    val cleaned = withoutSourceMarkers(shortCitations(text, citedResourceIds(draft)))
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         markdownBlocks(cleaned).forEach { (kind, runs) ->
             val content = runs.joinToString("") { it.text }

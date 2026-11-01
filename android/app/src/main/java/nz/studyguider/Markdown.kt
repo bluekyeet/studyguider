@@ -24,6 +24,12 @@ fun shortCitations(text: String, ids: List<String>): String {
     return result.replace(Regex("\\(([S\\d][^()]*?(?:p\\.? ?\\d+)[^()]*?)\\)"), "[$1]")
 }
 
+/** Presentation only: retain original citations in saved lessons and notes. */
+fun withoutSourceMarkers(text: String): String = text.replace(
+    Regex("[ \\t]*[\\[(]S\\d+(?:\\s*(?:,|;)?\\s*(?:pp?\\.?\\s*\\d+(?:[–-]\\d+)?|S\\d+))*\\s*[\\])]", RegexOption.IGNORE_CASE),
+    "",
+)
+
 fun markdownBlocks(markdown: String): List<Pair<String, List<InlineRun>>> {
     val blocks = mutableListOf<Pair<String, List<InlineRun>>>()
     val paragraph = StringBuilder()
