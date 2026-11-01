@@ -80,6 +80,21 @@ def normalise_number(value):
     return re.sub(r"\D", "", text) or text.lower()
 
 
+def import_machine_questions(db, topic_id):
+    """Publish extracted questions without pretending a person verified them."""
+    db.execute("""INSERT INTO exam_questions
+        (topic_id, standard_number, year, question_number, paper_resource_id, paper_page,
+         schedule_resource_id, schedule_page, marks, parts, question_text, schedule_text,
+         figure_pages, source, verified_at)
+        SELECT p.topic_id, p.standard_number, p.year, p.question_number, p.paper_resource_id,
+         p.paper_page, p.schedule_resource_id, p.schedule_page, p.marks, p.parts,
+         p.question_text, p.schedule_text, p.figure_pages, 'machine-import', NULL
+        FROM parsed_questions p WHERE p.topic_id=%s AND p.status <> 'approved'
+         AND length(trim(p.question_text)) > 0 AND length(trim(p.schedule_text)) > 0
+         AND NOT EXISTS (SELECT 1 FROM exam_questions q WHERE q.standard_number=p.standard_number
+          AND q.year=p.year AND q.question_number=p.question_number AND q.paper_resource_id=p.paper_resource_id)""", (topic_id,))
+
+
 def printed_marks(text):
     """Return the mark values printed in the paper text; never a total that is not there."""
     found = [int(match.group(3)) for match in PART_MARKS.finditer(text)]

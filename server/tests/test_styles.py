@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from styles import StyleAnalysis, StyleProfile, style_router
+from styles import StyleAnalysis, StyleProfile, style_for_topic, style_router
 
 
 class StyleTests(unittest.TestCase):
@@ -16,7 +16,7 @@ class StyleTests(unittest.TestCase):
         self.router = style_router(connect, self.authorised)
 
     def endpoint(self, method):
-        return next(route.endpoint for route in self.router.routes if method in route.methods)
+        return next(route.endpoint for route in self.router.routes if method in route.methods and route.path == "/subjects/{subject_id}/style-profile")
 
     def test_read_and_edit_profile(self):
         self.db.execute.return_value.fetchone.return_value = ("",)
@@ -51,6 +51,20 @@ class StyleTests(unittest.TestCase):
         self.assertIn("not a summary of the subject content", instructions)
         self.assertIn("teach NEW material using that same method", instructions)
         self.assertIn("cannot be inferred", instructions)
+
+    def test_global_method_applies_across_topics_and_overrides_legacy_profiles(self):
+        self.db.execute.return_value.fetchone.return_value = ("old subject", "old topic", "Explain one step at a time")
+        for topic in (1, 2):
+            self.assertEqual(style_for_topic(self.db, topic), "App-wide teaching method:\nExplain one step at a time")
+        self.db.execute.return_value.fetchone.return_value = ("old subject", "old topic", "")
+        self.assertEqual(style_for_topic(self.db, 1), "")
+
+    def test_global_profile_read_and_save(self):
+        get = next(r.endpoint for r in self.router.routes if r.path == "/style-profile" and "GET" in r.methods)
+        put = next(r.endpoint for r in self.router.routes if r.path == "/style-profile" and "PUT" in r.methods)
+        self.db.execute.return_value.fetchone.return_value = ("Use small steps",)
+        self.assertEqual(get(), {"content": "Use small steps"})
+        self.assertEqual(put(StyleProfile(content="Use examples")), {"content": "Use examples"})
 
     def db_context(self):
         context = MagicMock()

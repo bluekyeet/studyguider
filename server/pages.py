@@ -18,6 +18,45 @@ MAX_CACHE = 200
 def page_router(connect, authorised):
     router = APIRouter(dependencies=[Depends(authorised)])
 
+    @router.get("/resources/{resource_id}/pages/{page}/diagrams")
+    def diagram_regions(resource_id: str, page: int):
+        import uuid
+        try:
+            resource_id = str(uuid.UUID(resource_id))
+        except ValueError:
+            raise HTTPException(422, "Invalid resource id") from None
+        with connect() as db:
+            row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting'", (resource_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Resource not found")
+        if Path(row[0]).suffix.lower() != ".pdf":
+            raise HTTPException(422, "Diagrams require a PDF source")
+        try:
+            with pymupdf.open(Path(f"/data/uploads/{resource_id}")) as document:
+                if not 1 <= page <= len(document):
+                    raise HTTPException(404, "Page not found")
+                source = document[page - 1]
+                regions = [pymupdf.Rect(item["bbox"]) for item in source.get_image_info()]
+                regions += list(source.cluster_drawings())
+                # ponytail: geometric extraction, not semantic association; original page remains authoritative.
+                regions = [r for r in regions if r.width >= 45 and r.height >= 35 and r.get_area() < source.rect.get_area() * 0.7]
+                return {"regions": [{"x0": max(0, r.x0 - 8), "y0": max(0, r.y0 - 8), "x1": min(source.rect.width, r.x1 + 8), "y1": min(source.rect.height, r.y1 + 8)} for r in regions[:20]], "notice": "Automatically located diagram regions; check labels against the original page"}
+        except HTTPException:
+            raise
+        except (OSError, RuntimeError, ValueError):
+            raise HTTPException(422, "Could not extract PDF diagrams") from None
+
+    @router.get("/resources/{resource_id}/pages/{page}/diagram-image")
+    def diagram_image(resource_id: str, page: int, x0: float, y0: float, x1: float, y1: float):
+        import math
+        regions = diagram_regions(resource_id, page)["regions"]
+        values = (x0, y0, x1, y1)
+        if not all(math.isfinite(v) for v in values) or not any(all(abs(region[k] - v) < 0.1 for k, v in zip(("x0", "y0", "x1", "y1"), values)) for region in regions):
+            raise HTTPException(422, "Select an extracted diagram region")
+        with pymupdf.open(Path(f"/data/uploads/{resource_id}")) as document:
+            data = document[page - 1].get_pixmap(clip=pymupdf.Rect(*values), dpi=160).tobytes("png")
+        return Response(data, media_type="image/png")
+
     @router.get("/resources/{resource_id}/pages/{page}/image")
     def page_image(resource_id, page: int):
         with connect() as db:

@@ -20,6 +20,8 @@ COPY explain.py .
 COPY review_generation.py .
 COPY styles.py .
 COPY pages.py .
+COPY paper_parser.py paper_import.py ./
+COPY lesson_quality.py .
 COPY set_password.py .
 COPY manage.html .
 RUN mkdir -p /data/uploads && chown nobody:nogroup /data/uploads
