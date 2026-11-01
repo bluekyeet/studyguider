@@ -8,6 +8,17 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Executed opt-in real education-reviewer acceptance probe on two synthetic drafts
+  using actual review_and_revise reviewer prompt (teacher revisions deliberately
+  stopped). Frequency inversion/8÷20 arithmetic/metre-vs-Hz errors all identified;
+  constant-temperature concentration/kinetic-energy misconception also identified.
+  Both returned structured pass=false with scientific issues, not only format
+  complaints. Reviewer additionally claimed activation-energy fraction changes
+  with a catalyst without source support: detection success is NOT evidence of
+  globally correct reviewer reasoning. Runnable live_reviewer_check.py retained;
+  two calls logged, no saved lesson/student records. Emulator unchanged. Broader
+  curriculum, actual model-provider independence and live rewrite quality open.
+
 - Added runnable rollback-only PostgreSQL learning-cycle check using synthetic
   records and deterministic model replies. Executed against deployed schema:
   duplicate marking -> exactly one grounded review item; incorrect review ->
