@@ -53,6 +53,8 @@ jobs:
           exit 1
       - name: Run integration checks
         run: docker compose exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/integration.py
+      - name: Check exam-to-lesson learning cycle
+        run: docker compose exec -T api python - < server/tests/learning_cycle_check.py
       - name: Show logs on failure
         if: failure()
         run: docker compose logs

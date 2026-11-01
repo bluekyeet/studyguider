@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added runnable rollback-only PostgreSQL learning-cycle check using synthetic
+  records and deterministic model replies. Executed against deployed schema:
+  duplicate marking -> exactly one grounded review item; incorrect review ->
+  interval one day; next lesson generation receives Frequency weakness and the
+  correct source snapshot, and stores review_focus. PASS, all synthetic records
+  rolled back (identity sequence gaps can remain). No gateway call, no existing
+  learner data changed. CI integration step added; not itself run in GitHub yet.
+  Live-model quality, actual overnight execution and Android interaction remain
+  unchecked; full learning-cycle task deliberately left open. Emulator untouched.
+
 - Formula review now compiles extracted dollar-delimited formulas through the same
   bundled KaTeX/mhchem JS assets as Android (Node.js added to server image, Compose
   named asset context avoids duplicating vendor files). No model text evaluation;

@@ -25,6 +25,9 @@ does not mean its end-to-end acceptance checks have passed.
 
 - [x] Connect missed exam concepts to grounded daily review items without duplicates (implemented; live learning-cycle validation remains open).
 - [ ] Validate a complete learning cycle: wrong answer → review scheduling → next lesson revisits the weakness.
+  - [x] Real PostgreSQL / deterministic-model plumbing check: duplicate prevention,
+    one-day wrong-answer scheduling, weak concept and isolated evidence in next lesson.
+  - [ ] Verify live-model educational quality and actual overnight/device workflow.
 - [x] Add retry of independent visual review for an existing diagram without regenerating its image.
 - [x] Add actual formula parsing beyond the existing delimiter/brace checks (bundled KaTeX/mhchem via Node.js, bounded execution).
 - [ ] Evaluate semantic retrieval against keyword search; add embeddings if needed.
