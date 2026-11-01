@@ -11,6 +11,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -21,7 +24,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-private suspend fun examRequest(base: String, token: String, path: String, answer: String? = null, feedback: Boolean = false): String = withContext(Dispatchers.IO) {
+private suspend fun examRequest(base: String, token: String, path: String, answer: String? = null, feedback: Boolean = false, revision: Int = 0, scanRevision: Int = 0): String = withContext(Dispatchers.IO) {
     val connection = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000
@@ -31,7 +34,7 @@ private suspend fun examRequest(base: String, token: String, path: String, answe
             connection.requestMethod = if (feedback) "POST" else "PUT"
             connection.setRequestProperty("Content-Type", "application/json")
             connection.doOutput = true
-            connection.outputStream.use { it.write((if (feedback) JSONObject().put("second_review", false) else JSONObject().put("answer", answer)).toString().toByteArray(Charsets.UTF_8)) }
+            connection.outputStream.use { it.write((if (feedback) JSONObject().put("second_review", false) else JSONObject().put("answer", answer).put("revision", revision).put("scan_revision", scanRevision)).toString().toByteArray(Charsets.UTF_8)) }
         }
         val status = connection.responseCode
         val text = (if (status in 200..299) connection.inputStream else connection.errorStream)
@@ -50,15 +53,86 @@ private val answerMapSaver = Saver<SnapshotStateMap<Long, String>, ArrayList<Str
 
 /** The host must guard its own navigation when [onDirtyChange] reports unsaved answers. */
 @Composable
-fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String, Int) -> Unit = { _, _ -> }, onDirtyChange: (Boolean) -> Unit = {}) {
+fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String, Int) -> Unit = { _, _ -> }, onDirtyChange: (Boolean) -> Unit = {}, onPageChange: () -> Unit = {}) {
     var exam by remember(base, token, examId) { mutableStateOf<JSONObject?>(null) }
     var error by remember(base, token, examId) { mutableStateOf("") }
     var busy by remember(base, token, examId) { mutableStateOf(false) }
     var marks by remember(base, token, examId) { mutableStateOf<JSONObject?>(null) }
+    var scheduleGrade by remember(base, token, examId) { mutableStateOf<JSONObject?>(null) }
+    var answerMode by remember(base, token, examId) { mutableStateOf("digital") }
+    var examTitle by remember(base, token, examId) { mutableStateOf("") }
+    var page by rememberSaveable(examId) { mutableIntStateOf(0) }
+    var scanReady by remember(examId) { mutableStateOf(false) }
+    LaunchedEffect(page) { onPageChange() }
     val answers = rememberSaveable(base, token, examId, saver = answerMapSaver) { mutableStateMapOf<Long, String>() }
     val saved = rememberSaveable(base, token, examId, saver = answerMapSaver) { mutableStateMapOf<Long, String>() }
+    val revisionStrings = rememberSaveable(base, token, examId, saver = answerMapSaver) { mutableStateMapOf<Long, String>() }
+    val scanRevisions = rememberSaveable(base, token, examId, saver = answerMapSaver) { mutableStateMapOf<Long, String>() }
     val feedback = remember(base, token, examId) { mutableStateMapOf<Long, JSONObject>() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val printPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) scope.launch {
+            busy = true; error = ""
+            try {
+                withContext(Dispatchers.IO) {
+                    val c = URL(base.trimEnd('/') + "/exams/$examId/print").openConnection() as HttpURLConnection
+                    try {
+                        c.connectTimeout = 10000; c.readTimeout = 30000; c.setRequestProperty("Authorization", "Bearer $token")
+                        if (c.responseCode !in 200..299) throw IllegalStateException("PDF export failed (${c.responseCode})")
+                        context.contentResolver.openOutputStream(uri)?.use { out -> c.inputStream.use { it.copyTo(out) } } ?: throw IllegalStateException("Cannot save PDF")
+                    } finally { c.disconnect() }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = e.message ?: "Could not export paper" }
+            finally { busy = false }
+        }
+    }
+    var scanQuestion by remember { mutableStateOf<Long?>(null) }
+    val scanPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris ->
+        val id = scanQuestion
+        if (uris.isNotEmpty()) scope.launch {
+            busy = true; error = ""
+            try {
+                val reply = withContext(Dispatchers.IO) {
+                    val boundary = "scan-${java.util.UUID.randomUUID()}"
+                    val path = if (id == null) "/exams/$examId/scan" else "/exams/$examId/answers/$id/scan"
+                    val c = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
+                    try {
+                        c.connectTimeout = 10000; c.readTimeout = 200000; c.requestMethod = "POST"; c.doOutput = true
+                        c.setRequestProperty("Authorization", "Bearer $token")
+                        c.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                        c.outputStream.use {
+                            var total = 0
+                            uris.forEachIndexed { index, uri ->
+                                val bytes = context.contentResolver.openInputStream(uri)?.use { stream -> stream.readNBytes(10 * 1024 * 1024 + 1) } ?: throw IllegalStateException("Cannot open image")
+                                total += bytes.size
+                                if (total > 10 * 1024 * 1024) throw IllegalStateException("Selected images exceed 10 MiB in total")
+                                it.write("--$boundary\r\nContent-Disposition: form-data; name=\"files\"; filename=\"page-${index + 1}.jpg\"\r\nContent-Type: application/octet-stream\r\n\r\n".toByteArray())
+                                it.write(bytes); it.write("\r\n".toByteArray())
+                            }
+                            it.write("--$boundary--\r\n".toByteArray())
+                        }
+                        if (c.responseCode !in 200..299) throw IllegalStateException("Scan failed (${c.responseCode})")
+                        JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+                    } finally { c.disconnect() }
+                }
+                if (id != null) { answers[id] = reply.getString("transcription"); scanRevisions[id] = reply.getInt("scan_revision").toString(); feedback.remove(id) }
+                else {
+                    val recognised = reply.getJSONArray("answers")
+                    for (i in 0 until recognised.length()) {
+                        val item = recognised.getJSONObject(i)
+                        answers[item.getLong("question_id")] = item.getString("transcription")
+                        scanRevisions[item.getLong("question_id")] = item.getInt("scan_revision").toString()
+                    }
+                    scanReady = true; page = 0
+                }
+                error = reply.optString("notice")
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = e.message ?: "Could not read handwriting" }
+            finally { busy = false }
+        }
+    }
     val dirty = answers.any { (id, answer) -> answer != saved[id] }
     var confirmLeave by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
@@ -82,12 +156,17 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
     LaunchedEffect(leaving) { if (leaving) { dispatcher?.onBackPressed(); leaving = false } }
 
     suspend fun load() {
+        val details = JSONObject(examRequest(base, token, "/exams/$examId/details"))
+        answerMode = details.optString("answer_mode", "digital"); examTitle = details.optString("title")
         val result = JSONObject(examRequest(base, token, "/exams/$examId"))
         val questions = result.getJSONArray("questions")
         val serverAnswers = buildMap {
             for (i in 0 until questions.length()) {
                 val question = questions.getJSONObject(i)
                 put(question.getLong("id"), if (question.isNull("answer")) "" else question.getString("answer"))
+                val id = question.getLong("id")
+                if (answers[id] == saved[id] || id !in revisionStrings) revisionStrings[id] = question.optInt("answer_revision").toString()
+                if (answers[id] == saved[id] || id !in scanRevisions) scanRevisions[id] = question.optInt("scan_revision").toString()
             }
         }
         val drafts = answers.filter { (id, answer) -> answer != saved[id] }
@@ -102,6 +181,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
         drafts.forEach { (id, answer) -> if (id !in answers) answers[id] = answer }
         exam = result
         marks = runCatching { JSONObject(examRequest(base, token, "/exams/$examId/marks")) }.getOrNull()
+        scheduleGrade = runCatching { JSONObject(examRequest(base, token, "/exams/$examId/schedule-grade")) }.getOrNull()
     }
 
     LaunchedEffect(base, token, examId) {
@@ -112,6 +192,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
         } finally { busy = false }
     }
 
+    OutlinedButton(enabled = !busy, onClick = { printPicker.launch("exam-$examId.pdf") }) { Text("Save printable paper (text-only)") }
     val colours = LocalStudyColours.current
     Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         StudyCard(tone = CardTone.Container) {
@@ -119,9 +200,36 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                 Text("EXAM $examId", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
                 marks?.let { StudyChip("${it.optInt("marks_awarded")} / ${it.optInt("marks_available")}", MaterialTheme.colorScheme.onPrimaryContainer, MaterialTheme.colorScheme.primaryContainer) }
             }
-            Text(exam?.optString("kind")?.replaceFirstChar { it.uppercase() }?.let { if (it == "Monthly") "Monthly exam" else "Practice exam" } ?: "Exam", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-            Text("Questions and marking schedules are not included here. Consult the original paper and schedule using the references below. Feedback is experimental AI-generated study feedback, not an official or verified grade.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (marks != null) StatusDot(colours.merit, "Indicative outcome: ${marks!!.optString("outcome")} (not official)")
+            Text(examTitle.ifBlank { "Exam" }, style = MaterialTheme.typography.titleLarge)
+            Text(if (answerMode == "handwritten") "Handwritten · work through the questions, then upload your pages at the end." else "Digital · save and mark your answers below.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("digital" to "Type answers", "handwritten" to "Write on paper").forEach { (mode, label) ->
+                    FilterChip(selected = answerMode == mode, enabled = !busy, onClick = {
+                        scope.launch {
+                            busy = true; error = ""
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    val c = URL(base.trimEnd('/') + "/exams/$examId/answer-mode").openConnection() as HttpURLConnection
+                                    try {
+                                        c.connectTimeout = 10000; c.readTimeout = 20000; c.requestMethod = "PUT"; c.doOutput = true
+                                        c.setRequestProperty("Authorization", "Bearer $token"); c.setRequestProperty("Content-Type", "application/json")
+                                        c.outputStream.use { it.write(JSONObject().put("answer_mode", mode).toString().toByteArray()) }
+                                        if (c.responseCode !in 200..299) throw IllegalStateException("Could not change answer mode (${c.responseCode})")
+                                    } finally { c.disconnect() }
+                                }
+                                answerMode = mode
+                                if (page >= (exam?.getJSONArray("questions")?.length() ?: 0)) page = 0
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { error = e.message ?: "Could not change answer mode" }
+                            finally { busy = false }
+                        }
+                    }, label = { Text(label) })
+                }
+            }
+            scheduleGrade?.let { grade ->
+                if (grade.optString("outcome") != "uncertain") Text("Schedule-based result: ${grade.optString("outcome").replace('_', ' ')} · AI-marked, not an official result", style = MaterialTheme.typography.bodySmall)
+                else Text(grade.optString("reason", "Overall grade pending schedule-based marking"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (exam == null && !busy) {
@@ -138,7 +246,10 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
         exam?.let { data ->
             val questions = data.getJSONArray("questions")
             if (questions.length() == 0) Text("This exam has no questions.")
+            Text(if (page < questions.length()) "Question ${page + 1} of ${questions.length()}" else "Upload your completed paper", style = MaterialTheme.typography.titleMedium)
+            LinearProgressIndicator(progress = { if (questions.length() == 0) 0f else ((page + 1).toFloat() / questions.length()).coerceAtMost(1f) }, modifier = Modifier.fillMaxWidth())
             for (i in 0 until questions.length()) {
+                if (i != page) continue
                 val question = questions.getJSONObject(i)
                 val id = question.getLong("id")
                 key(id) {
@@ -148,12 +259,73 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                             StudyChip("AS ${question.getInt("standard_number")} · ${question.getInt("year")}", MaterialTheme.colorScheme.onSurfaceVariant, colours.containerHigh)
                         }
                         val text = question.optString("question_text")
-                        if (text.isNotBlank()) MathText(text, formulaStyle = true)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenSource(question.getString("paper_resource_id"), question.getInt("paper_page")) }) { Text("Paper p.${question.getInt("paper_page")}") }
-                            OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenSource(question.getString("schedule_resource_id"), question.getInt("schedule_page")) }) { Text("Schedule p.${question.getInt("schedule_page")}") }
+                        val paperId = question.optString("paper_resource_id").takeUnless { it.isBlank() || it == "null" }
+                        val structured = question.optJSONArray("parts")
+                        val structuredParts = remember(id, text) {
+                            if (structured == null) emptyList() else (0 until structured.length()).map { structured.getJSONObject(it) }.filter { it.has("text") }
                         }
-                        MathField(answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, label = "Your answer", enabled = !busy, minLines = 4, maxLines = 14, supportingText = "Maximum 100,000 characters")
+                        val parts = remember(id, text) {
+                            if (structuredParts.isEmpty()) examParts(text)
+                            else structuredParts.map { part ->
+                                val label = part.optString("label")
+                                (if (label == "context") "" else "(" + label.replace("(", ")(") + if (label.endsWith(")")) "" else ")") to part.optString("text").replaceFirst(Regex("^\\s*\\([a-hivx]+\\)\\s*"), "")
+                            }
+                        }
+                        val partAnswers = remember(id) { mutableStateMapOf<String, String>() }
+                        LaunchedEffect(saved[id]) {
+                            val existing = answers[id].orEmpty()
+                            if (existing.startsWith("{\"parts\":")) {
+                                runCatching { JSONObject(existing).getJSONObject("parts") }.getOrNull()?.let { values ->
+                                    values.keys().forEach { partAnswers[it] = values.getString(it) }
+                                }
+                            }
+                        }
+                        if (text.isNotBlank()) parts.forEachIndexed { partIndex, (label, wording) ->
+                            if (wording.isNotBlank() && !wording.trim().matches(Regex("QUESTION\\s+(ONE|TWO|THREE|[0-9]+)", RegexOption.IGNORE_CASE))) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if (label.isNotEmpty()) Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.widthIn(min = 36.dp))
+                                MathText(wording, modifier = Modifier.weight(1f))
+                            }
+                            structuredParts.getOrNull(partIndex)?.optJSONArray("diagrams")?.let { diagrams ->
+                                if (paperId != null) for (d in 0 until diagrams.length()) {
+                                    val diagram = diagrams.getJSONObject(d)
+                                    val box = diagram.getJSONArray("bbox")
+                                    val query = listOf("x0", "y0", "x1", "y1").mapIndexed { n, name -> "$name=${box.getDouble(n)}" }.joinToString("&")
+                                    AuthorisedImage(base, token, "/resources/$paperId/pages/${diagram.getInt("page")}/diagram-image?$query")
+                                }
+                            }
+                            val parentOnly = label.isNotEmpty() && parts.any { it.first.startsWith(label + "(") }
+                            if (label.isNotEmpty() && !parentOnly && answerMode == "digital") MathField(partAnswers[label].orEmpty(), { value ->
+                                partAnswers[label] = value
+                                answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
+                                feedback.remove(id)
+                            }, label = "Answer $label", enabled = !busy, minLines = 2, maxLines = 10)
+                        }
+                        if (paperId != null) {
+                            if (structuredParts.isEmpty()) InlineExamDiagrams(base, token, paperId, question.getInt("paper_page"))
+                            val figures = question.optJSONArray("figure_pages")
+                            if (figures != null && figures.length() > 0) {
+                                var showFigures by remember(id) { mutableStateOf(false) }
+                                TextButton(onClick = { showFigures = !showFigures }) { Text(if (showFigures) "Hide original diagrams" else "View original diagram pages") }
+                                if (showFigures) for (p in 0 until figures.length()) AuthorisedImage(base, token, "/resources/$paperId/pages/${figures.getInt(p)}/image")
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (paperId != null) OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenSource(paperId, question.getInt("paper_page")) }) { Text("Paper p.${question.getInt("paper_page")}") }
+                            if (!question.isNull("schedule_resource_id")) OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenSource(question.getString("schedule_resource_id"), question.getInt("schedule_page")) }) { Text("Schedule p.${question.getInt("schedule_page")}") }
+                        }
+                        if (answerMode == "digital" || scanReady || answers[id].orEmpty().isNotBlank()) {
+                        if (answerMode == "digital" && requestsDiagram(text)) ExamDiagram(base, token, examId, id, !busy) { transcription, scanRevision ->
+                            scanRevisions[id] = scanRevision.toString()
+                            if (answers[id].orEmpty().startsWith("{\"parts\":")) {
+                                partAnswers["diagram"] = transcription
+                                answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
+                            } else answers[id] = answers[id].orEmpty() + "\n\nAttached diagram recognition (check before marking):\n" + transcription
+                            feedback.remove(id)
+                        }
+                        if (partAnswers.containsKey("diagram")) MathField(partAnswers["diagram"].orEmpty(), { value ->
+                            partAnswers["diagram"] = value; answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
+                        }, label = "Check diagram recognition", enabled = !busy, minLines = 2)
+                        if (answerMode == "handwritten" || parts.none { it.first.isNotEmpty() } || (answers[id].orEmpty().isNotBlank() && !answers[id].orEmpty().startsWith("{\"parts\":"))) MathField(answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, label = if (answerMode == "handwritten") "Check recognised answer" else "Your answer", enabled = !busy, minLines = 4, maxLines = 14, supportingText = "Maximum 100,000 characters")
                         if (answers[id] != saved[id]) Text("Unsaved changes", style = MaterialTheme.typography.labelSmall, color = colours.amber)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(shape = RoundedCornerShape(50), enabled = !busy && answers[id].orEmpty().length <= 100000, onClick = {
@@ -161,7 +333,8 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                                 scope.launch {
                                     busy = true; error = ""
                                     try {
-                                        examRequest(base, token, "/exams/$examId/answers/$id", answer)
+                                        val result = JSONObject(examRequest(base, token, "/exams/$examId/answers/$id", answer, revision = revisionStrings[id]?.toIntOrNull() ?: 0, scanRevision = scanRevisions[id]?.toIntOrNull() ?: 0))
+                                        revisionStrings[id] = result.getInt("revision").toString()
                                         saved[id] = answer
                                     } catch (e: CancellationException) { throw e } catch (e: Exception) {
                                         error = e.message ?: "Unable to save answer"
@@ -173,22 +346,52 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                                 scope.launch {
                                     busy = true; error = ""; feedback.remove(id)
                                     try {
-                                        examRequest(base, token, "/exams/$examId/answers/$id", answer)
+                                        val result = JSONObject(examRequest(base, token, "/exams/$examId/answers/$id", answer, revision = revisionStrings[id]?.toIntOrNull() ?: 0, scanRevision = scanRevisions[id]?.toIntOrNull() ?: 0))
+                                        revisionStrings[id] = result.getInt("revision").toString()
                                         saved[id] = answer
                                         feedback[id] = JSONObject(examRequest(base, token, "/exams/$examId/answers/$id/feedback", feedback = true))
                                         marks = runCatching { JSONObject(examRequest(base, token, "/exams/$examId/marks")) }.getOrNull()
+                                        scheduleGrade = runCatching { JSONObject(examRequest(base, token, "/exams/$examId/schedule-grade")) }.getOrNull()
                                     } catch (e: CancellationException) { throw e } catch (e: Exception) {
                                         error = e.message ?: "Unable to get feedback"
                                     } finally { busy = false }
                                 }
                             }) { Text("Save & mark") }
                         }
+                        }
                     }
                     feedback[id]?.let { result -> FeedbackCard(result) }
                 }
             }
+            if (page == questions.length() && answerMode == "handwritten") StudyCard(tone = CardTone.Container) {
+                Text("Upload your answer pages", style = MaterialTheme.typography.titleLarge)
+                Text("Select up to 10 photos in page order. Include question numbers and diagrams. Check each recognised answer before saving and marking. Maximum 10 MiB combined.")
+                Button(enabled = !busy, onClick = { scanQuestion = null; scanPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Select photos from gallery") }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(enabled = !busy && page > 0, onClick = { page-- }) { Text("Previous") }
+                Button(enabled = !busy && page < questions.length() - if (answerMode == "handwritten") 0 else 1, onClick = { page++ }) { Text(if (answerMode == "handwritten" && page == questions.length() - 1) "Upload answers" else "Next question") }
+            }
         }
     }
+}
+
+@Composable
+private fun InlineExamDiagrams(base: String, token: String, resource: String, page: Int) {
+    var regions by remember(resource, page) { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var error by remember(resource, page) { mutableStateOf("") }
+    LaunchedEffect(base, resource, page) {
+        try {
+            val result = JSONObject(examRequest(base, token, "/resources/$resource/pages/$page/diagrams")).getJSONArray("regions")
+            regions = (0 until result.length()).map { result.getJSONObject(it) }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = "Diagram extraction unavailable. Use the original paper link." }
+    }
+    regions.forEach { region ->
+        val query = listOf("x0", "y0", "x1", "y1").joinToString("&") { "$it=${region.getDouble(it)}" }
+        AuthorisedImage(base, token, "/resources/$resource/pages/$page/diagram-image?$query")
+    }
+    if (error.isNotEmpty()) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
 }
 
 @Composable
