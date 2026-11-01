@@ -239,6 +239,32 @@ def test_invalid_json_is_recovered_on_retry():
     assert len(calls) == 2
 
 
+def test_zero_marks_with_no_evidence_is_accepted():
+    # A zero-mark answer legitimately has nothing to quote as "awarded for this";
+    # the schedule line it failed to meet belongs in `missing`, not `evidence`.
+    zero_mark_reply = json.dumps({
+        "marks_awarded": 0, "marks_available": 15, "outcome": "not_achieved",
+        "feedback": "Not yet correct.", "evidence": [],
+        "missing": ["Correct change in momentum."], "confidence": 1.0,
+    })
+    client, calls, _ = make_client(replies=[zero_mark_reply])
+    response = client.post("/exams/1/answers/2/feedback")
+    assert response.status_code == 200
+    assert response.json()["marks_awarded"] == 0
+    assert len(calls) == 1
+
+
+def test_awarded_marks_without_evidence_is_rejected():
+    reply = json.dumps({
+        "marks_awarded": 5, "marks_available": 15, "outcome": "not_achieved",
+        "feedback": "Partly correct.", "evidence": [],
+        "missing": [], "confidence": 1.0,
+    })
+    client, calls, _ = make_client(replies=[reply, reply])
+    assert client.post("/exams/1/answers/2/feedback").status_code == 502
+    assert len(calls) == 2
+
+
 def test_second_review_and_self_override_are_advisory():
     client, calls, _ = make_client(replies=[marking_json(marks=5), marking_json(marks=7)])
     result = client.post("/exams/1/answers/2/feedback", json={

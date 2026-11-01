@@ -23,6 +23,20 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
   transient gateway failures. 119 server tests pass (renamed test plus one new
   recovery-path test). Rebuilt and redeployed the API; live and healthy.
 
+- That fix alone did not resolve the user's live failure; added temporary debug
+  logging and reproduced it directly against exam 7/answer 93. Root cause was
+  different from the formatting robustness just added: the Feedback schema
+  required `evidence` to have at least one item always, but a correctly-marked
+  zero-mark answer has nothing positive to quote as "awarded for this" (the
+  missed schedule line belongs in `missing`). Every zero-mark question was
+  therefore guaranteed to fail validation. Changed `evidence` to default to an
+  empty list, and added an explicit check that marks_awarded > 0 requires at
+  least one evidence quote (so marks still can't be awarded without citing the
+  schedule). Verified live: the real failing request now returns 200 with
+  marks_awarded 0 and populated `missing`. Removed the temporary debug logging.
+  121 server tests pass (2 new: zero-mark-no-evidence accepted, awarded-marks-
+  without-evidence still rejected). Rebuilt and redeployed; confirmed live.
+
 - Deployed API build with scan-revision locking, NCEA scale detection and cut-score
   extraction. Ran /admin/backfill-cut-scores live against the real database: 44 of
   60 standard/year schedules extracted boundaries, 16 not_found (pre-2015 schedules

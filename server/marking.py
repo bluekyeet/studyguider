@@ -29,7 +29,10 @@ class Feedback(BaseModel):
     marks_available: int = Field(ge=0, le=100)
     outcome: Literal["not_achieved", "achieved", "merit", "excellence", "uncertain"]
     feedback: str = Field(min_length=1, max_length=5000, pattern=r"\S")
-    evidence: list[Evidence] = Field(min_length=1, max_length=20)
+    # Only require at least one quoted schedule line when a mark is actually awarded;
+    # a zero-mark answer legitimately has nothing to cite as "awarded for this" (the
+    # schedule line it failed to meet belongs in `missing`, not `evidence`).
+    evidence: list[Evidence] = Field(default_factory=list, max_length=20)
     missing: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(default=0.5, ge=0, le=1)
 
@@ -157,6 +160,8 @@ def _validate(raw, schedule_text, available):
         result.marks_available = available
     if result.marks_awarded > available:
         raise HTTPException(502, "Model awarded more marks than are available")
+    if result.marks_awarded > 0 and not result.evidence:
+        raise HTTPException(502, "Model awarded marks without quoting the schedule")
     normal_schedule = _norm(schedule_text)
     for item in result.evidence:
         if _norm(item.quote) not in normal_schedule:
