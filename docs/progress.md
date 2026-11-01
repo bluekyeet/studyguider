@@ -6,6 +6,399 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Roadmap and features
 
+## Active scope: writeup completion (user exclusions)
+
+- Cut-score extraction: inspected live 91164/2024, 91171/2017, 91170/2023 schedules;
+  four contiguous ranges are printed under Cut Scores (different A/M/E cutoffs).
+  Parser now accepts only complete ordered contiguous ranges with all labels and
+  stores source page/quote during new paper import. Existing completed import runs
+  are not automatically backfilled. Image prompt now specifies N0–E8 descriptor
+  selection where recognised; Android fetches schedule-grade separately instead
+  of displaying aggregate percentage grades. Full suite 116 passed, six warnings/
+  subtests; R8 benchmark build passed. Not deployed/installed or live-grade-tested;
+  source-provenance labelling still says human-entered for automatic rules and must
+  be corrected. Structured schedule evidence isn't equivalent to human verification.
+
+- Schedule scoring: recognised complete N1/N2/A3/A4/M5/M6/E7/E8 descriptor sets
+  now use the eight-point whole-question scale, not percentage thresholds; typed
+  marker explicitly instructed to select schedule descriptors. Overall marks
+  endpoint no longer invents aggregate A/M/E from percentages; matching schedule
+  cut-score endpoint remains separate. Totals use returned marking denominators.
+  Suite 115 passed, six warnings/six subtests, including A3/M5/E7 boundary checks.
+  Not deployed/live-exemplar-tested. Image prompt scale instructions, automatic
+  cut-score extraction and app integration still incomplete; generic fallback for
+  unrecognised question scales remains, not verified official grading.
+
+- Built dedicated benchmark variant with R8 optimise/minification/resource
+  shrinking, non-debuggable, debug-key signed to update existing emulator install.
+  Local-only manifest permits HTTP; production manifest unchanged. Initial manifest
+  merge failed until explicit tools:replace added. assembleBenchmark succeeded,
+  including minifyBenchmarkWithR8. Installed emulator-5554 and launch status ok
+  (WaitTime 355ms, not a controlled benchmark). APK 1,721,149 bytes vs current debug
+  10,487,766 bytes. Last 500 logcat lines had no searched fatal/class/bridge errors.
+  Full UI and maths bridge regression under R8 not yet verified. No speedup claim.
+
+- Scan confirmation race: answer saves lock the exam item and require the scan
+  revision actually reviewed; uploads use the same lock before replacing images.
+  Recognition returns revision; Android gallery/drawing and web marking propagate
+  it. Stale scan saves return 409 before changing the answer. Full suite 114
+  passed, six warnings/six subtests, with stale-scan regression; Android build
+  passed. Not deployed/live-concurrency-tested. Original scan version history,
+  per-question whole-exam atomic upload and schedule-specific scoring remain open.
+
+- Scan correctness: replacing uploaded pages increments scan revision. Totals/
+  schedule grade require current confirmed scan revision plus exact saved answer;
+  pending replacements suppress old grades. Uncertain/low-confidence image marks
+  now get independent vision second review, cached separately. Full suite 114
+  passed, six warnings/six subtests; image-review regression included. Not deployed
+  or validated on real drawings. Scan confirmation itself still needs revision
+  matching to prevent concurrent upload/save race; schedule scoring still open.
+
+- Exam correctness batch: marking rows capture exact answer text; totals and
+  schedule-grade queries only select marks matching the current saved answer,
+  retaining older mark history. Legacy marks without snapshots require re-marking.
+  Typed low-confidence (<0.7) or uncertain marks automatically request the second
+  reviewer; image marking and schedule-boundary borderline rules not yet covered.
+  Full suite 113 passed, six warnings/six subtests; query regression and automatic
+  second-marker test added. Not deployed/live-model-tested. Generic percentage
+  grading and image/scan version correctness still open; do not claim NCEA grading
+  complete. Saving UI/network acceptance still open despite server conflict check.
+
+- Coding-output contamination: added deterministic coding-fence/ponytail/skipped
+  checks that override even a reviewer pass and force bounded rewrites or flagged
+  status. History/read endpoints reject contaminated content. Deployed locally;
+  live scan flagged lessons 11,15,16 without deleting lessons/answers. Full suite
+  111 passed, six warnings/six subtests, including false reviewer-pass regression.
+  New live generation after this guard not verified; upstream coding prompt remains
+  a risk and pattern checks cannot prove absence of all contamination.
+
+- Saving deployment follow-up: web marking now explicitly loads saved answers and
+  revisions before editing/submitting; changing IDs invalidates the loaded revision.
+  Android retains exam draft revisions through activity restoration instead of
+  rebasing dirty drafts on a fresh server revision. API rebuilt/restarted; APK
+  built/installed. Live HTTP/Postgres lesson-answer check: initial PUT 200, revised
+  PUT 200, stale-client PUT 409; assistant-written temporary answer/session removed
+  afterwards. UI/network-failure and exam two-client tests still outstanding.
+  Startup logs show successful startup/health; unrelated GET /v1/models 404s are
+  visible, caller unknown. Automated course schedules/reviewer loop are now in the
+  deployed API but no complete live teaching/review cycle validated yet.
+
+- Exam saving now uses answer_revision with conditional updates and HTTP 409 for
+  stale writes. Android sends/updates revisions on Save and Save & mark. Synthetic
+  workflow verifies stale rejection and updated answer retrieval. Recovered lesson
+  conflicts now have View recovered draft and explicit Restore draft controls.
+  Full suite 110 passed (six warnings/six subtests); Android build passed. Not
+  deployed: web marking form still needs revision-aware loading before migration
+  is rolled out, and emulator/two-client/network checks remain outstanding.
+
+- Current saving batch: lesson pending-save state now reaches shell navigation,
+  blocking tab changes, with reader Back guarded. Reading position has server
+  GET/PUT endpoints and revision checks; Android loads server position and waits
+  for position saves before advancing/exiting. Retry and reload-server-position
+  controls handle sync failures/conflicts. Synthetic regression covers initial
+  position, update, restore and stale-write rejection. Full suite 110 passed,
+  six warnings/six subtests; Android build passed. Not deployed or emulator/network
+  failure tested yet. Exam revision checks and conflict-recovery UI remain open.
+
+- Saving follow-up: lesson answer writes now require revision matching (409 on
+  stale/create-over-existing writes). Android sends revisions, blocks reader
+  Previous/Next/Exit/Finish while answer loading/saving fails or remains pending,
+  preserves recovery revision, and offers server reload retaining a conflict copy.
+  Build passed; full server suite 110 passed (six warnings/six subtests), including
+  stale-write regression. Not deployed or runtime verified. Tab switching still
+  bypasses this reader guard; encrypted recovery, synced reading position, exam
+  answer revisioning and background outbox remain open. Conflict copy currently
+  lacks a recovery-view UI. Do not claim complete lossless saving.
+
+Do not implement automatic monthly exams, Google Drive import, production access,
+or backups. Website parity deferred. Priorities: automatic learning loop, exam
+correctness, durable answers. Remaining writeup gaps tracked above remain open;
+do not describe this batch as completing the whole request.
+
+- Current batch: active courses get 2am Auckland schedules automatically; inactive
+  courses excluded. Scheduler prepares reviews without waiting for app open and
+  continues lessons if review service fails. Added structured reviewer verdicts,
+  up to two full rewrites/rechecks, preserving unavailable/flagged drafts and
+  excluding them from normal feed. Existing legacy completed reviews remain visible.
+- Android answer drafts now persist locally before debounced server saves and
+  restore unsynced drafts on reopening. This is recovery, not background upload or
+  conflict-safe cross-device sync. Local preference drafts are not encrypted yet.
+- Server suite 110 passed (six warnings/six subtests) before final scheduler hook;
+  Android build passed. New batch not deployed: autonomous model calls must be
+  checked before enabling all enrolled daily schedules. Exam grading, retrieval,
+  streaming, contextual explanations and other accepted gaps remain unfinished.
+
+- Backfilled all six current-standard topics live. Bank now has 76 distinct
+  standard/year pairs and 235 non-AI question groups. All 2012–2024 years imported
+  for Waves, Electricity, Organic and Reactivity. Mechanics 2013 and Structure/
+  Bonding 2018 remain missing a schedule heading. Some early Physics papers have
+  four genuine whole questions; inspected source headings and corrected rigid
+  three-question rule to ordered 3–5. Reactivity 2015 heading TWO (a)(i) now parsed.
+  2004 legacy papers lack matching schedules; other legacy standards aren't linked
+  as current standards and were not silently relabelled. API rebuilt/restarted.
+
+- Removed standard allowlist at user request; exact filename standard/year pairing
+  and structural/schedule-heading warnings remain. Existing import runs need
+  backfill for newly eligible standards; no claim all years now appear.
+- Browser sessions now use a persistent 30-day HttpOnly SameSite=Strict cookie,
+  Secure on HTTPS, retaining Android bearer support. Cookie-auth mutations reject
+  cross-site origins; logout revokes server session and clears cookie. Website
+  restores via /session without web-storage tokens. Deployed locally; Playwright
+  passed login/reload restoration, cookie flags, cross-site logout rejection and
+  logout/reload. Cookie regression passed after matching cookie domain to test
+  host. HTTPS/tunnel cookie flags not live-tested.
+
+- Removed stale manual-approval/human-review warnings and pending-year request
+  from Android paper selector; automatic imports remain machine-labelled in data.
+  Build/install passed. This wording removal does not implement an AI paper-review
+  pass or unlock ambiguous/unpaired documents; those remain importer limitations.
+
+- Added persistent in-exam Type answers / Write on paper switch. Handwritten
+  papers intentionally hide digital boxes until recognition, but learners can now
+  change mode without recreating the paper or clearing answers. Build/install and
+  local API rebuild/restart passed; actual switch interaction not yet verified.
+- Vision output contamination guard rejects coding-advice prose and No answer
+  found before scan replacement. Vision system prompt now explicitly requires the
+  document task, not coding advice; marking accepts fenced JSON but still validates
+  schema and exact schedule evidence. Regression marking tests exited 0; real
+  handwritten recognition remains unverified.
+
+- Digital diagram answers: instructions matching draw/sketch/plot/label/Lewis
+  structure expose Insert image and Draw diagram. Native white-canvas pen/clear
+  produces PNG and uploads through existing scan recognition; original image is
+  retained for image-aware marking. Text and per-part answers preserved, diagram
+  recognition editable before save/mark. One image per whole question, replacing
+  previous image; local canvas draft not persistent. Build/install passed; actual
+  strokes/gallery/vision marking not runtime-tested. Website drawing parity absent.
+
+- Deployed structured parser v2/API and installed reader; backfill returned 12
+  imported, eight waiting, one needs attention. Emulator selected Chemistry /
+  Structure & Bonding / 2024, started exam 5 and displayed Question 1 of 3 with
+  inline source table. `shots/exam-structured.png` visually inspected: duplicate
+  flattened table text remained above crop. Parser v3 now excludes text geometrically
+  contained in diagram/table crops from display parts (original extraction retained).
+  Suppressed duplicate question headings and meaningless zero-total grade label.
+  Suite 106 passed, six warnings/subtests. V3 and latest reader refinement not
+  deployed; exam 5 is intentionally immutable and retains v2 data. End-to-end
+  subpart save/restore, correct crop association and handwritten flow unverified.
+
+- Structured paper follow-up: parser parts now carry text and page-coordinate
+  diagram anchors; Android consumes these parts instead of re-splitting flattened
+  wording and only gives answer boxes to leaf parts. Diagram anchoring uses
+  physical preceding text, not semantic interpretation; still needs visual
+  validation. Import version 2 refreshes parts only for machine-imported questions
+  unused in exams, preserving saved exam content. Build passed, suite 106 passed,
+  six warnings/subtests. Latest structured reader/import version not deployed.
+
+- Connected PDF-layout parser to post-extraction processing and added explicit
+  backfill endpoint. Live topic 4 import: 12 standard/year pairs imported, eight
+  waiting (legacy/unpaired), one needs attention (2018 missing Q2 schedule heading).
+  Machine imports have verified_at=NULL, not a fake human approval. Existing 2017
+  rows preserved; no existing wording overwritten. Added nullable verified_at
+  migration after live constraint failure; applied it to running DB and retried
+  successfully. Suite 106 passed, six warnings/subtests. Latest source changes
+  after deployed image still require rebuild. OCR/layout text still includes
+  artefacts; figures are candidate regions, not semantically validated diagrams.
+
+- Inspected supplied 91164 Past Papers locally, without copying source material
+  into repo. Added paper_parser.py: filename standard/year pairing, PDF physical
+  lines/coordinates, whole-question continuation grouping, nested part labels,
+  schedule-section pairing and geometric diagram regions. JSON exports went to
+  private OpenCode temp storage. 2012–2024 found three groups except image-only
+  2021 initially; --ocr recognised all three in 2021 (parts counts 4/6/8). 2018
+  schedule lacks a clear TWO heading in extracted text and stays flagged; legacy
+  90308 formats also flagged, not assumed equivalent to 91164. Standalone parser
+  not yet wired into background imports. It does not guarantee semantic diagram
+  association or exact table reading. Suite 105 passed, six warnings/subtests;
+  synthetic PDFs test continuation grouping and schedule pairing. No real PDF
+  content added to tests/repo. Website parity and automatic import integration
+  still in progress; machine-bank import must retain non-human-verified labels.
+
+- Web manager reorganised into Library/Lessons/Reviews/Exams/Question bank/
+  Learning/Tools workspaces instead of one long wall of forms. Shared subject/
+  topic scope stays available; creation forms collapse. App-wide teaching profile
+  endpoint replaces stale web subject profile. Added dark palette and mobile
+  overflow fixes. Local API rebuilt/restarted; Playwright signed in and navigated
+  at 390x844 and 1440x900: no page/network errors, no document horizontal overflow.
+  Screenshots `shots/web-library-390.png`, `shots/web-library-1440.png` and dark
+  Learning variants captured; mobile Library visually inspected. Upload/approval/
+  marking write workflows not exercised; no question approved during this check.
+
+- Paper availability diagnosed from live DB: bank has 18 questions from 2017;
+  2012–2016 and 2018–2024 are parsed pending_review, not lost extraction. Resources
+  include 127 extracted exam papers and 145 extracted schedules. No approvals
+  changed. Added processing-status endpoint and pending-year notice in selector.
+- Digital reader has labelled per-subpart inputs saved in the existing answer
+  field as a parts map, retaining legacy whole-question text. Geometric PDF image/
+  vector-region extraction endpoints feed inline crops; association and labels
+  remain unverified, no semantic diagram-extraction guarantee. OCR wording is not
+  rewritten; flattened artefacts still need source-compared correction. Server
+  suite 103 passed; API rebuilt/restarted. Android build passed before pending-year
+  notice; final APK not built/installed. Whole-exam upload remains untested live.
+
+- Exam flow revision: new exams persist Digital/Handwritten choice; reader shows
+  one top-level question group at a time and scrolls to top on page changes.
+  Handwritten flow has one final upload step (up to ten gallery images), then
+  per-question recognition review/save/mark. Server currently repeats recognition
+  per question, storing the combined image; partial failures are not atomic.
+  Saved exams now fetch subject/level/topic titles. Build passed and server suite
+  103 passed before final text-part renderer. Not yet installed/deployed this round.
+- Printed explicit (a)/(b)/(i)/(ii) markers split into readable part blocks under
+  the same top-level question; sample hierarchy self-check exited 0. Units in
+  parentheses remain intact. Full page images are optional figure references,
+  NOT inline extracted diagrams. OCR artefacts remain; diagram cropping/placement,
+  per-part digital inputs/marks and robust structured paper editing are unfinished.
+
+- Past-paper question display now uses original page images (plus registered
+  figure pages) instead of flattened OCR paragraphs; source button remains for
+  full-size reading. This does not discover missing continuation pages. AI items
+  keep rendered question text and no null resource links. Android paper-answer
+  upload uses the multi-select gallery picker (up to six images). Server accepts
+  repeated files, bounded by total size and image dimensions, and preserves their
+  order before recognition. API rebuilt/restarted; build/install passed and suite
+  103 passed, six warnings/subtests. Gallery multi-selection and original-page
+  rendering have not been runtime-verified on this build.
+
+- Exam anytime deployment: local API rebuilt/restarted; emulator APK installed.
+  Topic selector, original registered paper/year selector, mixed-bank start and
+  AI-practice start implemented. Live Mechanics mixed exam id=1 has three items;
+  live education generation created AI-practice id=2 with three validated items.
+  Emulator confirmed Mechanics selection and 2017/91171 paper choice. Screenshot
+  `shots/exam-menu.png` visually inspected. Printable endpoint returned a text-only
+  PDF; no embedded original figures or proper typeset LaTeX, so not a faithful
+  printable NCEA paper. Scan upload accepts PNG/JPEG or up to six PDF pages joined
+  for vision; real handwriting/diagram accuracy not verified. Single upload per
+  question, no multi-photo picker. Grade-rule API stores human-reviewed exact
+  schedule quotes and ordered cut scores; separate schedule-grade endpoint refuses
+  incomplete/mixed/AI papers. UI still uses generic practice totals; official
+  per-question NCEA criterion scoring and grade-rule entry UI remain outstanding.
+  Bank human review remains outstanding; original selection is registered items,
+  not a verified complete paper. Mixed selection does not guarantee multiple years
+  or A/M/E balance. Full suite 103 passed, six warnings/six subtests; Android build
+  passed before final removal of stale Monthly exam subtitle. That wording change
+  not built/installed. No tunnel/physical-device deployment claimed.
+
+- Exam paper-answer foundation (partial): per-question PNG/JPEG upload, bounded
+  decoding, vision transcription, persisted original image, explicit save/confirm
+  before image-aware schedule marking. Image marking checks exact schedule quotes
+  with the existing validator and caches by image/transcription payload. Android
+  has an image picker and editable transcription. Single image per question;
+  another scan replaces it. No PDF/multipage/camera/print flow yet. Build passed;
+  server suite 101 passed, six warnings/subtests, including invalid image rejection.
+  Not deployed or live-image-tested in this round. AI-paper generation, original
+  year selection, reliable schedule-specific A/M/E aggregation and new exam home
+  are still unimplemented. Existing generic grade thresholds are NOT official
+  standard/year cut scores. Current bank still lacks genuine human review.
+
+- New lesson practice and both review-generation paths now request source-backed
+  Relevant formulae within each applicable question, with symbol/unit definitions
+  but no substituted values or solutions. Conceptual questions omit unnecessary
+  formulae. Prompt assertions pass; full suite 100 passed with six warnings and
+  six subtests. API rebuilt/restarted. Existing saved questions unchanged; live
+  generated formula support has not been checked.
+
+- Rejected citation-only descriptions in definition MCQs; regression for meth-/
+  eth-/prop- prefix list passes. Long KaTeX can wrap at its native relation/operator
+  breakpoints; Chromium check of the user's force-equation shape at 330px reports
+  scrollWidth=330 and height=46.4375 (two lines). Indivisible maths still has
+  horizontal overflow fallback. Android build/install passed, formatting main
+  exited 0. Lesson prompt now requests 3–5 individually headed Your Turn tasks;
+  this is not enforced by output validation and hasn't been live-generated.
+
+- Lesson answers: authenticated GET/PUT endpoints now store question, latest
+  answer and feedback per lesson/question key. Android restores and debounces
+  saves, shows server-save failures; web saved-lesson detail reads the same data.
+  Future lesson and automatic review prompts include saved learner answers.
+  Server suite 100 passed (six warnings/subtests); Android build/install and API
+  rebuild/restart passed. Cross-device restore and web UI not runtime verified.
+  Known ceiling: navigation during the 600ms debounce can cancel a pending save;
+  concurrent devices are last-write-wins. No claim of lossless sync is made.
+- Removed formula-blank extraction altogether. Worked examples keep their worked
+  solutions but no duplicate quick check. Separate Answers pages are filtered
+  from the reader; headings render maths. Prompt now separates Worked Example
+  from different, unsolved Your Turn tasks. AI marking still requires Check my
+  answer; advancing pages does not automatically mark. Existing inline solutions
+  inside old Your Turn content are not yet hidden. New generation not live-tested.
+
+- Tutor feedback: practice-panel marking now includes the section question and
+  context, not just the learner's answer. Prompt requests proportionate feedback
+  (up to three short sentences for conceptual answers), no completeness preamble
+  or irrelevant units, and working only for calculations. Both marking displays
+  render Markdown blocks and shorten citations. Reader header padding reduced.
+  Build/install and API rebuild/restart passed; explanation tests exited 0.
+  Live feedback brevity and revised header visual appearance not yet verified.
+
+- Removed automatic paraphrase fallback that turned prerequisites and learning
+  goals into meaningless questions. Intro/goal/course-position/summary sections
+  no longer receive synthetic quick checks. Regression samples for prerequisites
+  and learning goals passed in FormattingCheck (exit 0); Android build/install
+  passed. Exact saved organic-chemistry pages have not been runtime checked.
+
+- Manager declutter: one grouped list instead of separate tall cards, row tap
+  opens the lesson, overflow menu contains Delete, redundant topic/title removed,
+  back/date share a line. Build/install passed; screenshot
+  `shots/lesson-manager-compact.png` visually inspected and overflow tapped to
+  confirm Delete lesson appears. No lesson deleted during this check.
+
+- Lesson manager now opens a newest-first day menu using Pacific/Auckland
+  creation dates, with lesson/completed counts. Selecting a day shows that day's
+  open/delete controls; Back returns to all days and resets scroll. Main Lessons
+  no longer displays history. Debug build and install passed; emulator confirmed
+  the day menu (2026-11-01, seven lessons/one completed) and tapped into its list.
+  Screenshot `shots/lesson-manager-day.png` captured.
+
+- Incomplete question fix: practice extraction no longer splits sentences at
+  decimal points, citation page numbers or equation-list numbers. Context-free
+  equation blanks are skipped; regression check covers a numbered equation list.
+  Tightened lesson prompts for self-contained problems and worked answers, and
+  feedback prompts to refuse marking incomplete questions. Feedback now shortens
+  citations too. These prompts do not constitute validated output completeness.
+- Learning has Lesson manager (open/delete with confirmation) and Lesson history
+  (server-completed lessons). Existing automatic review loading consumes completed
+  lessons across topics. Build passed, formatting main exited 0, server 100 passed
+  with six warnings/subtests. Emulator opened manager; visual inspection found
+  uneven card widths and inherited scroll, fixed by full-width cards and resetting
+  scroll per subpage. Final layout fix built but not reinstalled. No real lesson
+  deleted or falsely marked complete for verification. API rebuilt/restarted.
+
+- App-wide teaching method replaces subject selection in the Android editor.
+  GET/PUT /style-profile persists one global profile; /style-profile/analyse
+  samples extracted slides across subjects. Saved global content takes precedence
+  over legacy subject/topic profiles, including explicitly clearing it. Existing
+  profiles are preserved, not silently combined. Upload filing still asks for a
+  topic solely because resources belong to topics; it does not scope the method.
+  Android build passed, APK installed, API rebuilt/restarted; server suite 100
+  passed, six warnings and six subtests. New tests cover global save/read and
+  precedence across topics. Actual cross-subject slide analysis remains unverified.
+
+- Teacher-method editor now offers Upload teacher slides directly. It uses the
+  existing multi-file/zip upload endpoint with category=slides, waits for those
+  accepted resources to extract, then runs subject teaching-method analysis into
+  the editable draft. Duplicate non-slide resources are not recategorised. Build
+  passed and APK installed; real emulator taps reached the topic filing dialog
+  and Android Downloads picker. Actual slide selection/upload/analysis has not
+  been verified; no real teacher slide was available in the emulator picker.
+
+- Learning now has its own bottom-navigation destination: enrolled topics with
+  Edit topics and the existing teacher-method editor. Removed those destinations
+  from Settings, which retains app/account pages. Debug build passed; installed
+  and opened Learning on emulator. `shots/learning-tab.png` was pulled and visually
+  inspected: topics, edit action, method card and all five nav labels are visible.
+  Subsequent teaching-card wording refinement has not been rebuilt yet.
+
+- Automatic reviews: opening the due-review endpoint creates one persisted
+  question set for each completed lesson across all topics, then existing spaced
+  repetition reschedules the questions. Locks and the generated timestamp prevent
+  duplicate committed sets; invalid model output rolls back. This is on-demand,
+  not a background daily job. Regression test covers repeat loads; suite 98
+  passed with six warnings and six subtests. Live database had zero completed
+  lessons, so no genuine completion was fabricated to claim live model coverage.
+- Settings is now a full-screen dialog with Account, Courses, Teaching method,
+  Appearance/library and About subpages. Emulator confirmed root and Teaching
+  method navigation; screenshot `shots/settings-page.png` pulled using ADB.
+  Removed duplicate status-bar padding in reader header. Android build passed;
+  final home-label wording change has not been rebuilt yet.
+
 - Follow-up verification: full server suite 97 passed, six warnings and six
   subtests passed. FormattingCheck main compiled and ran with exit 0, covering
   Markdown, formula handling, multiple-choice definitions and typed explanations.
