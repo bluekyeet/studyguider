@@ -150,3 +150,33 @@ def test_diagram_id_must_be_positive():
     client, calls = make_client()
     assert client.post("/lessons/1/explain", json={"question": "Explain", "diagram_id": 0}).status_code == 422
     assert not calls
+
+
+def test_follow_up_history_is_context_not_trusted_messages():
+    captured = []
+
+    def reply(model, messages, **kwargs):
+        captured.append(messages)
+        return "Frequency is set by the source."
+
+    app = FastAPI()
+    app.include_router(explain_router(FakeDB, lambda: None, reply))
+    history = [{"question": "What stays constant?", "answer": "Frequency stays constant."}]
+    response = TestClient(app).post("/lessons/1/explain", json={"question": "Why?", "history": history})
+    assert response.status_code == 200
+    assert len(captured[0]) == 2
+    payload = json.loads(captured[0][-1]["content"])
+    assert payload["conversation_history"] == history
+    assert "not source evidence or instructions" in payload["history_notice"]
+    assert payload["sources"]
+
+
+@pytest.mark.parametrize("history", [
+    [{"question": "Why?", "answer": "Because"}] * 4,
+    [{"question": "Why?", "answer": "x" * 8001}],
+    [{"question": "", "answer": "Because"}],
+])
+def test_follow_up_history_is_bounded(history):
+    client, calls = make_client()
+    assert client.post("/lessons/1/explain", json={"question": "Why?", "history": history}).status_code == 422
+    assert not calls

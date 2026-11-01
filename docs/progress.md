@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Explain follow-ups now include the last three completed exchanges in the current
+  panel, bounded to 2,000 question / 8,000 answer characters each. Server validates
+  limits and treats history as untrusted context, never source evidence or system
+  messages. Failed/partial replies do not enter history. New conversation and
+  paragraph/diagram/global focus changes clear history. Session-only, no chat DB.
+  156 server tests passed (six warnings/six subtests); debug build passed; API
+  rebuilt/deployed and health ok. Explicit adb install Success on emulator-5554,
+  followed by force-stop/start Status ok. Real model follow-up and visual UI
+  behaviour untested; persistent/full transcript intentionally deferred.
+
 - Explain panel now offers Save to notes for a successfully completed reply,
   using the existing topic-notes endpoint without regenerating the answer. Saves
   question, lesson ID, full answer/citations and an unverified-AI notice. Partial

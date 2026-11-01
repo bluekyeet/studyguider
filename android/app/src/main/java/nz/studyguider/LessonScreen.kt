@@ -58,7 +58,7 @@ private suspend fun requestLessonHistory(base: String, token: String, topicId: L
     } finally { connection.disconnect() }
 }
 
-private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String, paragraph: String = "", diagramId: Long? = null, onText: (suspend (String) -> Unit)? = null): String = withContext(Dispatchers.IO) {
+private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String, paragraph: String = "", diagramId: Long? = null, history: List<Pair<String, String>> = emptyList(), onText: (suspend (String) -> Unit)? = null): String = withContext(Dispatchers.IO) {
     val connection = URL(base.trimEnd('/') + "/lessons/$lessonId/explain" + if (onText != null) "?stream=1" else "").openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000; connection.readTimeout = 100000
@@ -66,6 +66,7 @@ private suspend fun explainLesson(base: String, token: String, lessonId: Long, q
         connection.setRequestProperty("Authorization", "Bearer $token")
         connection.setRequestProperty("Content-Type", "application/json")
         val body = JSONObject().put("question", question)
+        body.put("history", JSONArray().apply { history.takeLast(3).forEach { (q, a) -> put(JSONObject().put("question", q).put("answer", a.take(8000))) } })
         if (diagramId != null) body.put("diagram_id", diagramId)
         if (paragraph.isNotEmpty()) body.put("paragraph", paragraph.take(4000))
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
@@ -349,6 +350,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     var helpBusy by remember(draft) { mutableStateOf(false) }
     var helpParagraph by remember(draft) { mutableStateOf("") }
     var helpDiagramId by remember(draft) { mutableStateOf<Long?>(null) }
+    var helpHistory by remember(draft) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var helpNote by remember(draft) { mutableStateOf("") }
     var noteBusy by remember(draft) { mutableStateOf(false) }
     var noteSaved by remember(draft) { mutableStateOf(false) }
@@ -428,6 +430,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                                     IconButton(onClick = {
                                         helpParagraph = content.take(4000)
                                         helpDiagramId = null
+                                        helpHistory = emptyList()
                                         helpQuestion = "Explain this part of the lesson."
                                         helpAnswer = ""
                                         helpNote = ""
@@ -441,6 +444,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                         }
                         if (!practice) LessonDiagram(base, token, draft, chunk, onExplain = { diagramId ->
                             helpDiagramId = diagramId
+                            helpHistory = emptyList()
                             helpParagraph = ""
                             helpQuestion = "Explain this diagram's labels and relationships."
                             helpAnswer = ""
@@ -480,13 +484,17 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         }
     }
     }
-    ExtendedFloatingActionButton(onClick = { helpParagraph = ""; helpDiagramId = null; showHelp = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
+    ExtendedFloatingActionButton(onClick = { helpParagraph = ""; helpDiagramId = null; helpHistory = emptyList(); helpAnswer = ""; helpNote = ""; showHelp = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
     }
     if (showHelp) AlertDialog(
         onDismissRequest = { showHelp = false },
         title = { Text("Ask about this lesson") },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             OutlinedTextField(helpQuestion, { helpQuestion = it }, label = { Text("What would you like explained?") }, enabled = !helpBusy)
+            if (helpHistory.isNotEmpty()) {
+                Text("Follow-up context: last ${helpHistory.size} exchanges in this panel only.", style = MaterialTheme.typography.bodySmall)
+                TextButton(enabled = !helpBusy && !noteBusy, onClick = { helpHistory = emptyList(); helpAnswer = ""; helpNote = "" }) { Text("New conversation") }
+            }
             if (helpBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (helpAnswer.isNotBlank()) MathText(withoutSourceMarkers(shortCitations(helpAnswer, citedIds)))
             if (helpNote.isNotEmpty()) {
@@ -510,7 +518,8 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                 helpNote = ""; noteSaved = false; noteError = ""
                 val askedQuestion = helpQuestion
                 try {
-                    helpAnswer = explainLesson(base, token, draft.getLong("id"), askedQuestion, helpParagraph, diagramId = helpDiagramId, onText = { helpAnswer = it })
+                    helpAnswer = explainLesson(base, token, draft.getLong("id"), askedQuestion, helpParagraph, diagramId = helpDiagramId, history = helpHistory, onText = { helpAnswer = it })
+                    helpHistory = (helpHistory + (askedQuestion to helpAnswer)).takeLast(3)
                     helpNote = "Lesson ${draft.getLong("id")} — $askedQuestion\n\n$helpAnswer\n\nAI-generated explanation; not verified. Check the original sources."
                 }
                 catch (e: kotlinx.coroutines.CancellationException) { throw e }
