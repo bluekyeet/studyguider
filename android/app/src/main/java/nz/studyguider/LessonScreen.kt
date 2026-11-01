@@ -484,11 +484,16 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         }
     }
     }
-    ExtendedFloatingActionButton(onClick = { helpParagraph = ""; helpDiagramId = null; helpHistory = emptyList(); helpAnswer = ""; helpNote = ""; showHelp = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
+    ExtendedFloatingActionButton(onClick = {
+        val current = chunks.getOrNull(openIndex)
+        helpParagraph = current?.let { "${it.title}\n\n${it.body}".take(4000) }.orEmpty()
+        helpQuestion = "Explain this section in more detail."
+        helpDiagramId = null; helpHistory = emptyList(); helpAnswer = ""; helpNote = ""; showHelp = true
+    }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
     }
     if (showHelp) AlertDialog(
         onDismissRequest = { showHelp = false },
-        title = { Text("Ask about this lesson") },
+        title = { Text(if (helpDiagramId != null) "Explain this diagram" else "Explain this section") },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             OutlinedTextField(helpQuestion, { helpQuestion = it }, label = { Text("What would you like explained?") }, enabled = !helpBusy)
             if (helpHistory.isNotEmpty()) {

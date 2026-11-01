@@ -70,6 +70,9 @@ def test_explain_paragraph_includes_focus_in_payload():
     payload = json.loads(captured[0][-1]["content"])
     assert payload.get("paragraph_in_focus") == "g = 9.8 m/s²"
     assert "instruction" in payload
+    assert "current lesson section" in payload["instruction"]
+    assert "do not mark" in payload["instruction"]
+    assert "Only when explicitly marking" in captured[0][0]["content"]
 
 
 def test_explain_missing_lesson_returns_404():

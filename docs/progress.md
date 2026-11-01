@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Explain focus correction: reader FAB now sends the current open section title/
+  body rather than an empty focus, prefills Explain this section in more detail,
+  and labels the dialog Explain this section. Prompt only uses Correct/Partly
+  correct/Not yet for explicit marking requests, not concept explanations; section
+  explanations request teaching/examples rather than grading the question.
+  156 server tests passed; debug build passed; API rebuilt/deployed. Explicit
+  emulator install Success, force-stop/relaunch Status ok. Live replies untested.
+
 - Explain follow-ups now include the last three completed exchanges in the current
   panel, bounded to 2,000 question / 8,000 answer characters each. Server validates
   limits and treats history as untrusted context, never source evidence or system
