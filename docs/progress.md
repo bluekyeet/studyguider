@@ -8,6 +8,12 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Nightly run history now joins the generated lesson's review_status and displays
+  it separately from job completion in Android. A completed/flagged draft is not
+  represented as reviewed-ready. No new tables or generation changes. 159 server
+  tests passed (six warnings/six subtests); debug build passed; API rebuilt/deployed
+  and health ok. Emulator remains off, GPU unchanged, APK not installed/UI untested.
+
 - Learning topics now expose Nightly status: latest seven scheduled runs, recorded
   errors and generated lesson IDs via existing /schedule/runs endpoint. UI states
   explicitly that completed generation is not passed AI review. Includes refresh,

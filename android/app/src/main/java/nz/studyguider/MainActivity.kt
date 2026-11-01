@@ -907,6 +907,11 @@ internal fun NightlyStatus(base: String, token: String, topic: JSONObject, onDis
             if (!loading && error.isEmpty() && runs.isEmpty()) Text("No scheduled runs recorded yet.")
             runs.forEach { run ->
                 Text("${run.optString("run_date")} · ${run.optString("status")}", style = MaterialTheme.typography.titleSmall)
+                if (!run.isNull("review_status")) {
+                    val review = run.optString("review_status")
+                    Text("AI review: $review — not factual verification", style = MaterialTheme.typography.bodySmall,
+                        color = if (review == "passed") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error)
+                }
                 if (!run.isNull("error") && run.optString("error").isNotBlank()) Text(run.optString("error"), color = MaterialTheme.colorScheme.error)
                 if (!run.isNull("lesson_id")) Text("Lesson ${run.optLong("lesson_id")}", style = MaterialTheme.typography.bodySmall)
                 HorizontalDivider()

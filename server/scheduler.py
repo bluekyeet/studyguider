@@ -54,9 +54,10 @@ def scheduler_router(connect, authorised):
         with connect() as db:
             if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
                 raise HTTPException(404, "Topic not found")
-            rows = db.execute("""SELECT run_date, query, status, lesson_id, error, started_at, finished_at
-                FROM lesson_schedule_runs WHERE topic_id = %s ORDER BY run_date DESC""", (topic_id,)).fetchall()
-        return [dict(zip(("run_date", "query", "status", "lesson_id", "error", "started_at", "finished_at"), row)) for row in rows]
+            rows = db.execute("""SELECT r.run_date, r.query, r.status, r.lesson_id, r.error, r.started_at, r.finished_at,
+                l.review_status FROM lesson_schedule_runs r LEFT JOIN lessons l ON l.id = r.lesson_id
+                WHERE r.topic_id = %s ORDER BY r.run_date DESC""", (topic_id,)).fetchall()
+        return [dict(zip(("run_date", "query", "status", "lesson_id", "error", "started_at", "finished_at", "review_status"), row)) for row in rows]
 
     return router
 

@@ -6,6 +6,26 @@ from fastapi.testclient import TestClient
 from scheduler import run_due, scheduler_router
 
 
+def test_run_history_includes_actual_lesson_review_status():
+    class HistoryDatabase:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params=()):
+            if "lesson_schedule_runs r" in sql:
+                assert "LEFT JOIN lessons" in sql
+                assert params == (1,)
+            return self
+        def fetchone(self): return (1,)
+        def fetchall(self): return [("2026-11-02", "Waves", "completed", 42, None, None, None, "flagged")]
+
+    app = FastAPI()
+    app.include_router(scheduler_router(HistoryDatabase, lambda: None))
+    response = TestClient(app).get("/topics/1/schedule/runs")
+    assert response.status_code == 200
+    assert response.json()[0]["status"] == "completed"
+    assert response.json()[0]["review_status"] == "flagged"
+
+
 class Database:
     def __init__(self):
         self.schedules = {1: ("algebra", 2, True), 2: ("geometry", 2, True),
