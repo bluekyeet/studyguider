@@ -4,7 +4,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from marking import grade_for, marking_router
+from marking import grade_for, marking_router, clean_transcription, _validate, uses_ncea_question_scale
 
 
 ROW = (
@@ -55,6 +55,10 @@ class DB:
 
     def execute(self, sql, params=()):
         self.queries.append((sql, params))
+        if "UPDATE markings SET answer_text" in sql:
+            return Result()
+        if "SELECT image, confirmed" in sql:
+            return Result()
         if "COALESCE(tp.content" in sql:
             # Subject style plus topic override; this fixture uses neither.
             return Result(("", ""))
@@ -106,6 +110,36 @@ def test_grade_boundaries():
     assert grade_for(0, 0) == "uncertain"
 
 
+def test_ncea_descriptor_scale_is_not_percentage_graded():
+    schedule = "N1 N2 A3 A4 M5 M6 E7 E8: Correct change in momentum."
+    assert uses_ncea_question_scale(schedule)
+    assert not uses_ncea_question_scale("Achieved: correct answer")
+    for score, outcome in ((2, "not_achieved"), (3, "achieved"), (5, "merit"), (7, "excellence")):
+        result = _validate(marking_json(marks=score, available=8), schedule, 8)
+        assert result.outcome == outcome
+
+
+def test_rejects_contaminated_ocr_and_accepts_fenced_marking():
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        clean_transcription('```text\n[No answer found]\n```\nLazier alternative: Manual transcription.\nskipped: Full page OCR pipeline')
+    with pytest.raises(HTTPException):
+        clean_transcription('[No answer found]')
+    assert clean_transcription('```text\n(a) F = 2 N\n```') == '(a) F = 2 N'
+    assert _validate('```json\n' + marking_json() + '\n```', ROW[12], 15).marks_awarded == 5
+
+
+def test_scan_rejects_invalid_images_before_calling_vision():
+    calls = []
+    app = FastAPI()
+    app.include_router(marking_router(lambda: DB(ROW), lambda: None, lambda *a, **k: None,
+        lambda *a, **k: calls.append(a)))
+    client = TestClient(app)
+    response = client.post("/exams/1/answers/2/scan", files={"file": ("answer.png", b"not an image", "image/png")})
+    assert response.status_code == 422
+    assert not calls
+
+
 def test_feedback_quotes_schedule_and_reports_pages():
     client, calls, _ = make_client()
     response = client.post("/exams/1/answers/2/feedback")
@@ -120,6 +154,50 @@ def test_feedback_quotes_schedule_and_reports_pages():
     assert payload["schedule_text"].startswith("Achieved: Correct change")
     assert payload["answer"] == "My answer"
     assert payload["marks_available"] == 15
+
+
+def test_totals_only_select_marks_for_current_saved_answer():
+    client, _, db = make_client()
+    client.get("/exams/1/marks")
+    queries = [sql for sql, _ in db.queries if "AS first_mark" in sql]
+    assert queries
+    assert "m.answer_text = i.answer" in queries[0]
+    assert "m.scan_revision=COALESCE" in queries[0]
+    assert "AND NOT confirmed" in queries[0]
+
+
+def test_low_confidence_triggers_second_marker_without_request():
+    first = json.loads(marking_json())
+    first["confidence"] = 0.4
+    client, calls, _ = make_client(replies=[json.dumps(first), marking_json()])
+    response = client.post("/exams/1/answers/2/feedback")
+    assert response.status_code == 200
+    assert response.json()["automatic_second_review"] is True
+    assert [call[0] for call in calls] == ["education", "education-reviewer"]
+
+
+def test_uncertain_image_gets_independent_vision_review():
+    class ImageDatabase(DB):
+        def execute(self, sql, params=()):
+            if "SELECT image, confirmed" in sql:
+                return Result((b"sample-image", True, 2))
+            if "UPDATE markings SET scan_revision" in sql:
+                return Result()
+            return super().execute(sql, params)
+
+    db = ImageDatabase(ROW)
+    calls = []
+    def vision(model, prompt, image, task):
+        calls.append((model, task))
+        result = json.loads(marking_json())
+        result["confidence"] = 0.4
+        return json.dumps(result)
+    app = FastAPI()
+    app.include_router(marking_router(lambda: db, lambda: None, None, vision))
+    response = TestClient(app).post("/exams/1/answers/2/feedback")
+    assert response.status_code == 200
+    assert response.json()["automatic_second_review"] is True
+    assert calls == [("education", "exam-image-mark"), ("education-reviewer", "exam-image-second-mark")]
 
 
 def test_repeated_marks_are_identical_and_cached():

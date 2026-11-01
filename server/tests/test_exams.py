@@ -114,9 +114,18 @@ class WorkflowDatabase(Database):
         if "UPDATE exam_items" in sql:
             for item in self.exams.get(params[1], []):
                 if item[0] == params[2]:
+                    revision = item[3] if len(item) > 3 else 0
+                    if params[3] != revision:
+                        return Result([])
                     item[2] = params[0]
-                    return Result([(item[0],)])
+                    if len(item) == 3: item.append(revision + 1)
+                    else: item[3] = revision + 1
+                    return Result([(item[0], revision + 1)])
             return Result([])
+        if sql.startswith("SELECT revision FROM exam_answer_scans"):
+            return Result([])
+        if "SELECT 1 FROM exam_items WHERE" in sql:
+            return Result([(1,)] if any(item[0] == params[1] for item in self.exams.get(params[0], [])) else [])
         if "SELECT id, created_at, subject_id, kind, total_marks FROM exams" in sql:
             return Result([(params[0], "2026-01-01T00:00:00Z", None, "manual", 15)]
                           if params[0] in self.exams else [])
@@ -124,7 +133,7 @@ class WorkflowDatabase(Database):
             rows = []
             for item in self.exams[params[0]]:
                 question = self.questions[item[0]]
-                rows.append(question[:10] + (item[1], item[2]) + question[10:])
+                rows.append(question[:10] + (item[1], item[2]) + question[10:] + ((item[3] if len(item) > 3 else 0), 0))
             return Result(rows)
         return super().execute(sql, params)
 
@@ -143,9 +152,12 @@ def test_exam_workflow_and_missing_questions():
     listed = client.get("/exams").json()
     assert listed[0]["question_count"] == 1 and listed[0]["total_marks"] == 15
     assert client.put("/exams/1/answers/999", json={"answer": "x"}).status_code == 404
+    assert client.put("/exams/1/answers/1", json={"answer": "wrong scan", "scan_revision": 99}).status_code == 409
     assert client.put("/exams/1/answers/1", json={"answer": "My answer"}).status_code == 200
+    assert client.put("/exams/1/answers/1", json={"answer": "Stale answer"}).status_code == 409
+    assert client.put("/exams/1/answers/1", json={"answer": "Revised answer", "revision": 1}).json()["revision"] == 2
     question = client.get("/exams/1").json()["questions"][0]
-    assert question["answer"] == "My answer"
+    assert question["answer"] == "Revised answer"
     assert question["paper_page"] == 2 and question["schedule_page"] == 1
     assert question["marks"] == 15
     assert client.get("/exams/2").status_code == 404
