@@ -8,6 +8,28 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Deployed API build with scan-revision locking, NCEA scale detection and cut-score
+  extraction. Ran /admin/backfill-cut-scores live against the real database: 44 of
+  60 standard/year schedules extracted boundaries, 16 not_found (pre-2015 schedules
+  use a different cut-score layout the parser correctly refuses to guess at rather
+  than fabricate numbers). Verified /learner/summary against live data: returns
+  per-topic correct/wrong counts, repeated mistake concepts, strength concepts,
+  lesson activity and today's review count, all from existing review_answers/
+  lesson_answers rows with no AI narration layer yet.
+
+- Added SSE token streaming (model_reply_stream in app.py, reading the gateway's
+  stream=true response chunk by chunk) and wired it into /lessons/{id}/explain via
+  ?stream=1. Added /lessons/{id}/explain/paragraph so a learner can ask about one
+  paragraph or equation instead of the whole lesson; Android LessonScreen now shows
+  a small "?" button after every plain-text block that pre-fills the existing
+  explain dialog with that paragraph as context. Android does not yet consume the
+  SSE stream (still issues a normal blocking POST); only the server side streams.
+  Added /topics/{id}/import-papers (manual re-run) and /admin/backfill-cut-scores
+  as callable endpoints — they previously only ran automatically or not at all.
+  114→118 server tests (4 new, explain/paragraph coverage). Android build and
+  install passed, no fatal exceptions in logcat after launch. Android SSE
+  consumption, cost/budget limits and reminders remain open.
+
 - Cut-score extraction: inspected live 91164/2024, 91171/2017, 91170/2023 schedules;
   four contiguous ranges are printed under Cut Scores (different A/M/E cutoffs).
   Parser now accepts only complete ordered contiguous ranges with all labels and
