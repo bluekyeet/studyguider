@@ -20,12 +20,16 @@ data class PracticeQuestion(
 }
 
 private val questionStart = Regex("^(what|why|how|explain|describe|calculate|show|state|give|find|determine|compare|discuss|justify|outline|identify|list|write|draw|suggest|evaluate|prove|deduce)\\b", RegexOption.IGNORE_CASE)
-private val inlineMath = Regex("\\$\\$[^$]+\\$\\$|\\$[^$]+\\$")
 
 /** Returns practice questions for one lesson section, most useful first. */
 fun practiceQuestions(section: String, limit: Int = 2): List<PracticeQuestion> {
     val found = mutableListOf<PracticeQuestion>()
-    val definitions = Regex("\\*\\*([^*:$\\n]{2,60}):?\\*\\*:?\\s*([^\\n]+)").findAll(section).toList()
+    val definitions = Regex("\\*\\*([^*:$\\n]{2,60}):?\\*\\*:?\\s*([^\\n]+)").findAll(section).filter { match ->
+        val description = match.groupValues[2]
+            .replace(Regex("\\[[^]]*]"), "")
+            .replace(Regex("\\([^)]*\\)"), "")
+        Regex("[A-Za-z]{2,}").findAll(description).count() >= 4
+    }.toList()
     if (definitions.size >= 3) {
         val definition = definitions.first()
         val description = definition.groupValues[2]
@@ -35,11 +39,11 @@ fun practiceQuestions(section: String, limit: Int = 2): List<PracticeQuestion> {
                 definitions.take(4).map { it.groupValues[1].trimEnd(':') }.distinct().sorted()))
         }
     }
-    val sentences = section
-        .replace(Regex("\n+"), " ")
-        .split(Regex("(?<=[.!?])\\s+"))
+    val sentences = section.lineSequence()
+        .map { it.trim() }
         .map { it.trim().replace(Regex("^(?:\\d+[.)]|[-+*](?=\\s))\\s*"), "") }
         .filter { it.length in 20..400 }
+        .toList()
 
     // 1. Sentences the lesson already phrases as a task.
     sentences.filter { questionStart.containsMatchIn(it) }.forEach { sentence ->
@@ -48,35 +52,6 @@ fun practiceQuestions(section: String, limit: Int = 2): List<PracticeQuestion> {
             answer = "Work through the section again and answer in your own words; the model wording is in the lesson text below.",
             revealLabel = "Reveal the lesson wording",
             kind = PracticeQuestion.Kind.ShortAnswer,
-        ))
-    }
-
-    // 2. Blank out a formula or a number so the learner has to reconstruct it.
-    val formulaSentence = sentences.firstOrNull { sentence ->
-        inlineMath.findAll(sentence).any { it.value.trim('$').contains('=') } && !questionStart.containsMatchIn(sentence)
-    }
-    if (formulaSentence != null) {
-        val match = inlineMath.findAll(formulaSentence).firstOrNull { it.value.trim('$').contains('=') }
-        if (match != null) {
-            val formula = match.value
-            val blanked = formulaSentence.replaceRange(match.range, "______")
-            found.add(PracticeQuestion(
-                prompt = "Complete the statement by filling in the blank:\n\n$blanked",
-                answer = formula,
-                revealLabel = "Reveal the formula",
-                kind = PracticeQuestion.Kind.BlankFormula,
-            ))
-        }
-    }
-
-    // 3. Ask the learner to explain the section's key idea in their own words.
-    val keySentence = sentences.firstOrNull { it.length > 60 && !questionStart.containsMatchIn(it) }
-    if (keySentence != null && found.size < limit) {
-        found.add(PracticeQuestion(
-            prompt = "Explain in your own words:\n\n“$keySentence”",
-            answer = keySentence,
-            revealLabel = "Reveal the lesson wording",
-            kind = PracticeQuestion.Kind.Explain,
         ))
     }
 

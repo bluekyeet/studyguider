@@ -62,7 +62,6 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
     val pending = lessons.filter { it.isNull("completed_at") }
     val latest = pending.mapNotNull { date(it) }.filter { !it.isAfter(today) }.maxOrNull()
     val current = pending.filter { latest != null && date(it) == latest }
-    val history = lessons.filterNot { it in current }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (loading || generating) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (generating) "Generating your lesson…" else "Loading lessons…") }
@@ -72,14 +71,10 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
                 Text(if (courses.isEmpty()) "Choose your topics in Settings to get started." else "Use New lesson to create one from your resources.")
             }
             if (current.isNotEmpty()) {
-                Text(if (latest == today) "Today's lessons" else "Latest available lessons · $latest", style = MaterialTheme.typography.titleLarge)
+                Text(if (latest == today) "Today · ${current.size} to do" else "Latest available · $latest", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 current.forEach { item -> LessonRow(item, onOpenLesson) }
             }
             if (lessons.isNotEmpty() && current.isEmpty()) Text("No lessons to do right now.")
-            if (history.isNotEmpty()) {
-                SectionLabel("Lesson history", "PREVIOUS")
-                history.forEach { item -> LessonRow(item, onOpenLesson) }
-            }
         }
         if (courses.isNotEmpty()) ExtendedFloatingActionButton(onClick = { picker = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp), text = { Text("New lesson") }, icon = { Text("+") })
     }

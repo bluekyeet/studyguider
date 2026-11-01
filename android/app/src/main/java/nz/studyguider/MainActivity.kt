@@ -24,6 +24,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -130,7 +132,7 @@ private suspend fun upload(context: android.content.Context, base: String, token
  * Uploads one file or several at once. Several files are wrapped in a zip on
  * the device and sent to the batch endpoint, so one request covers the lot.
  */
-private suspend fun uploadMany(context: android.content.Context, base: String, token: String, topic: Long, uris: List<Uri>): String = withContext(Dispatchers.IO) {
+private suspend fun uploadMany(context: android.content.Context, base: String, token: String, topic: Long, uris: List<Uri>, category: String = "extra"): String = withContext(Dispatchers.IO) {
     fun read(uri: Uri): Triple<String, ByteArray, String?> {
         val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (!it.moveToFirst()) throw IllegalStateException("Cannot read file details")
@@ -171,7 +173,7 @@ private suspend fun uploadMany(context: android.content.Context, base: String, t
 
     val boundary = "studyguider-" + java.util.UUID.randomUUID()
     val body = java.io.ByteArrayOutputStream()
-    body.write("--$boundary\r\nContent-Disposition: form-data; name=\"category\"\r\n\r\nextra\r\n".toByteArray())
+    body.write("--$boundary\r\nContent-Disposition: form-data; name=\"category\"\r\n\r\n$category\r\n".toByteArray())
     parts.forEach { (name, bytes, mime) ->
         val safeName = name.replace("\"", "_").replace("\r", "_").replace("\n", "_")
         body.write("--$boundary\r\nContent-Disposition: form-data; name=\"files\"; filename=\"$safeName\"\r\nContent-Type: ${mime ?: "application/octet-stream"}\r\n\r\n".toByteArray(Charsets.UTF_8))
@@ -220,6 +222,8 @@ private fun StudyApp() {
     var topicName by remember { mutableStateOf("") }
     var examId by remember { mutableStateOf("") }
     var examDirty by remember { mutableStateOf(false) }
+    var lessonPending by remember { mutableStateOf(false) }
+    val examScroll = rememberScrollState()
     var sourceId by rememberSaveable { mutableStateOf("") }
     var sourcePage by remember { mutableIntStateOf(1) }
     var topicSourceId by remember { mutableStateOf("") }
@@ -382,7 +386,8 @@ private fun StudyApp() {
                     val kicker = when (tab) {
                         1 -> scopeLabel
                         2 -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else "Daily review"
-                        3 -> "Monthly exam"
+                        3 -> null
+                        4 -> null
                         else -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else "Resources"
                     }
                     Row(
@@ -391,7 +396,7 @@ private fun StudyApp() {
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                when (tab) { 1 -> "Lesson"; 2 -> "Review"; 3 -> "Exam"; else -> "Resources" },
+                                when (tab) { 1 -> "Your lessons"; 2 -> "Daily review"; 3 -> "Exam"; 4 -> "Learning"; else -> "Resources" },
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
@@ -415,7 +420,8 @@ private fun StudyApp() {
         },
         bottomBar = {
             if (token.isNotEmpty()) StudyNavBar(current = tab) { destination ->
-                if (examDirty && destination != tab) { pendingTab = destination; confirmExamExit = true } else tab = destination
+                if (lessonPending && destination != tab) error = "Your lesson answer is not saved yet. Wait for saving or resolve the save error before changing tabs."
+                else if (examDirty && destination != tab) { pendingTab = destination; confirmExamExit = true } else tab = destination
             }
         },
     ) { padding ->
@@ -488,6 +494,7 @@ private fun StudyApp() {
                             onSwitchTopic = { id, title -> openTopic(id, title); subjectTitle = findSubject(id) },
                             onOpenResources = { tab = 0 },
                             lessonId = selectedLesson,
+                            onPendingChange = { lessonPending = it },
                             onExit = { selectedTopic = 0; selectedLesson = 0; topicTitle = "" },
                         )
                     }
@@ -497,19 +504,12 @@ private fun StudyApp() {
                     )
                 }
                 2 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                    if (selectedTopic != 0L) ReviewDraftScreen(base, token, selectedTopic)
-                    else TopicBrowser(
-                        allTopics = allTopics,
-                        loading = allTopicsLoading,
-                        error = allTopicsError,
-                        selectedTopicId = selectedTopic,
-                        onRetry = { topicsReload++ },
-                        onOpen = { id, title -> openTopic(id, title); subjectTitle = findSubject(id) },
-                        onBrowseResources = { tab = 0 },
-                    )
                     ReviewScreen(base, token)
                 }
-                else -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                4 -> LearningScreen(base, token, topicsReload, onManageCourses = { showTopicPicker = true }, onOpenLesson = { topic, title, lesson ->
+                    selectedLesson = lesson; openTopic(topic, title); subjectTitle = findSubject(topic); tab = 1
+                })
+                else -> Column(Modifier.fillMaxSize().verticalScroll(examScroll).padding(horizontal = 16.dp)) {
                     if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString(); sourceId = "" }
                     else {
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -518,7 +518,7 @@ private fun StudyApp() {
                             if (sourceId.isNotEmpty()) TextButton(onClick = { sourceId = "" }) { Text("Close source") }
                         }
                         if (sourceId.isNotEmpty()) SourceScreen(base, token, sourceId, sourcePage)
-                        ExamScreen(base, token, examId.toLong(), onOpenSource = { id, page -> sourceId = id; sourcePage = page }, onDirtyChange = { examDirty = it })
+                        ExamScreen(base, token, examId.toLong(), onOpenSource = { id, page -> sourceId = id; sourcePage = page }, onDirtyChange = { examDirty = it }, onPageChange = { scope.launch { examScroll.scrollTo(0) } })
                     }
                 }
             }
@@ -547,7 +547,6 @@ private fun StudyApp() {
         canSignOut = !busy && !examDirty,
         subjectCount = subjects.length(),
         topicCount = topics.length(),
-        onManageCourses = { showSettings = false; showTopicPicker = true },
     )
     if (signOutConfirm) AlertDialog(
         onDismissRequest = { signOutConfirm = false },
@@ -737,9 +736,141 @@ private fun TopicBrowser(
  * generated for that subject, so the learner can shape how lessons read.
  */
 @Composable
+private fun LearningScreen(base: String, token: String, revision: Int, onManageCourses: () -> Unit, onOpenLesson: (Long, String, Long) -> Unit) {
+    var courses by remember(base, token) { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf("") }
+    var retry by remember { mutableIntStateOf(0) }
+    var page by remember { mutableStateOf("") }
+    var managerDay by remember { mutableStateOf<String?>(null) }
+    var lessons by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteTarget by remember { mutableStateOf<JSONObject?>(null) }
+    val scope = rememberCoroutineScope()
+    val pageScroll = rememberScrollState()
+    LaunchedEffect(page, managerDay) { pageScroll.scrollTo(0) }
+    BackHandler(enabled = page.isNotEmpty()) { if (managerDay != null) managerDay = null else page = "" }
+    LaunchedEffect(base, token, revision, retry) {
+        loading = true; error = ""
+        try {
+            val list = JSONArray(request(base, "/courses", token))
+            courses = (0 until list.length()).map { list.getJSONObject(it) }
+            val saved = JSONArray(request(base, "/lessons", token))
+            lessons = (0 until saved.length()).map { saved.getJSONObject(it) }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: "Could not load your topics" }
+        finally { loading = false }
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(pageScroll).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (page.isNotEmpty()) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { if (managerDay != null) managerDay = null else page = "" }) { Text(if (managerDay != null) "‹ All days" else "‹ Learning") }
+            Spacer(Modifier.weight(1f))
+            if (managerDay != null) Text(managerDay.orEmpty(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (page.isEmpty()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("What I'm learning", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            TextButton(onClick = onManageCourses) { Text("Edit topics") }
+        }
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (error.isNotEmpty()) {
+            Text(error, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = { retry++ }) { Text("Try again") }
+        }
+        if (!loading && error.isEmpty() && courses.isEmpty()) Text("Choose topics to include in your lessons.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (courses.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
+            Column {
+                courses.forEachIndexed { index, course ->
+                    if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    ListItem(headlineContent = { Text(course.optString("topic")) }, supportingContent = { Text(course.optString("subject")) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+                }
+            }
+        }
+        TeachingStyleEditor(base, token)
+        Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
+            Column {
+                ListItem(headlineContent = { Text("Lesson manager") }, supportingContent = { Text("Open or delete saved lessons") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Lesson manager" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                ListItem(headlineContent = { Text("Lesson history") }, supportingContent = { Text("Completed lessons used for your reviews") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Lesson history" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+            }
+        }
+        } else {
+            if (managerDay == null) Text(page, style = MaterialTheme.typography.titleLarge)
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); TextButton(onClick = { retry++ }) { Text("Try again") } }
+            val visible = if (page == "Lesson history") lessons.filter { !it.isNull("completed_at") } else lessons
+            val days = visible.groupBy { lesson ->
+                runCatching {
+                    java.time.Instant.parse(lesson.getString("created_at"))
+                        .atZone(java.time.ZoneId.of("Pacific/Auckland")).toLocalDate().toString()
+                }.getOrDefault("Unknown date")
+            }.toSortedMap(compareByDescending { it })
+            if (!loading && visible.isEmpty()) Text(if (page == "Lesson history") "Finish a lesson to build your review history." else "No saved lessons yet.")
+            if (page == "Lesson manager" && managerDay == null) {
+                days.forEach { (day, items) ->
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = LocalStudyColours.current.container) {
+                        ListItem(
+                            headlineContent = { Text(day) },
+                            supportingContent = { Text("${items.size} lesson${if (items.size == 1) "" else "s"} · ${items.count { !it.isNull("completed_at") }} completed") },
+                            trailingContent = { Text("›", style = MaterialTheme.typography.titleLarge) },
+                            modifier = Modifier.clickable { managerDay = day },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+                    }
+                }
+            }
+            val dayLessons = if (page == "Lesson manager") days[managerDay].orEmpty() else visible
+            if (managerDay != null && dayLessons.isEmpty()) Text("No lessons left for this day.")
+            if (dayLessons.isNotEmpty()) Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = LocalStudyColours.current.container) {
+                Column {
+                    dayLessons.forEachIndexed { index, lesson ->
+                        key(lesson.getLong("id")) {
+                        var menu by remember { mutableStateOf(false) }
+                        if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "Open lesson") {
+                                onOpenLesson(lesson.getLong("topic_id"), lesson.optString("topic"), lesson.getLong("id"))
+                            }.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(lesson.optString("query"), style = MaterialTheme.typography.titleMedium)
+                                val topic = lesson.optString("topic")
+                                Text(lesson.optString("subject") + if (topic.equals(lesson.optString("query"), true)) "" else " · $topic", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(if (lesson.isNull("completed_at")) "Not finished" else "Completed", style = MaterialTheme.typography.labelMedium, color = if (lesson.isNull("completed_at")) MaterialTheme.colorScheme.onSurfaceVariant else LocalStudyColours.current.teal)
+                            }
+                            if (page == "Lesson manager") Box {
+                                IconButton(enabled = !deleting, onClick = { menu = true }) {
+                                    Text("⋮", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Lesson actions" })
+                                }
+                                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    DropdownMenuItem(text = { Text("Delete lesson", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; deleteTarget = lesson })
+                                }
+                            }
+                        }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    deleteTarget?.let { lesson -> AlertDialog(
+        onDismissRequest = { if (!deleting) deleteTarget = null }, title = { Text("Delete this lesson?") },
+        text = { Text("This permanently removes the lesson and its completion history. Existing review questions are kept.") },
+        confirmButton = { TextButton(enabled = !deleting, onClick = {
+            scope.launch {
+                deleting = true; error = ""
+                try {
+                    request(base, "/lessons/${lesson.getLong("id")}", token, JSONObject(), "DELETE")
+                    lessons = lessons.filterNot { it.getLong("id") == lesson.getLong("id") }; deleteTarget = null
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { error = e.message ?: "Could not delete lesson"; deleteTarget = null }
+                finally { deleting = false }
+            }
+        }) { Text("Delete") } }, dismissButton = { TextButton(enabled = !deleting, onClick = { deleteTarget = null }) { Text("Cancel") } },
+    ) }
+}
+
+@Composable
 private fun TeachingStyleEditor(base: String, token: String) {
     var subjects by remember { mutableStateOf(JSONArray()) }
-    var subjectIndex by remember { mutableIntStateOf(0) }
     var draft by remember { mutableStateOf("") }
     var saved by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -747,54 +878,79 @@ private fun TeachingStyleEditor(base: String, token: String) {
     var savedNotice by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var uploadTopics by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var chooseUploadTopic by remember { mutableStateOf(false) }
+    var uploadTopic by remember { mutableStateOf(0L) }
+    val slidesPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) scope.launch {
+            busy = true; error = ""; savedNotice = "Uploading teacher slides…"
+            try {
+                val result = JSONObject(uploadMany(context, base, token, uploadTopic, uris, category = "slides"))
+                val accepted = result.optJSONArray("accepted") ?: JSONArray()
+                val ids = (0 until accepted.length()).map { accepted.getJSONObject(it) }
+                    .filter { it.optString("category") == "slides" }.map { it.getString("id") }.toSet()
+                if (ids.isEmpty()) throw IllegalStateException("No teacher slides accepted. Duplicate files filed as other resource types were not changed; unsupported files may have been skipped.")
+                savedNotice = "Slides uploaded. Waiting for text extraction…"
+                var ready = false
+                for (attempt in 0 until 60) {
+                    val resources = JSONArray(request(base, "/topics/$uploadTopic/resources", token))
+                    val slides = (0 until resources.length()).map { resources.getJSONObject(it) }
+                        .filter { it.optString("id") in ids }
+                    if (slides.any { it.optString("status") == "failed" }) throw IllegalStateException("A slide file could not be processed. Check Resources before analysing.")
+                    if (slides.size == ids.size && slides.all { it.optString("status") == "extracted" }) { ready = true; break }
+                    delay(2000)
+                }
+                if (!ready) throw IllegalStateException("Slides are still processing. Use Analyse teaching method once they are Ready in Resources.")
+                savedNotice = "Analysing how your teacher teaches…"
+                val analysis = JSONObject(request(base, "/style-profile/analyse", token, JSONObject()))
+                draft = analysis.getString("profile")
+                savedNotice = "Teaching method extracted. Read and edit it below, then Save style."
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { savedNotice = ""; error = e.message ?: "Could not process teacher slides" }
+            finally { busy = false }
+        }
+    }
 
-    suspend fun load(index: Int) = withContext(Dispatchers.IO) {
+    if (chooseUploadTopic) AlertDialog(
+        onDismissRequest = { chooseUploadTopic = false },
+        title = { Text("File slides under a topic") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text("This only organises your uploaded files. The teaching method applies across the whole app.")
+            uploadTopics.forEach { topic ->
+                TextButton(onClick = {
+                    uploadTopic = topic.getLong("id"); chooseUploadTopic = false
+                    slidesPicker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/*", "image/*", "application/zip"))
+                }) { Text(topic.optString("name")) }
+            }
+        } },
+        confirmButton = { TextButton(onClick = { chooseUploadTopic = false }) { Text("Cancel") } },
+    )
+
+    suspend fun load() = withContext(Dispatchers.IO) {
         val list = JSONArray(request(base, "/subjects", token))
         subjects = list
-        if (list.length() == 0) return@withContext
-        val id = list.getJSONObject(index.coerceIn(0, list.length() - 1)).getLong("id")
-        val body = JSONObject(request(base, "/subjects/$id/style-profile", token))
+        val body = JSONObject(request(base, "/style-profile", token))
         draft = body.optString("content"); saved = draft
     }
 
     LaunchedEffect(base, token) {
-        try { load(0) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+        try { load() } catch (e: CancellationException) { throw e } catch (e: Exception) {
             error = "Could not load teaching style: ${e.message ?: "request failed"}"
         }
     }
 
     StudyCard(tone = CardTone.Low) {
         Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
-            SectionLabel("Teaching style", if (draft.isBlank()) "NOT SET" else "SET", Modifier.weight(1f))
+            Text("Teaching method", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             Text(if (expanded) "Hide" else "Edit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
         }
         Text(
-            "Describe how you want lessons to read (pace, detail, examples, diagrams). Every lesson for the subject follows it.",
+            "One teaching method for the whole app. Analyse your teacher's slides or write your preferences for all subjects.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         AnimatedVisibility(visible = expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (subjects.length() > 1) {
-                    @OptIn(ExperimentalLayoutApi::class)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (i in 0 until subjects.length()) {
-                            val name = subjects.getJSONObject(i).optString("name")
-                            FilterChip(
-                                selected = i == subjectIndex,
-                                onClick = {
-                                    subjectIndex = i
-                                    scope.launch {
-                                        busy = true; error = ""
-                                        try { load(i) } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                                            error = "Could not load teaching style: ${e.message ?: "request failed"}"
-                                        } finally { busy = false }
-                                    }
-                                },
-                                label = { Text(name) },
-                            )
-                        }
-                    }
-                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it; savedNotice = "" },
@@ -810,12 +966,29 @@ private fun TeachingStyleEditor(base: String, token: String) {
                 if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 if (savedNotice.isNotEmpty()) Text(savedNotice, style = MaterialTheme.typography.bodySmall, color = LocalStudyColours.current.teal)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(enabled = !busy && subjects.length() > 0, onClick = {
+                        scope.launch {
+                            busy = true; error = ""
+                            try {
+                                val found = mutableListOf<JSONObject>()
+                                for (i in 0 until subjects.length()) {
+                                    val subject = subjects.getJSONObject(i)
+                                    val topics = JSONArray(request(base, "/subjects/${subject.getLong("id")}/topics", token))
+                                    for (j in 0 until topics.length()) found.add(topics.getJSONObject(j).apply { put("name", "${subject.optString("name")} · ${optString("name")}") })
+                                }
+                                uploadTopics = found
+                                if (uploadTopics.isEmpty()) error = "Add a topic in Resources to store your slide files first."
+                                else chooseUploadTopic = true
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { error = e.message ?: "Could not load topics" }
+                            finally { busy = false }
+                        }
+                    }) { Text("Upload teacher slides") }
                     OutlinedButton(enabled = !busy, onClick = {
                         scope.launch {
                             busy = true; error = ""
                             try {
-                                val id = subjects.getJSONObject(subjectIndex).getLong("id")
-                                val result = JSONObject(request(base, "/subjects/$id/style-profile/analyse", token, JSONObject()))
+                                val result = JSONObject(request(base, "/style-profile/analyse", token, JSONObject()))
                                 draft = result.getString("profile")
                                 savedNotice = "Teaching method written from your slides. Read how your teacher teaches below, then Save to use it in lessons."
                             } catch (e: CancellationException) { throw e }
@@ -830,12 +1003,11 @@ private fun TeachingStyleEditor(base: String, token: String) {
                             scope.launch {
                                 busy = true; error = ""; savedNotice = ""
                                 try {
-                                    val id = subjects.getJSONObject(subjectIndex).getLong("id")
                                     withContext(Dispatchers.IO) {
-                                        request(base, "/subjects/$id/style-profile", token, JSONObject().put("content", draft), method = "PUT")
+                                        request(base, "/style-profile", token, JSONObject().put("content", draft), method = "PUT")
                                     }
                                     saved = draft
-                                    savedNotice = "Saved. New lessons for this subject will follow this style."
+                                    savedNotice = "Saved for the whole app. All subjects will use this teaching method."
                                 } catch (e: CancellationException) { throw e } catch (e: Exception) {
                                     error = "Could not save: ${e.message ?: "request failed"}"
                                 } finally { busy = false }
@@ -881,11 +1053,27 @@ private fun SettingsSheet(
     canSignOut: Boolean,
     subjectCount: Int,
     topicCount: Int,
-    onManageCourses: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Settings", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+    var page by remember { mutableStateOf("") }
+    androidx.compose.ui.window.Dialog(onDismissRequest = { if (page.isNotEmpty()) page = "" else onDismiss() }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { if (page.isNotEmpty()) page = "" else onDismiss() }) { Text("‹ Back") }
+                Text(page.ifEmpty { "Settings" }, style = MaterialTheme.typography.titleLarge)
+            }
+            if (page.isEmpty()) {
+                Text("App", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 8.dp, start = 16.dp))
+                Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
+                    Column {
+                        listOf("Account" to "Sign-in and server", "Appearance & library" to "System theme and your resources", "About" to "About StudyGuider").forEachIndexed { index, (title, detail) ->
+                            if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                            ListItem(headlineContent = { Text(title) }, supportingContent = { Text(detail) }, trailingContent = { Text("›", style = MaterialTheme.typography.titleLarge) }, modifier = Modifier.clickable { page = title }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+                        }
+                    }
+                }
+            }
+            if (page == "Account") {
             StudyCard(tone = CardTone.Container) {
                 SectionLabel("Account", if (signedIn) "SIGNED IN" else "SIGNED OUT")
                 Text(if (signedIn) "You are signed in to this server." else "Sign in to load your own resources.", style = MaterialTheme.typography.bodyMedium)
@@ -894,21 +1082,21 @@ private fun SettingsSheet(
                 }
                 Text(base, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
             }
+            }
+            if (page == "Appearance & library") {
             StudyCard(tone = CardTone.Low) {
                 SectionLabel("Library", "YOUR CONTENT")
                 Text("$subjectCount subject(s) · $topicCount topic(s) loaded", style = MaterialTheme.typography.bodyMedium)
                 Text(if (dark) "Appearance: dark (follows the system)" else "Appearance: light (follows the system)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            StudyCard(tone = CardTone.Low) {
-                SectionLabel("Courses", "TOPICS YOU LEARN")
-                Text("Choose which topics get lessons. They appear on the Lessons page.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = { onDismiss(); onManageCourses() }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth()) { Text("Choose topics") }
             }
-            if (signedIn) TeachingStyleEditor(base = base, token = token)
+            if (page == "About") {
             StudyCard(tone = CardTone.Low) {
                 SectionLabel("About", "STUDYGUIDER")
                 Text("NCEA study companion. Lessons are drafts: check them against the cited sources.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            }
+            if (page == "Account") {
             OutlinedButton(
                 onClick = onSignOut,
                 enabled = canSignOut,
@@ -916,6 +1104,8 @@ private fun SettingsSheet(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("Sign out") }
             if (signedIn && !canSignOut) Text("Finish or discard your exam answers before signing out.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         }
     }
 }

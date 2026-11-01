@@ -49,6 +49,8 @@ object KaTeX {
           code { font-family:monospace; font-size:0.85em; background:rgba(120,130,150,0.14); padding:0 3px; border-radius:4px; }
           .katex { font-size:1.05em; }
           .katex-display { margin:8px 0; overflow-x:auto; overflow-y:hidden; }
+          .katex-display > .katex { white-space:normal; }
+          .katex .katex-html { white-space:normal; }
         </style>
         <link rel="stylesheet" href="katex/katex.min.css">
         <script src="katex/katex.min.js"></script>

@@ -31,6 +31,7 @@ enum class Destination(val label: String, val tab: Int) {
     Review("Review", 2),
     Exam("Exam", 3),
     Resources("Resources", 0),
+    Learning("Learning", 4),
 }
 
 /**
@@ -86,6 +87,10 @@ fun DestinationIcon(destination: Destination, tint: Color, modifier: Modifier = 
         val h = size.height
         val stroke = Stroke(width = w * 0.09f, cap = StrokeCap.Round)
         when (destination) {
+            Destination.Learning -> {
+                drawCircle(tint, radius = w * 0.14f, center = Offset(w * 0.5f, h * 0.25f), style = stroke)
+                drawArc(tint, 180f, 180f, false, Offset(w * 0.18f, h * 0.5f), Size(w * 0.64f, h * 0.55f), style = stroke)
+            }
             Destination.Lesson -> {
                 // Open book: two pages meeting at a spine.
                 val left = Path().apply {

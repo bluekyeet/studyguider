@@ -21,7 +21,7 @@ private suspend fun reviewRequest(base: String, path: String, token: String, bod
     val connection = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000
-        connection.readTimeout = 20000
+        connection.readTimeout = 200000
         connection.setRequestProperty("Authorization", "Bearer $token")
         if (body != null) {
             connection.requestMethod = "POST"
