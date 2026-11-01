@@ -8,6 +8,12 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Reader UI correction: removed ubiquitous Create reviewed diagram / Retry
+  diagram controls from lesson sections. Reader only displays already attached
+  passed diagrams plus Explain, or a notice for an attached flagged diagram.
+  Server generation remains available via management endpoints. Debug build and
+  emulator install passed; visual behaviour not checked.
+
 - Saved exams now have Delete with an explicit permanent-deletion confirmation.
   Authenticated DELETE /exams/{id} returns 204 (404 if missing); existing database
   cascades remove attempt items/scans/markings/overrides while preserving bank

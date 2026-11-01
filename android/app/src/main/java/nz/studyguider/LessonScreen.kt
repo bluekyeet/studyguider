@@ -484,17 +484,12 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     // Reviewer output stays on the server; the learner only sees the draft warning.
 }
 
-private suspend fun lessonDiagrams(base: String, token: String, topicId: Long, lessonId: Long, description: String? = null): String = withContext(Dispatchers.IO) {
-    val path = "/topics/$topicId/diagrams" + if (description == null) "?lesson_id=$lessonId" else ""
+private suspend fun lessonDiagrams(base: String, token: String, topicId: Long, lessonId: Long): String = withContext(Dispatchers.IO) {
+    val path = "/topics/$topicId/diagrams?lesson_id=$lessonId"
     val connection = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000; connection.readTimeout = 200000
         connection.setRequestProperty("Authorization", "Bearer $token")
-        if (description != null) {
-            connection.requestMethod = "POST"; connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.outputStream.use { it.write(JSONObject().put("lesson_id", lessonId).put("description", description).toString().toByteArray(Charsets.UTF_8)) }
-        }
         val status = connection.responseCode
         val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         check(status in 200..299) { "Diagram request failed ($status): $text" }
@@ -508,16 +503,13 @@ private fun LessonDiagram(base: String, token: String, draft: JSONObject, chunk:
     val topicId = draft.getLong("topic_id")
     val description = "Illustrate this lesson section: ${chunk.title}\n${chunk.body}".take(2000)
     var diagram by remember(base, token, lessonId, description) { mutableStateOf<JSONObject?>(null) }
-    var busy by remember(base, token, lessonId, description) { mutableStateOf(true) }
     var error by remember(base, token, lessonId, description) { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
     LaunchedEffect(base, token, lessonId, description) {
         try {
             val rows = JSONArray(lessonDiagrams(base, token, topicId, lessonId))
             diagram = (0 until rows.length()).map { rows.getJSONObject(it) }.firstOrNull { it.optString("description") == description }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { error = e.message ?: "Could not load diagram" }
-        finally { busy = false }
     }
     if (diagram?.optString("status") == "passed") {
         Text("AI diagram — independently AI-reviewed, not verified", style = MaterialTheme.typography.labelSmall)
@@ -525,15 +517,6 @@ private fun LessonDiagram(base: String, token: String, draft: JSONObject, chunk:
         TextButton(onClick = { onExplain(diagram!!.getLong("id")) }) { Text("Explain this diagram") }
     } else {
         if (diagram != null) Text("Diagram withheld: independent review did not pass.", style = MaterialTheme.typography.bodySmall)
-        OutlinedButton(enabled = !busy, onClick = {
-            scope.launch {
-                busy = true; error = ""
-                try { diagram = JSONObject(lessonDiagrams(base, token, topicId, lessonId, description)) }
-                catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                catch (e: Exception) { error = e.message ?: "Could not create diagram" }
-                finally { busy = false }
-            }
-        }) { Text(if (busy) "Loading / reviewing diagram…" else if (diagram == null) "Create reviewed diagram" else "Retry diagram") }
     }
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
 }
