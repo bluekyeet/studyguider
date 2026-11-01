@@ -8,6 +8,17 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Formula review now compiles extracted dollar-delimited formulas through the same
+  bundled KaTeX/mhchem JS assets as Android (Node.js added to server image, Compose
+  named asset context avoids duplicating vendor files). No model text evaluation;
+  trust=false, maxExpand/maxSize limits and ten-second subprocess timeout. Parse
+  failures feed existing rewrite loop; unavailable validation keeps lesson from
+  passing. Does not prove mathematical/units correctness or migrate old lessons.
+  168 server tests passed, six warnings/six subtests; image built/deployed; deployed
+  non-root KaTeX/mhchem valid/invalid checks passed. CI Node setup added. No Android
+  changes, emulator left off, no install. Compose builds now require additional
+  build-context support (supported by the local tested Compose/BuildKit).
+
 - Read-only retrieval probe: twelve technical/plain-language queries across six
   topics; all results topic-isolated but three plain-language queries were empty.
   Added native ranked OR-term chunk fallback only after strict chunk/page search

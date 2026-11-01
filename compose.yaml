@@ -1,6 +1,9 @@
 services:
   api:
-    build: ./server
+    build:
+      context: ./server
+      additional_contexts:
+        katex_assets: ./android/app/src/main/assets/katex
     ports:
       - "127.0.0.1:8000:8000"
     environment:

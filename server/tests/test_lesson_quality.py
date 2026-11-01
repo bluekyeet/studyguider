@@ -71,3 +71,17 @@ def test_persistently_broken_formula_stays_flagged():
     lesson, review, status = review_and_revise(broken, {}, reply)
     assert lesson == broken and status == "flagged"
     assert "Unbalanced braces" in review
+
+
+@pytest.mark.parametrize("formula", [r"$\frac{1}$", r"$\unknowncommand{x}$", r"$\sqrt[$"])
+def test_katex_rejects_commands_beyond_brace_checks(formula):
+    assert any("LaTeX rendering error" in issue for issue in formula_issues(formula))
+
+
+def test_unavailable_formula_validator_never_passes_lesson(monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise OSError("node unavailable")
+    monkeypatch.setattr("lesson_quality.subprocess.run", unavailable)
+    lesson, review, status = review_and_revise("Frequency $f=1/T$", {},
+        lambda *args, **kwargs: '{"pass":true,"issues":[]}')
+    assert status == "unavailable"

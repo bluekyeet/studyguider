@@ -26,7 +26,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Connect missed exam concepts to grounded daily review items without duplicates (implemented; live learning-cycle validation remains open).
 - [ ] Validate a complete learning cycle: wrong answer → review scheduling → next lesson revisits the weakness.
 - [x] Add retry of independent visual review for an existing diagram without regenerating its image.
-- [ ] Add actual formula parsing beyond the existing delimiter/brace checks.
+- [x] Add actual formula parsing beyond the existing delimiter/brace checks (bundled KaTeX/mhchem via Node.js, bounded execution).
 - [ ] Evaluate semantic retrieval against keyword search; add embeddings if needed.
   - Read-only 12-query six-topic probe: strict search had three empty plain-language queries;
     ranked OR-term fallback now returns in-topic matches for all three. Relevance/semantic
@@ -115,7 +115,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Automatically select/generate diagrams where useful during lesson creation, not on every section.
 - [ ] Verify a successful live diagram correction/review cycle and scientific visual correctness.
 - [ ] Check diagram attachment, loading and Explain interactions in Android.
-- [ ] Add full KaTeX-compatible formula parsing to the review/rewrite loop.
+- [x] Add full KaTeX-compatible formula parsing to the review/rewrite loop (renderability, not mathematical correctness).
 - [ ] Validate formula/units correctness with seeded reviewer tests; parsing alone is not mathematical verification.
 - [ ] Investigate Cairo's unwritable Fontconfig cache warning if it affects rendering.
 - [ ] Optional: diagram source editing/regeneration controls.
@@ -151,7 +151,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 164 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 168 passed, six warnings, six subtests passed.
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.

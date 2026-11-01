@@ -1,6 +1,8 @@
 """Bounded teacher/reviewer loop. Failed drafts stay saved but are not ready."""
 import json
 import re
+import subprocess
+from pathlib import Path
 
 
 def contamination_issues(text):
@@ -18,13 +20,13 @@ def contamination_issues(text):
 def formula_issues(text):
     """Check the dollar-delimited LaTeX syntax supported by the Android renderer.
 
-    ponytail: structural validation only; use KaTeX compilation for command-level
-    validity, and retain independent review for mathematical correctness/units.
+    KaTeX checks renderability; independent review still checks meaning and units.
     """
     issues = []
     delimiter = None
     braces = 0
     start = 0
+    formulas = []
     for token in re.finditer(r"\\.|\$\$|\$|[{}]", text):
         value = token.group()
         if value in (r"\(", r"\)", r"\[", r"\]"):
@@ -35,6 +37,7 @@ def formula_issues(text):
             elif value != delimiter:
                 issues.append("Mismatched inline/display maths delimiters; pair $ with $ and $$ with $$.")
             else:
+                formulas.append(text[start:token.start()])
                 if not text[start:token.start()].strip():
                     issues.append("Empty LaTeX formula; provide the formula or remove its delimiters.")
                 if braces:
@@ -48,6 +51,14 @@ def formula_issues(text):
                 issues.append("Unexpected closing brace inside a LaTeX formula.")
     if delimiter:
         issues.append("Unclosed LaTeX maths delimiter; close each $...$ or $$...$$ formula.")
+    if not issues and formulas:
+        try:
+            checked = subprocess.run(["node", str(Path(__file__).with_name("check_formula.cjs"))],
+                                     input=json.dumps(formulas), text=True, capture_output=True,
+                                     timeout=10, check=True)
+            issues.extend("LaTeX rendering error: " + error for error in json.loads(checked.stdout))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            raise ValueError("KaTeX formula validation unavailable; do not promote this lesson")
     return list(dict.fromkeys(issues))
 
 

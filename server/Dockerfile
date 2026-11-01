@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr libcairo2 \
+    && apt-get install -y --no-install-recommends tesseract-ocr libcairo2 nodejs \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -22,6 +22,9 @@ COPY styles.py .
 COPY pages.py .
 COPY paper_parser.py paper_import.py ./
 COPY lesson_quality.py .
+COPY check_formula.cjs .
+COPY --from=katex_assets / /app/katex/
+ENV KATEX_ASSET_DIR=/app/katex
 COPY set_password.py .
 COPY manage.html .
 RUN mkdir -p /data/uploads && chown nobody:nogroup /data/uploads
