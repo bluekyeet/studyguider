@@ -8,6 +8,21 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- 2026-11-02: Added on-demand reviewed diagrams to non-practice Android lesson
+  sections, reusing existing diagram storage/rendering/image endpoints. Generated
+  diagrams are linked to the lesson and recovered by description when reopening;
+  only passed diagrams are displayed, with an AI-review-not-verification notice.
+  Flagged diagrams are withheld with an explicit retry control. Generation and
+  independent visual review now receive the lesson's saved sources/standards;
+  lesson requests without saved evidence are rejected. Review requires a boolean
+  pass and a string issue list; non-empty issues cannot pass. Added lesson_id
+  filtering to the existing list endpoint and diagram image accessibility labels.
+  Checks: 143 server tests passed (six warnings/six subtests); assembleDebug passed
+  with existing deprecated WebView-setting warnings. API rebuilt/redeployed,
+  /health ok; APK installed on emulator-5554. Real gateway diagram generation,
+  visual correctness and UI interaction remain untested. Automatic diagram
+  selection/generation during overnight lessons and diagram Explain remain open.
+
 - 2026-11-02: Added dependency-free formula structural checks to lesson review:
   unclosed/mismatched dollar delimiters, empty formulas, unbalanced argument
   braces and unsupported backslash maths delimiters trigger the existing bounded

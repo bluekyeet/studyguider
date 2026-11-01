@@ -308,7 +308,7 @@ fun MathField(
 
 /** Loads an authenticated server image (page scan or diagram) as a bitmap. */
 @Composable
-fun AuthorisedImage(base: String, token: String, path: String, modifier: Modifier = Modifier) {
+fun AuthorisedImage(base: String, token: String, path: String, modifier: Modifier = Modifier, contentDescription: String = "Page image") {
     var bitmap by remember(path, token) { mutableStateOf<Bitmap?>(null) }
     var failed by remember(path, token) { mutableStateOf(false) }
     LaunchedEffect(path, token) {
@@ -325,7 +325,7 @@ fun AuthorisedImage(base: String, token: String, path: String, modifier: Modifie
         } catch (e: Exception) { failed = true }
     }
     when {
-        bitmap != null -> Image(bitmap!!.asImageBitmap(), contentDescription = "Page image", modifier = modifier)
+        bitmap != null -> Image(bitmap!!.asImageBitmap(), contentDescription = contentDescription, modifier = modifier)
         failed -> Text("Image could not be loaded.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         else -> Box(modifier.height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
     }
