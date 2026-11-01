@@ -8,6 +8,12 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Exam UI correction: user meant a year dropdown, not an expanded radio list.
+  Replaced it with Choose a year / selected year dropdown; entries retain standard
+  and question count. Past paper, Collated paper and AI-written practice now share
+  one equal-width row; unofficial-rubric notice remains visible for AI mode.
+  Debug build passed, APK installed on emulator-5554; visual interaction untested.
+
 - Learning layout follow-up: reminder and AI usage now use the existing full-width
   StudyCard instead of loose text / wrap-content Surface. Reminder toggle sits
   beside its title/time, supporting text uses secondary small typography, and

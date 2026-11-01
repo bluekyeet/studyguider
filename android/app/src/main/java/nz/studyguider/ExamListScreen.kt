@@ -1,14 +1,11 @@
 package nz.studyguider
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -70,6 +67,7 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
     var answerMode by remember { mutableStateOf("digital") }
     var paper by remember { mutableStateOf<JSONObject?>(null) }
     var topicMenu by remember { mutableStateOf(false) }
+    var paperMenu by remember { mutableStateOf(false) }
     LaunchedEffect(base, token) {
         try {
             val subjects = JSONArray(examMenuRequest(base, token, "/subjects"))
@@ -86,7 +84,7 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load topics" }
     }
     LaunchedEffect(topic) {
-        paper = null; papers = emptyList()
+        paper = null; papers = emptyList(); paperMenu = false
         topic?.let { t ->
             try {
                 val list = JSONArray(examMenuRequest(base, token, "/exam-papers?topic_id=${t.second}"))
@@ -118,27 +116,29 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
                 topics.forEach { t -> DropdownMenuItem(text = { Text(t.first) }, onClick = { topic = t; topicMenu = false }) }
             }
         }
-        listOf("original" to "Past paper · choose a year", "mixed" to "Mixed past-paper practice", "ai" to "AI-written practice · unofficial rubric").forEach { (value, label) ->
-            FilterChip(selected = mode == value, enabled = !busy, onClick = { mode = value }, label = { Text(label) })
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("original" to "Past paper", "mixed" to "Collated paper", "ai" to "AI-written practice").forEach { (value, label) ->
+                FilterChip(modifier = Modifier.weight(1f).heightIn(min = 56.dp), selected = mode == value, enabled = !busy,
+                    onClick = { mode = value; paperMenu = false },
+                    label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) })
+            }
         }
+        if (mode == "ai") Text("AI-written practice uses an unofficial rubric.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (mode == "original") {
             if (topic != null && papers.isEmpty()) Text("No registered papers for this topic.")
-            if (papers.isNotEmpty()) StudyCard(tone = CardTone.Low) {
-                Text("Available papers", style = MaterialTheme.typography.titleMedium)
-                Column(Modifier.fillMaxWidth().selectableGroup()) {
-                    papers.forEachIndexed { index, p ->
-                        Row(
-                            Modifier.fillMaxWidth().selectable(selected = paper === p, enabled = !busy, role = Role.RadioButton, onClick = { paper = p }).padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            RadioButton(selected = paper === p, onClick = null, enabled = !busy)
+            if (papers.isNotEmpty()) Box(Modifier.fillMaxWidth()) {
+                OutlinedButton(enabled = !busy, onClick = { paperMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(paper?.let { "${it.optInt("year")} · AS ${it.optInt("standard_number")}" } ?: "Choose a year", modifier = Modifier.weight(1f))
+                    Text("▾")
+                }
+                DropdownMenu(expanded = paperMenu, onDismissRequest = { paperMenu = false }) {
+                    papers.forEach { p ->
+                        DropdownMenuItem(text = {
                             Column {
-                                Text(p.optInt("year").toString(), style = MaterialTheme.typography.titleMedium)
-                                Text("AS ${p.optInt("standard_number")} · ${p.optInt("question_count")} registered questions", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${p.optInt("year")} · AS ${p.optInt("standard_number")}")
+                                Text("${p.optInt("question_count")} registered questions", style = MaterialTheme.typography.bodySmall)
                             }
-                        }
-                        if (index < papers.lastIndex) HorizontalDivider()
+                        }, onClick = { paper = p; paperMenu = false })
                     }
                 }
             }
