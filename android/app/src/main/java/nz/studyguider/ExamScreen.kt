@@ -201,6 +201,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                 marks?.let { StudyChip("${it.optInt("marks_awarded")} / ${it.optInt("marks_available")}", MaterialTheme.colorScheme.onPrimaryContainer, MaterialTheme.colorScheme.primaryContainer) }
             }
             Text(examTitle.ifBlank { "Exam" }, style = MaterialTheme.typography.titleLarge)
+            ExamTimer(examId, base)
             Text(if (answerMode == "handwritten") "Handwritten · work through the questions, then upload your pages at the end." else "Digital · save and mark your answers below.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("digital" to "Type answers", "handwritten" to "Write on paper").forEach { (mode, label) ->

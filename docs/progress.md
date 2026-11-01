@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added optional local exam countdown (1–360 minutes) with start/pause/resume/reset.
+  Uses elapsedRealtime so wall-clock changes do not distort running time; stores
+  state per server/exam to continue after screen navigation. Device reboot pauses
+  the timer at its last saved remaining value, not an authoritative server deadline.
+  Expiry never submits/locks answers. No new dependency. Debug and test APK builds
+  passed; arithmetic regression test compiled but not run (emulator remains off).
+  No GPU changes/install attempted; timer UI, background and restart behaviour
+  remain runtime-unverified.
+
 - Task-list batch: missed exam questions now create one due review per exam/question
   with the original question and rubric/source snapshot, no extra model call.
   Unique exam_origin prevents duplicates. Current answer/confirmed scan are locked

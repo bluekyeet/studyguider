@@ -28,7 +28,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Add retry of independent visual review for an existing diagram without regenerating its image.
 - [ ] Add actual formula parsing beyond the existing delimiter/brace checks.
 - [ ] Evaluate semantic retrieval against keyword search; add embeddings if needed.
-- [ ] Add an optional exam timer.
+- [x] Add an optional exam timer (local-device start/pause/reset; runtime checks pending).
 - [ ] Add editing of saved topic notes with safe conflict handling.
 - [x] Add visible warnings when model-call failures rise (usage panel, at least ten calls and 20% errors).
 - [ ] Resume website study-workflow parity when requested.
@@ -97,7 +97,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Validate historical cut-score layouts not supported by current extraction; do not guess missing boundaries.
 - [ ] Validate real handwritten answers and diagrams, including scan replacement/conflicts.
 - [ ] Run exam deletion/cascade and two-client/network-failure acceptance checks using disposable attempts.
-- [ ] Add an optional timer.
+- [x] Add an optional timer (Android implementation; does not lock or submit answers).
 - [ ] Acquire missing 2025 papers if the user supplies them; never commit them.
 
 ## Diagrams and maths
