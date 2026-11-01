@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- 2026-11-02: Added dependency-free formula structural checks to lesson review:
+  unclosed/mismatched dollar delimiters, empty formulas, unbalanced argument
+  braces and unsupported backslash maths delimiters trigger the existing bounded
+  rewrite loop even when the model reviewer approves. Persistent faults remain
+  flagged. Escaped braces/dollars and chemistry commands are covered by tests.
+  This is NOT full KaTeX compilation, dimensional checking or proof of formula
+  correctness; those remain outstanding. Applies to newly reviewed lessons only,
+  not a migration of existing saved drafts. 138 server tests passed, six warnings/
+  six subtests; API rebuilt/redeployed, /health ok. No live generation attempted.
+
 - 2026-11-02: Android Explain dialog now consumes /explain?stream=1 and updates
   the displayed answer per chunk using the existing HttpURLConnection client.
   Interrupted replies retain partial text with a retry warning; only an explicit

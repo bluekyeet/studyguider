@@ -1,6 +1,8 @@
 import json
 
-from lesson_quality import review_and_revise, contamination_issues
+import pytest
+
+from lesson_quality import review_and_revise, contamination_issues, formula_issues
 
 
 def test_rejected_lesson_is_rewritten_then_rechecked():
@@ -28,3 +30,44 @@ def test_coding_boilerplate_cannot_pass_even_if_reviewer_approves():
     lesson, review, status = review_and_revise(bad, {}, reply)
     assert status == "flagged"
     assert 'coding-assistant' in review
+
+
+@pytest.mark.parametrize("text", [
+    r"Frequency $f = \frac{8}{20} = 0.40\text{ Hz}$.",
+    r"$$\ce{H2 + O2 -> H2O}$$ and $x_{1}^{2}$.",
+    r"Escaped braces $\{x\}$; escaped dollar $\text{\$5}$.",
+    "Ordinary science prose, no formulas.",
+])
+def test_valid_formula_structure(text):
+    assert not formula_issues(text)
+
+
+@pytest.mark.parametrize("text", [
+    r"$\frac{8}{20$", r"$x} + {y$", "$x", "$$x$", "$ $",
+    r"\(f = 0.4\)", r"\[x\]",
+])
+def test_invalid_formula_structure(text):
+    assert formula_issues(text)
+
+
+def test_formula_failure_overrides_reviewer_and_requests_rewrite():
+    def reply(model, messages, task):
+        if task == "lesson-review":
+            return json.dumps({"pass": True, "issues": []})
+        assert "Unbalanced braces" in messages[-1]["content"]
+        return r"Frequency $f = \frac{8}{20}$"
+
+    lesson, review, status = review_and_revise(r"Frequency $f = \frac{8}{20$", {}, reply)
+    assert status == "passed"
+    assert not formula_issues(lesson)
+
+
+def test_persistently_broken_formula_stays_flagged():
+    broken = r"$\frac{8}{20$"
+
+    def reply(model, messages, task):
+        return json.dumps({"pass": True, "issues": []}) if task == "lesson-review" else broken
+
+    lesson, review, status = review_and_revise(broken, {}, reply)
+    assert lesson == broken and status == "flagged"
+    assert "Unbalanced braces" in review

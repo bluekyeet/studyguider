@@ -15,6 +15,42 @@ def contamination_issues(text):
     return ["Contains coding-assistant instructions or boilerplate; remove it and return only the complete educational lesson."] if any(re.search(p, text) for p in patterns) else []
 
 
+def formula_issues(text):
+    """Check the dollar-delimited LaTeX syntax supported by the Android renderer.
+
+    ponytail: structural validation only; use KaTeX compilation for command-level
+    validity, and retain independent review for mathematical correctness/units.
+    """
+    issues = []
+    delimiter = None
+    braces = 0
+    start = 0
+    for token in re.finditer(r"\\.|\$\$|\$|[{}]", text):
+        value = token.group()
+        if value in (r"\(", r"\)", r"\[", r"\]"):
+            issues.append("Use $...$ or $$...$$ for maths; backslash delimiters are not rendered by the app.")
+        elif value in ("$", "$$"):
+            if delimiter is None:
+                delimiter, braces, start = value, 0, token.end()
+            elif value != delimiter:
+                issues.append("Mismatched inline/display maths delimiters; pair $ with $ and $$ with $$.")
+            else:
+                if not text[start:token.start()].strip():
+                    issues.append("Empty LaTeX formula; provide the formula or remove its delimiters.")
+                if braces:
+                    issues.append("Unbalanced braces inside a LaTeX formula; close every argument group.")
+                delimiter = None
+        elif delimiter and value == "{":
+            braces += 1
+        elif delimiter and value == "}":
+            braces -= 1
+            if braces < 0:
+                issues.append("Unexpected closing brace inside a LaTeX formula.")
+    if delimiter:
+        issues.append("Unclosed LaTeX maths delimiter; close each $...$ or $$...$$ formula.")
+    return list(dict.fromkeys(issues))
+
+
 def review_and_revise(lesson, evidence, model_reply):
     from reviews import _clean_json
     last_review = None
@@ -28,7 +64,7 @@ def review_and_revise(lesson, evidence, model_reply):
             if not isinstance(verdict, dict) or type(verdict.get("pass")) is not bool or not isinstance(verdict.get("issues"), list) or any(not isinstance(i, str) for i in verdict["issues"]):
                 raise ValueError("Invalid reviewer verdict")
             last_review = json.dumps(verdict)
-            issues = contamination_issues(lesson)
+            issues = contamination_issues(lesson) + formula_issues(lesson)
             if issues:
                 verdict["pass"] = False
                 verdict["issues"] = list(dict.fromkeys(verdict["issues"] + issues))
