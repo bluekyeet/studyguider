@@ -58,14 +58,16 @@ private suspend fun requestLessonHistory(base: String, token: String, topicId: L
     } finally { connection.disconnect() }
 }
 
-private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String): String = withContext(Dispatchers.IO) {
+private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String, paragraph: String = ""): String = withContext(Dispatchers.IO) {
     val connection = URL(base.trimEnd('/') + "/lessons/$lessonId/explain").openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000; connection.readTimeout = 100000
         connection.requestMethod = "POST"; connection.doOutput = true
         connection.setRequestProperty("Authorization", "Bearer $token")
         connection.setRequestProperty("Content-Type", "application/json")
-        connection.outputStream.use { it.write(JSONObject().put("question", question).toString().toByteArray(Charsets.UTF_8)) }
+        val body = JSONObject().put("question", question)
+        if (paragraph.isNotEmpty()) body.put("paragraph", paragraph.take(4000))
+        connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         val status = connection.responseCode
         val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (status !in 200..299) throw IllegalStateException("Request failed ($status): $text")
@@ -308,6 +310,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     var helpQuestion by remember(draft) { mutableStateOf("") }
     var helpAnswer by remember(draft) { mutableStateOf("") }
     var helpBusy by remember(draft) { mutableStateOf(false) }
+    var helpParagraph by remember(draft) { mutableStateOf("") }
     val helpScope = rememberCoroutineScope()
     var finishBusy by remember(draft) { mutableStateOf(false) }
     var finishError by remember(draft) { mutableStateOf("") }
@@ -378,7 +381,18 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                                 "quote" -> Surface(shape = RoundedCornerShape(10.dp), color = colours.containerHigh, modifier = Modifier.fillMaxWidth()) {
                                     MathText(content, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 15)
                                 }
-                                else -> MathText(content)
+                                else -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                                    MathText(content, modifier = Modifier.weight(1f))
+                                    IconButton(onClick = {
+                                        helpParagraph = content.take(4000)
+                                        helpQuestion = "Explain this part of the lesson."
+                                        helpAnswer = ""
+                                        showHelp = true
+                                    }, modifier = Modifier.size(28.dp)) {
+                                        Text("?", style = MaterialTheme.typography.labelSmall,
+                                             color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                             }
                         }
                         CompositionLocalProvider(LocalAnswerPending provides pendingAnswers) {
@@ -414,7 +428,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         }
     }
     }
-    ExtendedFloatingActionButton(onClick = { showHelp = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
+    ExtendedFloatingActionButton(onClick = { helpParagraph = ""; showHelp = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), text = { Text("Explain") }, icon = { Text("?") })
     }
     if (showHelp) AlertDialog(
         onDismissRequest = { showHelp = false },
@@ -427,7 +441,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         confirmButton = { TextButton(enabled = !helpBusy && helpQuestion.isNotBlank() && helpQuestion.length <= 2000, onClick = {
             helpScope.launch {
                 helpBusy = true
-                try { helpAnswer = explainLesson(base, token, draft.getLong("id"), helpQuestion) }
+                try { helpAnswer = explainLesson(base, token, draft.getLong("id"), helpQuestion, helpParagraph) }
                 catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (e: Exception) { helpAnswer = e.message ?: "Could not get an explanation" }
                 finally { helpBusy = false }

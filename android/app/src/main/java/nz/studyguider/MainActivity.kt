@@ -787,6 +787,7 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             }
         }
         TeachingStyleEditor(base, token)
+        LearnerSummaryCard(base, token)
         Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
             Column {
                 ListItem(headlineContent = { Text("Lesson manager") }, supportingContent = { Text("Open or delete saved lessons") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Lesson manager" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
@@ -866,6 +867,44 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             }
         }) { Text("Delete") } }, dismissButton = { TextButton(enabled = !deleting, onClick = { deleteTarget = null }) { Text("Cancel") } },
     ) }
+}
+
+/** Cross-topic learner summary: repeated mistakes, strengths, review activity. */
+@Composable
+private fun LearnerSummaryCard(base: String, token: String) {
+    var summary by remember(base, token) { mutableStateOf<JSONObject?>(null) }
+    var error by remember { mutableStateOf("") }
+    LaunchedEffect(base, token) {
+        try { summary = JSONObject(request(base, "/learner/summary", token)) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: "Could not load your summary" }
+    }
+    val data = summary ?: return
+    val mistakes = data.optJSONArray("repeated_mistakes") ?: JSONArray()
+    val strengths = data.optJSONArray("strengths") ?: JSONArray()
+    if (mistakes.length() == 0 && strengths.length() == 0 && error.isEmpty()) return
+    Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Your progress", style = MaterialTheme.typography.titleMedium)
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Text("Reviews completed today: ${data.optInt("reviews_today")}", style = MaterialTheme.typography.bodySmall)
+            if (mistakes.length() > 0) {
+                Text("Keeps coming up", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
+                for (i in 0 until minOf(mistakes.length(), 5)) {
+                    val item = mistakes.getJSONObject(i)
+                    Text("• ${item.optString("concept")} (${item.optInt("times_wrong")}×)", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (strengths.length() > 0) {
+                Text("You've got this", style = MaterialTheme.typography.labelLarge, color = LocalStudyColours.current.teal)
+                for (i in 0 until minOf(strengths.length(), 5)) {
+                    val item = strengths.getJSONObject(i)
+                    Text("• ${item.optString("concept")} (${item.optInt("times_correct")}×)", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text(data.optString("notice"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 @Composable
