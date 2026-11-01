@@ -14,6 +14,9 @@ class Result:
     def fetchone(self):
         return self.row
 
+    def fetchall(self):
+        return self.row
+
 
 class Database:
     def __init__(self):
@@ -42,6 +45,42 @@ class Database:
         if "UPDATE review_questions" in sql or "UPDATE topics" in sql:
             return Result()
         raise AssertionError(sql)
+
+
+def test_completed_lessons_automatically_get_reviews_once():
+    class ReviewDatabase:
+        generated = False
+        inserted = []
+
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params=()):
+            if "FROM lessons" in sql:
+                return Result([] if self.generated else [(1, 2, "Assistant-written lesson", [])])
+            if "FROM lesson_answers" in sql:
+                return Result([])
+            if "INSERT INTO review_questions" in sql:
+                self.inserted.append(params)
+            elif "UPDATE lessons" in sql:
+                self.generated = True
+            elif "FROM review_questions WHERE due_date" in sql:
+                return Result([])
+            return Result()
+
+    db = ReviewDatabase()
+    model_calls = []
+    def reply(*args, **kwargs):
+        model_calls.append(args)
+        return json.dumps([{"question": "What is force?", "expected_answer": "A push or pull.", "concept": "force"}])
+    router = review_router(lambda: db, lambda: None, reply)
+    due = next(route.endpoint for route in router.routes if route.path == "/review-questions/due")
+    due(date.today())
+    due(date.today())
+    assert len(db.inserted) == 1
+    assert len(model_calls) == 1
+    assert "Relevant formulae" in model_calls[0][1][0]["content"]
+    assert "Do not substitute values" in model_calls[0][1][0]["content"]
+    assert db.inserted[0][0] == 2
 
 
 def make_router(reply=None):

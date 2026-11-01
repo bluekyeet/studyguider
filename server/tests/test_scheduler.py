@@ -19,6 +19,8 @@ class Database:
         pass
 
     def execute(self, sql, params=()):
+        if "INSERT INTO lesson_schedules" in sql:
+            return self
         if "SELECT topic_id, timezone FROM lesson_schedules" in sql:
             self.result = [(topic, "UTC") for topic, (_, hour, enabled) in self.schedules.items() if enabled]
         elif "INSERT INTO lesson_schedule_runs" in sql:

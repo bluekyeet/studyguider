@@ -86,8 +86,15 @@ def run_due(connect, generate, now=None):
         raise ValueError("now must be timezone-aware")
     now = now.astimezone(timezone.utc)
     with connect() as db:
+        # Enrolled courses own their daily schedule; no second opt-in or search text.
+        db.execute("""INSERT INTO lesson_schedules (topic_id, query, hour_utc, enabled, timezone)
+            SELECT c.topic_id, left(t.name,200), 2, true, 'Pacific/Auckland'
+            FROM courses c JOIN topics t ON t.id=c.topic_id WHERE c.active
+            ON CONFLICT (topic_id) DO NOTHING""")
         schedules = db.execute("""SELECT topic_id, timezone FROM lesson_schedules
-            WHERE enabled ORDER BY topic_id""").fetchall()
+            WHERE enabled AND NOT EXISTS (SELECT 1 FROM courses c
+                WHERE c.topic_id=lesson_schedules.topic_id AND NOT c.active)
+            ORDER BY topic_id""").fetchall()
     for topic_id, zone in schedules:
         local = now.astimezone(ZoneInfo(zone))
         # Commit the claim before calling external services. The primary key also
@@ -116,7 +123,7 @@ def run_due(connect, generate, now=None):
                 (lesson_id, topic_id, local.date()))
 
 
-def start_scheduler(connect, generate, interval=60):
+def start_scheduler(connect, generate, interval=60, prepare_reviews=None):
     """Start a daemon worker; return (stop event, thread) for clean shutdown."""
     if interval <= 0:
         raise ValueError("interval must be positive")
@@ -125,6 +132,11 @@ def start_scheduler(connect, generate, interval=60):
     def worker():
         while not stop.is_set():
             try:
+                if prepare_reviews is not None:
+                    try:
+                        prepare_reviews()
+                    except Exception:
+                        log.exception("Automatic review preparation failed; continuing lesson schedules")
                 run_due(connect, generate)
             except Exception:
                 log.exception("Lesson scheduler tick failed")
