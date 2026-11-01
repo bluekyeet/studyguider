@@ -1,5 +1,8 @@
-"""Tests for explain paragraph endpoint and learner summary endpoint."""
-from fastapi import FastAPI
+"""Tests for grounded paragraph explanations and streaming failures."""
+import json
+
+import pytest
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from explain import explain_router
@@ -80,3 +83,28 @@ def test_explain_missing_lesson_returns_404():
     app.include_router(explain_router(NoLesson, lambda: None, lambda *a, **kw: "x"))
     client = TestClient(app)
     assert client.post("/lessons/99/explain", json={"question": "test"}).status_code == 404
+
+
+@pytest.mark.parametrize("failure", [None, HTTPException(502, "upstream failed"), OSError("connection lost")])
+def test_explain_stream_completion_and_interruption(failure):
+    def stream(model, messages, task):
+        yield 'data: {"text": "First paragraph."}\n\n'
+        if failure:
+            raise failure
+        yield 'data: {"text": " Second paragraph."}\n\n'
+
+    client, replies = make_client(stream)
+    response = client.post("/lessons/1/explain?stream=1", json={"question": "Explain g"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = [json.loads(line[5:]) for line in response.text.splitlines() if line.startswith("data:")]
+    assert events[0] == {"text": "First paragraph."}
+    assert ("error" in events[-1]) if failure else events[-1] == {"done": True}
+    assert not replies
+
+
+def test_stream_does_not_silently_ignore_save_to_notes():
+    client, _ = make_client(lambda *args, **kwargs: iter(()))
+    response = client.post("/lessons/1/explain?stream=1",
+                           json={"question": "Explain g", "save_to_notes": True})
+    assert response.status_code == 422

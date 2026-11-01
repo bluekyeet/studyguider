@@ -197,10 +197,8 @@ def model_reply_stream(model, messages, task="general", timeout=120):
     """Yield SSE data lines from the gateway using stream=true.
 
     Each yielded string is a complete `data: ...\n\n` SSE line ready to write.
-    Stops on [DONE]. Raises HTTPException on config/connection failure; the
-    caller's StreamingResponse catches nothing — the error must be caught before
-    returning StreamingResponse or callers must buffer first.
-    ponytail: full error-recovery mid-stream; add reconnect support when needed.
+    Requires [DONE] so a truncated reply cannot be reported as complete.
+    ponytail: no automatic reconnect; retry explicitly to avoid duplicate text.
     """
     base = os.environ.get("ROUTER_BASE_URL", "").rstrip("/")
     key = os.environ.get("ROUTER_API_KEY", "")
@@ -227,7 +225,7 @@ def model_reply_stream(model, messages, task="general", timeout=120):
                 continue
             payload = line[5:].strip()
             if payload == "[DONE]":
-                break
+                return
             try:
                 chunk = json.loads(payload)
                 delta = chunk["choices"][0]["delta"].get("content", "")
@@ -235,6 +233,7 @@ def model_reply_stream(model, messages, task="general", timeout=120):
                 continue
             if delta:
                 yield f"data: {json.dumps({'text': delta})}\n\n"
+        raise HTTPException(502, "Gateway explanation stream ended early")
     finally:
         conn.close()
 

@@ -8,6 +8,19 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- 2026-11-02: Android Explain dialog now consumes /explain?stream=1 and updates
+  the displayed answer per chunk using the existing HttpURLConnection client.
+  Interrupted replies retain partial text with a retry warning; only an explicit
+  completion event counts as success. The gateway reader requires [DONE], and
+  the explain endpoint emits an error event on upstream HTTP/connection failures.
+  Streaming save_to_notes is explicitly rejected rather than silently ignored.
+  Practice-answer marking keeps its existing non-streaming path. No new dependency.
+  Checks: 125 server tests passed, six warnings/six subtests; assembleDebug passed;
+  API rebuilt/redeployed and /health returned ok; APK installed on emulator-5554.
+  Actual gateway-to-Android streaming interaction/visual behaviour not yet tested.
+  Full lesson generation streaming, explanation chat history and streaming note
+  saving remain open. Previous exam-quotation MathText fix is included in this APK.
+
 - Fixed a live user-reported bug: exam marking failed with 502 "Model returned
   invalid marking JSON" on AS 91170 2026 Exam 7 Q1(a). Root cause was the JSON
   validator being too brittle: it required the whole reply to be pure JSON (no

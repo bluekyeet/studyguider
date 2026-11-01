@@ -81,12 +81,18 @@ def explain_router(connect, authorised, model_reply, model_reply_stream=None):
         messages = [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
 
+        if stream and body.save_to_notes:
+            raise HTTPException(422, "Save to notes requires a non-streaming request")
         if stream and model_reply_stream is not None:
             def event_gen():
-                for chunk in model_reply_stream("education", messages, task="explain"):
-                    yield chunk
-                yield "data: {\"done\": true}\n\n"
-            return StreamingResponse(event_gen(), media_type="text/event-stream")
+                try:
+                    for chunk in model_reply_stream("education", messages, task="explain"):
+                        yield chunk
+                    yield 'data: {"done": true}\n\n'
+                except (HTTPException, OSError):
+                    yield 'data: {"error": "Explanation interrupted. Partial text is incomplete; please retry."}\n\n'
+            return StreamingResponse(event_gen(), media_type="text/event-stream",
+                                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
         answer = model_reply("education", messages, task="explain")
         if not isinstance(answer, str) or not answer.strip() or len(answer) > 100000:

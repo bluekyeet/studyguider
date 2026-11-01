@@ -58,8 +58,8 @@ private suspend fun requestLessonHistory(base: String, token: String, topicId: L
     } finally { connection.disconnect() }
 }
 
-private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String, paragraph: String = ""): String = withContext(Dispatchers.IO) {
-    val connection = URL(base.trimEnd('/') + "/lessons/$lessonId/explain").openConnection() as HttpURLConnection
+private suspend fun explainLesson(base: String, token: String, lessonId: Long, question: String, paragraph: String = "", onText: (suspend (String) -> Unit)? = null): String = withContext(Dispatchers.IO) {
+    val connection = URL(base.trimEnd('/') + "/lessons/$lessonId/explain" + if (onText != null) "?stream=1" else "").openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000; connection.readTimeout = 100000
         connection.requestMethod = "POST"; connection.doOutput = true
@@ -69,6 +69,26 @@ private suspend fun explainLesson(base: String, token: String, lessonId: Long, q
         if (paragraph.isNotEmpty()) body.put("paragraph", paragraph.take(4000))
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         val status = connection.responseCode
+        if (status in 200..299 && onText != null) {
+            val answer = StringBuilder()
+            var done = false
+            connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val event = JSONObject(line.substringAfter("data:").trim())
+                    if (event.has("error")) throw IllegalStateException(event.getString("error"))
+                    if (event.optBoolean("done")) { done = true; break }
+                    if (event.has("text")) {
+                        answer.append(event.getString("text"))
+                        check(answer.length <= 100000) { "Explanation is too large" }
+                        withContext(Dispatchers.Main) { onText(answer.toString()) }
+                    }
+                }
+            }
+            check(done && answer.isNotBlank()) { "Explanation interrupted. Partial text is incomplete; please retry." }
+            return@withContext answer.toString()
+        }
         val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (status !in 200..299) throw IllegalStateException("Request failed ($status): $text")
         JSONObject(text).getString("explanation")
@@ -441,9 +461,10 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         confirmButton = { TextButton(enabled = !helpBusy && helpQuestion.isNotBlank() && helpQuestion.length <= 2000, onClick = {
             helpScope.launch {
                 helpBusy = true
-                try { helpAnswer = explainLesson(base, token, draft.getLong("id"), helpQuestion, helpParagraph) }
+                helpAnswer = ""
+                try { helpAnswer = explainLesson(base, token, draft.getLong("id"), helpQuestion, helpParagraph, onText = { helpAnswer = it }) }
                 catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                catch (e: Exception) { helpAnswer = e.message ?: "Could not get an explanation" }
+                catch (e: Exception) { helpAnswer += "\n\n${e.message ?: "Could not get an explanation"}" }
                 finally { helpBusy = false }
             }
         }) { Text("Ask AI") } },
