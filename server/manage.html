@@ -91,6 +91,36 @@
     #resources strong { overflow-wrap:anywhere; }
     #resources p { margin:4px 0; font-size:.85rem; }
     #file-selection { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 0; }
+    .file-toolbar { display:flex; align-items:center; gap:12px; margin:12px 0 20px; }
+    .file-toolbar input { flex:1; max-width:34rem; border-radius:24px; padding-left:18px; }
+    .file-toolbar button { margin:0 0 0 auto; white-space:nowrap; border-radius:22px; }
+    #upload-panel { border:1px dashed #7f8ca9; border-radius:12px; padding:20px; margin-bottom:16px; }
+    #upload-panel .hint:last-child { margin:12px 0 0; }
+    #file-selection { border-bottom:1px solid #8290aa55; }
+    #file-selection label { display:flex; align-items:center; gap:10px; margin:0; font-weight:400; }
+    #file-selection span { font-size:.85rem; opacity:.7; }
+    #file-selection button { margin:0 0 0 auto; background:transparent; color:inherit; border-color:#8290aa55; }
+    #resources > li { background:transparent; min-height:76px; padding:12px 8px; }
+    #resources > li:hover, #resources > li:has(input:checked) { background:#8290aa18; }
+    .file-info { display:flex; align-items:center; gap:14px; min-width:0; }
+    .file-info > div { min-width:0; }
+    .file-info a { color:inherit; text-decoration:none; }
+    .file-info a:hover { text-decoration:underline; }
+    .file-info strong { font-weight:550; font-size:.95rem; }
+    .file-info p { opacity:.65; }
+    .file-type { display:grid; place-items:center; width:42px; height:48px; flex-shrink:0; background:#4468b51a; color:#6589e5; border:1px solid #6589e544; border-radius:6px; font-size:.65rem; font-weight:750; }
+    .file-actions { position:relative; }
+    .file-actions > summary { display:grid; place-items:center; width:44px; height:44px; cursor:pointer; font-size:1.5rem; list-style:none; border-radius:50%; }
+    .file-actions > summary::-webkit-details-marker { display:none; }
+    .file-actions[open] { display:flex; flex-wrap:wrap; max-width:260px; gap:6px; justify-content:flex-end; }
+    .file-actions button { margin:0; }
+    section[aria-labelledby=search-heading] { padding:16px 20px; }
+    section[aria-labelledby=search-heading] > details > summary { cursor:pointer; font-weight:550; }
+    #search { display:flex; align-items:end; gap:12px; flex-wrap:wrap; }
+    #search label { flex-basis:100%; margin-bottom:-8px; }
+    #search input { flex:1; min-width:160px; }
+    #search button { margin:0; }
+    @media(max-width:650px) { .file-toolbar { flex-wrap:wrap; } .file-toolbar input { flex-basis:100%; } .file-actions[open] { max-width:140px; } }
   </style>
   <style>
     .hero p:last-child, .section-number { display:none; }
@@ -126,7 +156,7 @@
       .secondary,li button { background:#283347; color:#dbe2ff; border-color:#485263; }
     }
   </style>
-</head>
+  </head>
 <body>
   <header class="hero"><div class="shell">
     <p class="eyebrow" aria-hidden="true">SG</p>
@@ -184,18 +214,20 @@
         </section>
         <section class="card" aria-labelledby="resources-heading">
           <div class="section-heading"><span class="section-number">04</span><h2 id="resources-heading">Resources</h2></div>
-          <p class="hint">Upload files to the selected topic and extract their text for searching.</p>
+          <div class="file-toolbar"><input id="resource-filter" type="search" aria-label="Search files in this folder" placeholder="Search this folder…"><button id="toggle-upload" type="button" aria-expanded="false" aria-controls="upload-panel">＋ Upload files</button></div>
+          <div id="upload-panel" hidden>
+          <p class="hint">Add files to this topic. We detect their type and place them in the right folder.</p>
           <form id="upload"><label for="file">Files or ZIP (maximum 50 MiB per upload)</label><input id="file" type="file" multiple accept=".zip,.pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.png,.jpg,.jpeg" required>
             <details><summary>Classification override (optional)</summary><label for="resource-category">Category</label><select id="resource-category"><option value="auto" selected>Detect automatically</option><option value="exam_paper">Exam paper</option><option value="exam_answers">Exam answers or schedule</option><option value="slides">Slides</option><option value="extra">Extra resource</option></select></details>
-            <button>Upload</button></form>
-          <p class="hint">Files are deduplicated by content. Status: Queued, Processing, Ready, Needs attention. The same file from the app or this page appears once.</p>
-          <label for="resource-filter">Filter files</label><input id="resource-filter" type="search" placeholder="Search filenames or status">
+            <button>Upload selected files</button></form>
+          <p class="hint">Up to 50 MiB per upload · ZIP supported · duplicate files are kept once</p>
+          </div>
           <div id="file-selection"><label><input id="select-all-files" type="checkbox"> Select all</label><span id="selected-file-count">0 selected</span><button id="delete-selected-files" type="button" disabled>Delete selected</button></div>
           <ul id="resources"></ul>
         </section>
         <section class="card" aria-labelledby="search-heading">
-          <div class="section-heading"><span class="section-number">05</span><h2 id="search-heading">Search extracted resources</h2></div>
-          <p class="hint">Find relevant excerpts within the selected topic.</p>
+          <div class="section-heading"><h2 id="search-heading">Global search</h2></div>
+          <p class="hint">Search document contents across all folders in this topic.</p>
           <form id="search"><label for="query">Search this topic</label><input id="query" maxlength="200" required><button>Search</button></form>
           <ul id="results"></ul>
         </section>
@@ -341,7 +373,8 @@
     const $ = id => document.getElementById(id);
     // Keep the existing forms and handlers; show only the selected workspace.
     const workspaces = {
-      Library: ['resources-heading', 'search-heading', 'notes-heading'],
+      Library: ['resources-heading', 'search-heading'],
+      Notes: ['notes-heading'],
       'Library setup': ['subjects-heading', 'topics-heading'],
       Lessons: ['saved-lessons-heading', 'draft-heading', 'scheduler-heading'],
       Reviews: ['review-drafts-heading', 'mastery-heading'],
@@ -387,7 +420,11 @@
       if (!workspaces[name]) name = 'Library';
       cards.forEach(card => {
         card.hidden = !workspaces[name].some(id => card.contains($(id)));
-        if (name === 'Library' && (!$('topics').value || !currentRoute().params.get('folder'))) card.hidden = true;
+        if (name === 'Library') {
+          const topic = $('topics').value, folder = currentRoute().params.get('folder');
+          if (card.contains($('search-heading'))) card.hidden = !topic || !!folder;
+          else card.hidden = !topic || !folder;
+        }
       });
       scope.hidden = name === 'Library';
       explorer.hidden = name !== 'Library';
@@ -554,6 +591,10 @@
         item.append(text, remove); list.append(item);
       }
     }
+    $('toggle-upload').onclick = () => {
+      $('upload-panel').hidden = !$('upload-panel').hidden;
+      $('toggle-upload').setAttribute('aria-expanded', String(!$('upload-panel').hidden));
+    };
     const selectedFiles = new Map();
     function resourceFolder(category) { return ['exam_paper','exam_answers'].includes(category) ? 'exams' : category === 'auto' ? 'pending' : category; }
     function updateFileSelection() {
@@ -603,7 +644,8 @@
         const title = document.createElement('strong');
         title.textContent = `${item.filename}`;
         const status = document.createElement('p');
-        status.textContent = `${item.display_status} · ${item.category.replaceAll('_', ' ')} · ${item.page_count || 0} page(s)${item.error ? ` · ${item.error}` : ''}`;
+        const size = item.size >= 1048576 ? `${(item.size/1048576).toFixed(1)} MB` : `${Math.ceil(item.size/1024)} KB`;
+        status.textContent = `${item.display_status} · ${item.page_count || 0} pages · ${size}${item.error ? ` · ${item.error}` : ''}`;
         const extract = document.createElement('button');
         extract.textContent = item.status === 'extracted' ? 'Re-extract text' : 'Extract text';
         extract.onclick = run(async () => { await api(`/resources/${item.id}/extract`, { method: 'POST' }); await loadResources(); });
@@ -611,9 +653,13 @@
         remove.textContent = 'Delete';
         remove.onclick = run(async () => { if (confirm(`Delete ${item.filename} and its extracted data?`)) { await api(`/resources/${item.id}`, { method: 'DELETE' }); await loadResources(); } });
         const actions = document.createElement('details');
-        const actionTitle = document.createElement('summary'); actionTitle.textContent = 'Actions'; actions.append(actionTitle, extract);
-        const info = document.createElement('div'); info.append(title, status);
-        const open = document.createElement('a'); open.href = `/resources/${item.id}/download`; open.textContent = 'Open / download'; open.target = '_blank'; open.rel = 'noopener'; info.append(open);
+        actions.className = 'file-actions';
+        const actionTitle = document.createElement('summary'); actionTitle.textContent = '⋯'; actionTitle.setAttribute('aria-label', `Actions for ${item.filename}`); actions.append(actionTitle, extract);
+        const info = document.createElement('div'); info.className = 'file-info';
+        const icon = document.createElement('span'); icon.className = 'file-type'; icon.textContent = item.filename.split('.').pop().toUpperCase().slice(0,5); icon.setAttribute('aria-hidden','true');
+        const text = document.createElement('div');
+        const open = document.createElement('a'); open.href = `/resources/${item.id}/download`; open.target = '_blank'; open.rel = 'noopener'; open.append(title);
+        text.append(open, status); info.append(icon,text);
         li.append(check, info);
         remove.onclick = () => deleteFiles([[item.id,item.filename]]).catch(error => message(error.message));
         if (item.status === 'failed') {

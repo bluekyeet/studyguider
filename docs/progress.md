@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Web file-view polish: compact search/upload toolbar, collapsed upload panel,
+  type badges, filename links, size/page/status metadata and compact action menus
+  replace stacked file cards. Notes moved to separate Notes workspace. Global
+  search shown only at topic root, searches contents across that topic's folders;
+  category folders keep filename filter. Node route/syntax/image-auth checks
+  passed, API rebuilt/deployed. Browser visual/accessibility interaction pending;
+  no file mutations, Android installs or device tests.
+
 - Web explorer follow-up: topic folders now group Exams (paper + schedule together),
   Slides, Extra resources and Classifying, with folder in URL/breadcrumb. Compact
   alphabetically sorted file rows, open/download links, accessible checkboxes,
