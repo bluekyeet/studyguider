@@ -500,6 +500,9 @@
       // Keep the one upload control alive when replacing the folder header.
       const uploadButton = $('toggle-upload');
       if (uploadButton) document.querySelector('.file-toolbar').append(uploadButton);
+      // The upload panel can also live at Resources root, outside the file list.
+      const uploadPanel = $('upload-panel');
+      if (uploadPanel) $('resources-heading').closest('section').append(uploadPanel);
       const newDiagram = $('new-diagram');
       if (newDiagram) $('diagram-heading').closest('section').prepend(newDiagram);
       explorer.replaceChildren();
@@ -529,7 +532,10 @@
       if (!topic) {
         const add = document.createElement('button'); add.type = 'button'; add.textContent = subject ? '＋ New topic' : '＋ New subject';
         add.onclick = () => openCreate(subject ? 'topic' : 'subject'); toolbar.append(add);
-      } else if (section === 'resources' && folder) toolbar.append(folder === 'diagrams' ? newDiagram : uploadButton);
+      } else if (section === 'resources') {
+        toolbar.append(folder === 'diagrams' ? newDiagram : uploadButton);
+        if (!folder) explorer.append(uploadPanel);
+      }
       renderSidebar(subject, topic, section, folder);
       if (topic && (folder || (section && !['resources','settings'].includes(section)))) {
         return;
@@ -541,7 +547,8 @@
       for (const folder of folders) {
         const item = document.createElement('li');
         const link = document.createElement('a'); link.href = topic ? (section === 'resources' ? libraryUrl(subject,topic,folder.id,'resources') : libraryUrl(subject,topic,'',folder.id)) : subject ? libraryUrl(subject, folder.id) : libraryUrl(folder.id);
-        link.textContent = '📁 ' + (subject ? folder.name : `Level ${folder.level} · ${folder.name}`);
+        const icon = topic ? ({diagrams:'▧',pending:'◷',notes:'▤',lessons:'▣',reviews:'✓',standards:'§',exams:section === 'resources' ? '📁' : '✎'}[folder.id] || '📁') : '📁';
+        link.textContent = icon + ' ' + (subject ? folder.name : `Level ${folder.level} · ${folder.name}`);
         link.style.display = 'block'; link.style.padding = '12px'; item.append(link); list.append(item);
       }
       explorer.append(list);

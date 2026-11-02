@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Restored topic-wide Upload at Resources root; shared upload panel stays alive
+  across explorer rerenders and opens at current topic without choosing category.
+  Distinct view icons for diagrams/classifying/notes/lessons/reviews/standards and
+  exam attempts; actual subject/topic/resource collections keep folder icon.
+  Node route/syntax/image-auth checks passed; API rebuilt/deployed. Browser
+  interaction remains unverified, no file mutations or Android/device activity.
+
 - Removed duplicate topic Settings/Tools diagram screen. Diagrams canonical location
   Resources/Diagrams; old tools bookmarks redirect there. Global settings sidebar
   page holds app-wide teaching method and usage without subject selection; topic
