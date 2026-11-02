@@ -31,12 +31,17 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import java.time.ZonedDateTime
 
-internal fun nextReminder(now: ZonedDateTime): ZonedDateTime {
-    val evening = now.withHour(19).withMinute(0).withSecond(0).withNano(0)
+internal fun nextReminder(now: ZonedDateTime, hour: Int = 19, minute: Int = 0): ZonedDateTime {
+    val evening = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
     return if (evening.isAfter(now)) evening else evening.plusDays(1)
 }
 
 private fun reminderEnabled(context: Context) = context.getSharedPreferences("reminders", Context.MODE_PRIVATE).getBoolean("enabled", false)
+
+private fun reminderTime(context: Context): Pair<Int, Int> =
+    context.getSharedPreferences("reminders", Context.MODE_PRIVATE).let { it.getInt("hour", 19).coerceIn(0, 23) to it.getInt("minute", 0).coerceIn(0, 59) }
+
+private fun timeLabel(hour: Int, minute: Int) = "%d:%02d %s".format(if (hour % 12 == 0) 12 else hour % 12, minute, if (hour < 12) "am" else "pm")
 
 private fun notificationsAllowed(context: Context): Boolean {
     val manager = context.getSystemService(NotificationManager::class.java)
@@ -50,8 +55,9 @@ internal fun scheduleReminder(context: Context) {
     val alarms = context.getSystemService(AlarmManager::class.java)
     alarms.cancel(intent)
     if (reminderEnabled(context) && notificationsAllowed(context)) {
-        // ponytail: inexact local-time alarm; add a time picker only if needed.
-        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextReminder(ZonedDateTime.now()).toInstant().toEpochMilli(), intent)
+        // Inexact local-time alarm at the chosen time (default 7 pm).
+        val (hour, minute) = reminderTime(context)
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextReminder(ZonedDateTime.now(), hour, minute).toInstant().toEpochMilli(), intent)
     } else {
         intent.cancel()
         context.getSystemService(NotificationManager::class.java).cancel(1900)
@@ -87,6 +93,7 @@ fun DailyReminderSetting() {
     val context = LocalContext.current
     var enabled by remember { mutableStateOf(reminderEnabled(context)) }
     var notice by remember { mutableStateOf("") }
+    var time by remember { mutableStateOf(reminderTime(context)) }
     fun save(value: Boolean) {
         enabled = value
         context.getSharedPreferences("reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", value).apply()
@@ -100,10 +107,10 @@ fun DailyReminderSetting() {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Column(Modifier.weight(1f)) {
                 Text("Daily reminder", style = MaterialTheme.typography.titleMedium)
-                Text("Around 7 pm · local time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Around ${timeLabel(time.first, time.second)} · local time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.width(12.dp))
-        Switch(modifier = Modifier.semantics { contentDescription = "Daily study reminder around 7 pm" }, checked = enabled, onCheckedChange = { value ->
+        Switch(modifier = Modifier.semantics { contentDescription = "Daily study reminder around ${timeLabel(time.first, time.second)}" }, checked = enabled, onCheckedChange = { value ->
             notice = ""
             if (value && Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 permission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -112,6 +119,13 @@ fun DailyReminderSetting() {
             } else save(value)
         })
         }
+        androidx.compose.material3.TextButton(onClick = {
+            android.app.TimePickerDialog(context, { _, hour, minute ->
+                context.getSharedPreferences("reminders", Context.MODE_PRIVATE).edit().putInt("hour", hour).putInt("minute", minute).apply()
+                time = hour to minute
+                scheduleReminder(context)
+            }, time.first, time.second, false).show()
+        }) { Text("Change time") }
         Text("Works offline. Battery saving may delay delivery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (notice.isNotEmpty()) Text(notice, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
