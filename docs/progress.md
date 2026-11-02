@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Live streaming accounting acceptance passed against education: three chunks,
+  226 text characters, explicit normal completion and exactly one ai_runs entry
+  with outcome=ok, response_chars=226, prompt_tokens=2566, completion_tokens=45.
+  No token estimates used. Runnable opt-in live_stream_usage_check.py retained;
+  normal accounting row intentionally retained (real gateway usage). This checks
+  the current alias/provider route only, not every fallback provider or billing
+  accuracy. No lesson/student data changed, emulator/GPU untouched. Server code
+  unchanged; no deployment or APK installation required.
+
 - Executed opt-in real education-reviewer acceptance probe on two synthetic drafts
   using actual review_and_revise reviewer prompt (teacher revisions deliberately
   stopped). Frequency inversion/8÷20 arithmetic/metre-vs-Hz errors all identified;

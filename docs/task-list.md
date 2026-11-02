@@ -132,7 +132,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Account for streamed model replies and disclose missing token counts.
 - [x] Report unavailable dollar costs honestly rather than inventing prices.
 - [ ] Runtime-test notification permission, actual delivery, disable/cancel, reboot and timezone rescheduling.
-- [ ] Verify streaming usage compatibility with the real gateway.
+- [x] Verify streaming usage compatibility with the real gateway (education probe: 3 chunks, 226 response characters, 2,566 input / 45 output tokens; one successful accounting row).
 - [ ] Add reliable dollar-cost reporting only when billing rates or actual gateway costs are available.
 - [ ] Add budget controls after cost/accounting semantics are reliable.
 - [x] Add a model-failure warning threshold based on recorded outcomes.
