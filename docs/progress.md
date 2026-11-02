@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- User-supplied icon/wordmark moved from docs to assets/branding (originals intact).
+  Generated web favicon/touch icon/cropped wordmark and Android launcher density
+  PNGs. Applied website/manager header branding, favicon and README banner; Android
+  manifest uses launcher/roundIcon. GitHub social-preview setting not changed.
+  207 server tests passed, six warnings/six subtests; debug build passed; API
+  rebuilt/deployed, normal emulator install Success. Visual/icon mask appearance
+  unverified, no connected tests or data mutations.
+
 - User resumed website study port: new full-width responsive site at / with cookie
   login, Lessons/Review/Exams navigation and Library/settings link to /manage.
   Parallel modules provide lesson feed/section reader/revision saves/follow-up/

@@ -1,5 +1,7 @@
 # StudyGuider
 
+![StudyGuider](server/branding/wordmark.png)
+
 A personal NCEA study companion. See `writeup.md` for the product design and
 `DESIGN.md` for the current implementation scope.
 

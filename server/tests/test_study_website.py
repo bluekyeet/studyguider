@@ -12,3 +12,5 @@ def test_study_site_is_at_root_and_management_remains_separate():
     assert client.get('/web-common.js').status_code == 200
     assert client.get('/not-a-module.js').status_code == 404
     assert client.get('/assets/katex/katex.min.js').status_code == 200
+    assert client.get('/branding/favicon.png').status_code == 200
+    assert client.get('/branding/wordmark.png').status_code == 200

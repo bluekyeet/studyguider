@@ -111,6 +111,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="StudyGuider", lifespan=lifespan)
+app.mount('/branding', StaticFiles(directory=Path(__file__).with_name('branding')), name='branding')
 app.mount('/assets/katex', StaticFiles(directory=os.environ.get('KATEX_ASSET_DIR', str(Path(__file__).parent.parent / 'android/app/src/main/assets/katex'))), name='katex-assets')
 hasher = PasswordHasher()
 
