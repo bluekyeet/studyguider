@@ -59,6 +59,8 @@ jobs:
         run: docker compose exec -T api python - < server/tests/learning_cycle_check.py
       - name: Check collated question selection
         run: docker compose -f compose.yaml exec -T api python - < server/tests/collated_selection_check.py
+      - name: Check concurrent note edits
+        run: docker compose -f compose.yaml exec -T api python - < server/tests/concurrent_note_check.py
       - name: Check unprivileged font rendering
         run: docker compose -f compose.yaml exec -T api python - < server/tests/font_cache_check.py
       - name: Show logs on failure

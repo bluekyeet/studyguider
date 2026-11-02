@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added/executed concurrent_note_check.py: actual edit_note calls in two threads,
+  independent PostgreSQL connections synchronised before competing updates. Uses
+  unique isolated schema/table, no public user-note writes. PASS: one 200, one 409,
+  winner's content retained; table/schema dropped in finally. CI integration step
+  added, hosted run not verified. This tests DB conflict handling, not HTTP loss
+  or Android draft recovery. No production code/deploy/emulator changes.
+
 - Added expandable exam answer/schedule comparison without leaving question:
   current draft (including JSON part answers) and extracted schedule/rubric rendered
   with MathText, explicit unofficial AI rubric label or original-check disclaimer.

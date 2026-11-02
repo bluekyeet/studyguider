@@ -44,6 +44,8 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Real PostgreSQL note-route check: first update succeeds, stale original
     returns 409 without overwriting, deleted note returns 404. Android editor
     conflict/recovery interaction remains untested.
+  - [x] Two actual concurrent route calls on independent PostgreSQL connections:
+    one success, one 409; winning content preserved. Disposable schema cleaned up.
 - [x] Add visible warnings when model-call failures rise (usage panel, at least ten calls and 20% errors).
 - [ ] Resume website study-workflow parity when requested.
 - [ ] Notification reminders
