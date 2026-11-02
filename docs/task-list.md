@@ -127,6 +127,9 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Human-check at least one parsed paper/schedule per standard against the originals.
 - [ ] Decide how unverified machine-imported questions may be used; current paths differ from the writeup's strict pre-use human approval gate.
 - [ ] Validate realistic subject-wide paper coverage, mark totals and non-repetition/exhaustion behaviour.
+  - [x] Collated topic paper now prefers unseen questions, then least recently used
+    saved-exam questions; PostgreSQL four-question test selects [1,2], [3,4], [1,2].
+    Deleted attempts no longer contribute usage history. Subject-wide realism still open.
 - [ ] Validate A/M/E exemplar marking against schedules.
 - [ ] Test fresh-model marking consistency separately from cache consistency.
   - [x] Three actual marking-route requests with disposable app cache cleared each

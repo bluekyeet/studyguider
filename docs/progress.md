@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Fixed collated paper repeatedly selecting first questions: mixed mode serialises
+  selection via existing exam_items lock and orders unseen first, then lowest last
+  saved exam ID. Original-year mode preserves published ordering. No automatic
+  monthly scheduling added. Usage history follows saved attempts; deleting one
+  removes its contribution. 171 tests passed, six warnings/six subtests; API rebuilt/
+  deployed. Actual start route + temp-table PostgreSQL check PASS: four questions,
+  three two-question attempts -> [1,2], [3,4], [1,2]. Synthetic tables rolled back.
+  No Android/emulator changes; subject-wide realistic composition remains open.
+
 - Added/executed read-only retrieval_relevance_check.py: six plain-language queries,
   one per standard, top-five concept-term coverage and resource ownership checks.
   All six have target term combinations at rank 1; all topic-isolated. Mechanics

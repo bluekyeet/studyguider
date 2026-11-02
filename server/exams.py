@@ -230,10 +230,14 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None):
         if body.mode == "original" and (body.year is None or body.paper_resource_id is None):
             raise HTTPException(422, "Choose a year and paper")
         with connect() as db:
+            if body.mode == "mixed":
+                db.execute("LOCK TABLE exam_items IN SHARE ROW EXCLUSIVE MODE")
             rows = db.execute("""SELECT id, marks FROM exam_questions WHERE topic_id = %s AND source <> 'ai'
                 AND (%s::integer IS NULL OR year = %s) AND (%s::uuid IS NULL OR paper_resource_id = %s)
-                ORDER BY paper_page, year DESC, id""", (body.topic_id, body.year if body.mode == 'original' else None,
-                    body.year, body.paper_resource_id if body.mode == 'original' else None, body.paper_resource_id)).fetchall()
+                ORDER BY CASE WHEN %s THEN COALESCE((SELECT max(i.exam_id) FROM exam_items i
+                    WHERE i.question_id=exam_questions.id),0) ELSE 0 END,
+                    paper_page, year DESC, id""", (body.topic_id, body.year if body.mode == 'original' else None,
+                    body.year, body.paper_resource_id if body.mode == 'original' else None, body.paper_resource_id, body.mode == 'mixed')).fetchall()
             if body.mode == "mixed":
                 rows = rows[:body.question_count]
             if not rows:
