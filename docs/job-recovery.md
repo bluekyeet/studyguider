@@ -44,7 +44,7 @@ fencing; reclaiming while a prior worker runs can race its writes.
 - Implemented: authoritative private scheduled-run identity, atomic lesson/link
   transaction after model calls, and initial claim committed before external work.
   Fault-injection checks exercise insert/link rollback and lost-result handling;
-  real process termination/commit-acknowledgement loss remains untested.
+  real process termination is now checked (see below); commit-acknowledgement loss remains untested.
 - Preserve unknown-outcome runs for explicit reconciliation. Do not blindly retry
   existing unlinked records during migration or startup.
 - Test claim races, crash-after-claim, provider response loss and the persistence
