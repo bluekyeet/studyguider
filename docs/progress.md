@@ -8,6 +8,18 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- User requested all-paper gutter audit. Added runnable dry-run/opt-in repair
+  script and checked all 76 registered paper/schedule pairs, 235 questions. Dense
+  patterned gutter text found in six 2023 standards; other PDFs had at most one
+  outer line (not this issue). Repaired twelve pdf-layout questions across 91164,
+  91166,91171,91173; 91170 already clean. Private original backup in uploads/
+  parser-repair-backups/all-papers-gutters-20261102T054942916046Z.json. Conditional
+  updates guard concurrent edits; only question_text/parts changed, no answers,
+  marks, rubric or verification changes. 91165/2023 machine-import content preserved:
+  no long uppercase fragment runs in its three texts/parts, not re-extracted over
+  different import. Post-repair audit reports zero repairable layout questions.
+  Original scientific/visual accuracy not certified. No APK/device tests needed.
+
 - Centred Settings/Account/Appearance & library/About dialog titles independently
   of left Back action. Removed legacy manual lesson search/generate form from topic
   reader navigation; topic view now shows saved lessons or an enrolment hint.
