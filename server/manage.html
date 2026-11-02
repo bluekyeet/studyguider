@@ -375,7 +375,6 @@
     const workspaces = {
       Library: ['resources-heading', 'search-heading'],
       Notes: ['notes-heading'],
-      'Library setup': ['subjects-heading', 'topics-heading'],
       Lessons: ['saved-lessons-heading', 'draft-heading', 'scheduler-heading'],
       Reviews: ['review-drafts-heading', 'mastery-heading'],
       Exams: ['exam-heading', 'marking-heading'],
@@ -399,15 +398,28 @@
     workspace.append(workspaceTitle, grid);
     const explorer = document.createElement('section'); explorer.className = 'card'; explorer.id = 'library-explorer';
     workspace.insertBefore(explorer, grid);
+    const createDialog = document.createElement('dialog'); createDialog.className = 'card';
+    const createTitle = document.createElement('h2'); createDialog.append(createTitle);
+    createDialog.setAttribute('aria-label', 'Create library folder');
+    const closeCreate = document.createElement('button'); closeCreate.type = 'button'; closeCreate.textContent = 'Cancel';
+    closeCreate.onclick = () => createDialog.close(); createDialog.append(closeCreate); document.body.append(createDialog);
+    function openCreate(kind) {
+      for (const [formId, headingId] of [['add-subject','subjects-heading'],['add-topic','topics-heading']]) $(headingId).closest('section').append($(formId));
+      createTitle.textContent = kind === 'subject' ? 'New subject' : 'New topic';
+      const form = $(kind === 'subject' ? 'add-subject' : 'add-topic');
+      createDialog.insertBefore(form, closeCreate); createDialog.showModal(); form.querySelector('input').focus();
+    }
     function currentRoute() {
       const [page, query = ''] = location.hash.slice(1).split('?');
       return { page: decodeURIComponent(page || 'Library'), params: new URLSearchParams(query) };
     }
-    function libraryUrl(subject = '', topic = '', folder = '') {
+    function libraryUrl(subject = '', topic = '', folder = '', section = '') {
       const params = new URLSearchParams();
       if (subject) params.set('subject', subject);
       if (subject && topic) params.set('topic', topic);
       if (subject && topic && ['exams','slides','extra','pending'].includes(folder)) params.set('folder', folder);
+      if (subject && topic && section) params.set('section', section);
+      else if (subject && topic && folder) params.set('section', 'resources');
       return '#Library' + (params.size ? '?' + params : '');
     }
     function saveScopeUrl() {
@@ -417,24 +429,23 @@
     }
     const nav = document.querySelector('.manager-nav div'); nav.replaceChildren();
     function showWorkspace(name, focus = false) {
-      if (!workspaces[name]) name = 'Library';
+      const section = currentRoute().params.get('section') || '';
+      const sections = {notes:['notes-heading'],lessons:['saved-lessons-heading','scheduler-heading'],reviews:['review-drafts-heading','mastery-heading'],exams:['exam-heading','marking-heading'],learning:['style-heading','standards-heading'],tools:['diagram-heading','usage-heading']};
       cards.forEach(card => {
-        card.hidden = !workspaces[name].some(id => card.contains($(id)));
-        if (name === 'Library') {
-          const topic = $('topics').value, folder = currentRoute().params.get('folder');
-          if (card.contains($('search-heading'))) card.hidden = !topic || !!folder;
-          else card.hidden = !topic || !folder;
-        }
+        const topic = $('topics').value, folder = currentRoute().params.get('folder');
+        let allowed = sections[section] || [];
+        if (section === 'resources') allowed = folder ? ['resources-heading'] : ['search-heading'];
+        card.hidden = !topic || !allowed.some(id => card.contains($(id)));
       });
-      scope.hidden = name === 'Library';
-      explorer.hidden = name !== 'Library';
-      workspaceTitle.textContent = name;
+      scope.hidden = true;
+      explorer.hidden = false;
+      workspaceTitle.textContent = 'Library';
       nav.querySelectorAll('a').forEach(a => {
         if (a.textContent === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
       });
       if (focus) workspaceTitle.focus({preventScroll:true});
     }
-    Object.keys(workspaces).forEach(name => {
+    ['Library'].forEach(name => {
       const link = document.createElement('a'); link.href = '#' + encodeURIComponent(name); link.textContent = name;
       link.onclick = () => { link.href = name === 'Library' ? libraryUrl() : '#' + encodeURIComponent(name) + (libraryUrl($('subjects').value, $('topics').value).split('?')[1] ? '?' + libraryUrl($('subjects').value, $('topics').value).split('?')[1] : ''); };
       nav.append(link);
@@ -446,7 +457,7 @@
       if (route.page === 'Library' || route.params.has('subject')) {
         $('subjects').value = route.params.get('subject') || '';
         await loadTopics(route.params.get('topic') || '');
-        if (route.page === 'Library') await renderExplorer();
+        await renderExplorer();
       }
       showWorkspace(route.page, true);
     }
@@ -464,25 +475,38 @@
         const link = document.createElement('a'); link.href = libraryUrl(subject, topic); link.textContent = $('topics').selectedOptions[0].textContent; breadcrumb.append(link);
       }
       const folder = currentRoute().params.get('folder');
+      const section = currentRoute().params.get('section') || '';
+      const sectionNames = {resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',settings:'Settings',learning:'Learning settings',tools:'Tools'};
       const folderNames = {exams:'Exams',slides:'Slides',extra:'Extra resources',pending:'Classifying'};
+      if (section) {
+        breadcrumb.append(' / ');
+        if (['learning','tools'].includes(section)) {
+          const settings = document.createElement('a'); settings.href = libraryUrl(subject,topic,'','settings'); settings.textContent = 'Settings'; breadcrumb.append(settings, ' / ');
+        }
+        const link = document.createElement('a'); link.href = libraryUrl(subject,topic,'',section); link.textContent = sectionNames[section] || section; breadcrumb.append(link);
+      }
       if (folder) breadcrumb.append(' / ' + (folderNames[folder] || 'Unknown folder'));
       explorer.append(breadcrumb);
-      const heading = document.createElement('h3'); heading.textContent = topic ? (folderNames[folder] || 'Folders') : subject ? 'Topics' : 'Subjects'; explorer.append(heading);
-      if (topic && folder) {
-        const hint = document.createElement('p'); hint.textContent = 'Upload into this topic. File categories are detected automatically; subject and topic follow this folder location.'; explorer.append(hint);
+      const heading = document.createElement('h3'); heading.textContent = topic ? (folderNames[folder] || sectionNames[section] || 'Topic folders') : subject ? 'Topics' : 'Subjects'; explorer.append(heading);
+      if (topic && (folder || (section && !['resources','settings'].includes(section)))) {
+        if (folder) { const hint = document.createElement('p'); hint.textContent = 'Files are classified automatically within this topic.'; explorer.append(hint); }
         return;
       }
       const list = document.createElement('ul'); list.className = 'folder-list';
-      const folders = topic ? Object.entries(folderNames).map(([id,name]) => ({id,name})) : subject ? [...$('topics').options].filter(o => o.value).map(o => ({ id: o.value, name: o.textContent })) :
+      const choices = section === 'resources' ? folderNames : section === 'settings' ? {learning:'Learning settings',tools:'Tools'} : {resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',settings:'Settings'};
+      const folders = topic ? Object.entries(choices).map(([id,name]) => ({id,name})) : subject ? [...$('topics').options].filter(o => o.value).map(o => ({ id: o.value, name: o.textContent })) :
         (await api('/subjects')).sort((a,b) => a.level-b.level || a.name.localeCompare(b.name));
       for (const folder of folders) {
         const item = document.createElement('li');
-        const link = document.createElement('a'); link.href = topic ? libraryUrl(subject, topic, folder.id) : subject ? libraryUrl(subject, folder.id) : libraryUrl(folder.id);
+        const link = document.createElement('a'); link.href = topic ? (section === 'resources' ? libraryUrl(subject,topic,folder.id,'resources') : libraryUrl(subject,topic,'',folder.id)) : subject ? libraryUrl(subject, folder.id) : libraryUrl(folder.id);
         link.textContent = '📁 ' + (subject ? folder.name : `Level ${folder.level} · ${folder.name}`);
         link.style.display = 'block'; link.style.padding = '12px'; item.append(link); list.append(item);
       }
       explorer.append(list);
-      if (!folders.length) { const empty = document.createElement('p'); empty.textContent = 'No folders yet. Create them in Library setup.'; explorer.append(empty); }
+      if (!topic) {
+        const item = document.createElement('li'); const add = document.createElement('button'); add.type = 'button'; add.textContent = subject ? '＋ New topic' : '＋ New subject';
+        add.onclick = () => openCreate(subject ? 'topic' : 'subject'); item.append(add); list.append(item);
+      }
     }
     function message(text) { $('message').textContent = text; }
     async function api(path, options = {}) {
@@ -689,7 +713,7 @@
         await loadSubjects(); await loadStandards(); await loadExamQuestions();
       } catch (error) { message(error.message); }
     })();
-    $('add-subject').onsubmit = run(async () => { if (styleSubject && $('style-content').value !== savedStyle && !confirm('Discard unsaved teaching-style changes?')) return; await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; await loadSubjects(); });
+    $('add-subject').onsubmit = run(async () => { await api('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('subject-name').value, level: Number($('level').value) }) }); $('subject-name').value = ''; createDialog.close(); await loadSubjects(); });
     $('subjects').onchange = run(async () => {
       if (styleSubject && $('style-content').value !== savedStyle && !confirm('Discard unsaved teaching-style changes?')) { $('subjects').value = styleSubject; return; }
       await loadStyle(); await loadTopics();
@@ -701,7 +725,7 @@
       await api('/style-profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
       if (styleSubject === id) { savedStyle = content; $('style-status').textContent = 'Teaching style saved.'; }
     });
-    $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; await loadTopics(); });
+    $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; createDialog.close(); await loadLibraryRoute(); });
     $('topics').onchange = run(async () => { saveScopeUrl(); clearLessonHistory(); $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); await loadSchedule(); await loadLessons(); });
     $('add-note').onsubmit = run(async () => {
       if (!$('topics').value) throw new Error('Select a topic first');

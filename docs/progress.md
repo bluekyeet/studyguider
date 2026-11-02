@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Unified web manager navigation as topic folder hierarchy: Subjects -> Subject ->
+  Topic -> Resources/Notes/Lessons/Reviews/Exams/Settings; Resources contains automatic
+  category folders, Settings contains Learning settings/Tools. Removed dashboard
+  sidebar workspace entries and hid scope/form cards outside their selected folder.
+  New subject/topic folder actions open existing creation forms in a modal; no
+  permanent creation cards in browsing view. URL section/folder state and breadcrumbs
+  retained; resource global search at Resources root. Node route/syntax/image-auth
+  checks passed; API rebuilt/deployed. Browser DOM/visual workflow remains unverified,
+  no user records moved or deleted. No Android/device changes.
+
 - Web file-view polish: compact search/upload toolbar, collapsed upload panel,
   type badges, filename links, size/page/status metadata and compact action menus
   replace stacked file cards. Notes moved to separate Notes workspace. Global

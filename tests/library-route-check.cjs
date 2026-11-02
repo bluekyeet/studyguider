@@ -12,8 +12,8 @@ assert.equal(vm.runInContext('currentRoute().params.get("topic")', context), '34
 assert.equal(vm.runInContext('libraryUrl("12", "34")', context), '#Library?subject=12&topic=34');
 assert.equal(vm.runInContext('libraryUrl("12")', context), '#Library?subject=12');
 assert.equal(vm.runInContext('libraryUrl()', context), '#Library');
-assert.equal(vm.runInContext('libraryUrl("12", "34", "exams")', context), '#Library?subject=12&topic=34&folder=exams');
-assert.equal(vm.runInContext('libraryUrl("12", "34", "invalid")', context), '#Library?subject=12&topic=34');
+assert.equal(vm.runInContext('libraryUrl("12", "34", "exams")', context), '#Library?subject=12&topic=34&folder=exams&section=resources');
+assert.equal(vm.runInContext('libraryUrl("12", "34", "", "notes")', context), '#Library?subject=12&topic=34&section=notes');
 vm.runInContext(html.slice(html.indexOf('function resourceFolder('), html.indexOf('    function updateFileSelection()')), context);
 assert.equal(vm.runInContext('resourceFolder("exam_answers")', context), 'exams');
 assert.equal(vm.runInContext('resourceFolder("exam_paper")', context), 'exams');
