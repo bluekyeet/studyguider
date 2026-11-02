@@ -8,6 +8,11 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- User clarified: normal APK build/install allowed; no connected tests against the
+  installed study app (explicit permission or isolated app ID needed). Reader Sources centring corrected using equal-
+  weight left/right header slots instead of unequal SpaceBetween siblings. No
+  device actions; visual verification pending user install.
+
 - Fixed reported typing-during-autosave race: answer-keyed LaunchedEffect cancelled
   in-flight PUT acknowledgement after server commit, losing revision. Replaced
   with stable sequential snapshotFlow collection; typing queues latest draft,

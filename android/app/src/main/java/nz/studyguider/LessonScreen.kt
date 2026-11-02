@@ -372,9 +372,13 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(enabled = canLeave, onClick = onExit, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("‹ Save & exit") }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    TextButton(enabled = canLeave, onClick = onExit, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("‹ Save & exit") }
+                }
                 TextButton(onClick = { showSources = true }) { Text("Sources") }
-                Text("${openIndex + 1} / ${chunks.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    Text("${openIndex + 1} / ${chunks.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Text(draft.optString("query"), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
             Text(standardText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)

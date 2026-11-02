@@ -10,6 +10,10 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Agreed scope and constraints
 
+- [x] Normal APK build/install is allowed. Do not run connected/instrumentation
+  tests against the user's installed app; test-runner cleanup can remove it.
+  Device tests require explicit permission or a separately isolated test app ID.
+
 - [x] Do not add automatic monthly exams.
 - [x] Do not add Google Drive sign-in/import.
 - [x] Production access and backups are the user's responsibility.
