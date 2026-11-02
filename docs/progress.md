@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Second parallel batch: structure enforcement now mandatory in review promotion;
+  malformed/missing practice sections trigger bounded revision, not a false pass.
+  Worker updated tiny passing fixtures; semantic question quality remains advisory.
+  Parent found actual GitHub fresh-install failure: topic_style_profiles created
+  before topics. Startup order corrected; fresh_schema_check reproduced old image
+  UndefinedTable then passed against mounted current source, with isolated schema
+  cleanup and workers stubbed. Added CI regression. Combined server suite 197
+  passed, six warnings/six subtests. Atomic scheduling/Android workers still active;
+  no production deployment or emulator startup yet for this batch.
+
 - Reminder subagent integrated: explicit POST_NOTIFICATIONS permission check in
   scheduling; disabled/blocked reminders cancel alarm, token and visible reminder;
   disabled receiver clears stale operation. Seven instrumentation checks compiled

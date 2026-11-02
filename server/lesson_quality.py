@@ -20,7 +20,6 @@ def contamination_issues(text):
 def teaching_structure_issues(text):
     """Check the prompt's practice-page contract, without judging question meaning.
 
-    Advisory only until generation/recovery fixtures adopt the heading contract.
     A clean result does not verify self-containment or absence of revealed answers.
     """
     sections = []
@@ -55,7 +54,7 @@ def teaching_structure_issues(text):
             issues.append(f"Name practice heading {number} exactly '### Your Turn {number}', in sequence.")
         if not section["body"]:
             issues.append(f"Your Turn section {number} is empty; include the question in that section.")
-    # ponytail: structure only; wire into promotion after adopting full-lesson fixtures.
+    # ponytail: structure only; question meaning and solutions need independent review.
     return issues
 
 
@@ -117,7 +116,7 @@ def review_and_revise(lesson, evidence, model_reply):
             if not isinstance(verdict, dict) or type(verdict.get("pass")) is not bool or not isinstance(verdict.get("issues"), list) or any(not isinstance(i, str) for i in verdict["issues"]):
                 raise ValueError("Invalid reviewer verdict")
             last_review = json.dumps(verdict)
-            issues = contamination_issues(lesson) + formula_issues(lesson)
+            issues = contamination_issues(lesson) + formula_issues(lesson) + teaching_structure_issues(lesson)
             if issues:
                 verdict["pass"] = False
                 verdict["issues"] = list(dict.fromkeys(verdict["issues"] + issues))
@@ -127,7 +126,7 @@ def review_and_revise(lesson, evidence, model_reply):
             if attempt == 2:
                 return lesson, last_review, "flagged"
             revised = model_reply("education", [
-                {"role": "system", "content": "You are an NCEA tutor, not a coding assistant. Rewrite the COMPLETE lesson in New Zealand English, fixing the review issues using only supplied sources. Preserve citations, teach in small chunks, include 3–5 complete unsolved Your Turn tasks and correct LaTeX. Return only the complete lesson, never a patch or change summary."},
+                {"role": "system", "content": "You are an NCEA tutor, not a coding assistant. Rewrite the COMPLETE lesson in New Zealand English, fixing the review issues using only supplied sources. Preserve citations, teach in small chunks, include 3–5 complete unsolved Your Turn tasks under sequential headings exactly '### Your Turn 1', '### Your Turn 2', etc., and correct LaTeX. Return only the complete lesson, never a patch or change summary."},
                 {"role": "user", "content": json.dumps({"lesson": lesson, "evidence": evidence, "issues": verdict["issues"]}, ensure_ascii=False)},
             ], task="lesson-revise")
             if not isinstance(revised, str) or not revised.strip() or len(revised) > 100000:

@@ -40,7 +40,11 @@ def test_gateway_connection_failure_then_same_request_recovers(monkeypatch):
 
 
 def test_reviewer_outage_preserves_exact_draft_and_can_be_retried():
-    draft = "# Explanation\nFrequency is cycles per second.\n# Your Turn\nExplain frequency."
+    draft = ("# Learning goal\nExplain frequency.\n## Explanation\nFrequency is cycles per second.\n"
+             "## Worked example\nEight cycles in twenty seconds means 0.4 cycles per second.\n"
+             "### Your Turn 1\nWhat does frequency measure?\n"
+             "### Your Turn 2\nA wave completes ten cycles in five seconds. Calculate its frequency.\n"
+             "### Your Turn 3\nWhat does a frequency of two hertz mean?")
     evidence = {"sources": [{"content": "Frequency is cycles per second."}]}
 
     def offline(*args, **kwargs):

@@ -6,6 +6,21 @@ from fastapi.testclient import TestClient
 from lessons import lesson_router
 
 
+SYNTHETIC_LESSON = """# Learning goal
+Explain frequency.
+## Explanation
+Frequency is the number of cycles per second.
+## Worked example
+Eight cycles in twenty seconds means 0.4 cycles per second.
+### Your Turn 1
+What does frequency measure?
+### Your Turn 2
+A wave completes ten cycles in five seconds. Calculate its frequency.
+### Your Turn 3
+What does a frequency of two hertz mean?
+"""
+
+
 def test_automatic_lesson_requires_an_enrolled_topic():
     class EmptyDatabase:
         def __enter__(self): return self
@@ -124,7 +139,7 @@ def test_generation_snapshot_and_history():
 
     def reply(model, messages, task="general"):
         calls.append((model, messages, task))
-        return "draft" if model == "education" else json.dumps({"pass": True, "issues": []})
+        return SYNTHETIC_LESSON if model == "education" else json.dumps({"pass": True, "issues": []})
 
     client, db, source = setup(reply)
     response = client.post("/topics/1/lessons", json={"query": " algebra "})
@@ -175,6 +190,17 @@ def test_review_failure_keeps_draft():
     assert item["review"] is None and item["review_status"] == "unavailable"
     assert "not verification" in item["warning"]
     assert client.get("/lessons/1").json() == item
+
+
+def test_generation_cannot_promote_missing_practice_despite_reviewer_approval():
+    client, _, _ = setup(lambda model, messages: "draft" if model == "education"
+                         else json.dumps({"pass": True, "issues": []}))
+    response = client.post("/topics/1/lessons", json={"query": "frequency"})
+    assert response.status_code == 201
+    item = response.json()
+    assert item["lesson"] == "draft"
+    assert item["review_status"] == item["reviewer_verdict"] == "flagged"
+    assert any("3–5 Your Turn sections" in issue for issue in json.loads(item["review"])["issues"])
 
 
 def test_generation_errors_do_not_save():

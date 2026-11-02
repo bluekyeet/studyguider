@@ -88,8 +88,9 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Evaluate validated structured lesson objects instead of relying on Markdown/model structure.
   - [x] Evaluated minimal alternative: deterministic Markdown practice-heading
     checker with 17 cases; no schema migration needed for heading/count validation.
-  - [ ] Integrate structure checks into promotion with full-lesson fixtures;
-    helper alone does not enforce readiness or semantic question completeness.
+  - [x] Integrated structure checks into promotion and bounded rewrites with
+    full-lesson fixtures. Semantic question completeness/unsolved status still
+    requires advisory review, not heading checks.
 - [ ] Optional: persistent/full explanation chat history.
 
 ## Daily learning loop
@@ -242,7 +243,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 190 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 197 passed, six warnings, six subtests passed.
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.

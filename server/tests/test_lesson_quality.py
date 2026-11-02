@@ -9,6 +9,10 @@ def practice_sections(count=3):
     return "\n".join(f"### Your Turn {i}\nExplain what frequency measures." for i in range(1, count + 1))
 
 
+def synthetic_lesson(explanation="Frequency is the number of cycles per second."):
+    return "# Learning goal\nExplain frequency.\n## Explanation\n" + explanation + "\n## Worked example\nEight cycles in twenty seconds means 0.4 cycles per second.\n" + practice_sections()
+
+
 @pytest.mark.parametrize("count", [3, 4, 5])
 def test_practice_page_structure(count):
     assert not teaching_structure_issues("# Learning goal\nUnderstand waves.\n" + practice_sections(count))
@@ -42,14 +46,46 @@ def test_code_fence_does_not_supply_a_question_body():
 
 
 def test_rejected_lesson_is_rewritten_then_rechecked():
-    replies = iter([json.dumps({"pass": False, "issues": ["Wrong unit"]}), "Corrected lesson", json.dumps({"pass": True, "issues": []})])
+    corrected = synthetic_lesson()
+    replies = iter([json.dumps({"pass": False, "issues": ["Wrong unit"]}), corrected, json.dumps({"pass": True, "issues": []})])
     calls = []
     def reply(model, messages, task):
         calls.append(task)
         return next(replies)
-    lesson, review, status = review_and_revise("Draft", {}, reply)
-    assert lesson == "Corrected lesson" and status == "passed"
+    lesson, review, status = review_and_revise(synthetic_lesson("Frequency is measured in metres."), {}, reply)
+    assert lesson == corrected and status == "passed"
     assert calls == ["lesson-review", "lesson-revise", "lesson-review"]
+
+
+@pytest.mark.parametrize("draft", [
+    "Draft", synthetic_lesson().replace("### Your Turn 2", "## Your Turn 2"),
+    synthetic_lesson().replace("### Your Turn 2\nExplain what frequency measures.", "### Your Turn 2\n"),
+])
+def test_structure_failure_overrides_approval_and_stays_flagged(draft):
+    calls = []
+
+    def reply(model, messages, task):
+        calls.append(task)
+        return '{"pass":true,"issues":[]}' if task == "lesson-review" else draft
+
+    lesson, review, status = review_and_revise(draft, {}, reply)
+    assert lesson == draft and status == "flagged"
+    assert json.loads(review)["pass"] is False
+    assert all(issue in json.loads(review)["issues"] for issue in teaching_structure_issues(draft))
+    assert calls == ["lesson-review", "lesson-revise", "lesson-review", "lesson-revise", "lesson-review"]
+
+
+def test_structure_failure_can_be_rewritten_and_promoted():
+    corrected = synthetic_lesson()
+
+    def reply(model, messages, task):
+        if task == "lesson-review":
+            return '{"pass":true,"issues":[]}'
+        assert "3–5 Your Turn sections" in messages[-1]["content"]
+        return corrected
+
+    lesson, review, status = review_and_revise("Draft", {}, reply)
+    assert (lesson, json.loads(review), status) == (corrected, {"pass": True, "issues": []}, "passed")
 
 
 def test_provider_failure_preserves_draft_without_passing():
@@ -91,9 +127,9 @@ def test_formula_failure_overrides_reviewer_and_requests_rewrite():
         if task == "lesson-review":
             return json.dumps({"pass": True, "issues": []})
         assert "Unbalanced braces" in messages[-1]["content"]
-        return r"Frequency $f = \frac{8}{20}$"
+        return synthetic_lesson(r"Frequency $f = \frac{8}{20}$")
 
-    lesson, review, status = review_and_revise(r"Frequency $f = \frac{8}{20$", {}, reply)
+    lesson, review, status = review_and_revise(synthetic_lesson(r"Frequency $f = \frac{8}{20$"), {}, reply)
     assert status == "passed"
     assert not formula_issues(lesson)
 
