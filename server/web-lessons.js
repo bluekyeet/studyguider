@@ -1,4 +1,4 @@
-import { mathText, mathInput } from './web-common.js';
+import { mathText, mathInput, autosave, stash, sha256Hex } from './web-common.js';
 
 const element = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -20,21 +20,31 @@ function readable(text) {
     .replace(/[ \t]+([.,;:!?])/g, '$1').replace(/[ \t]{2,}/g, ' ');
 }
 
+// Chunks a lesson exactly like the Android reader, so a section index saved on one device
+// means the same section on the other, and both derive the same answer key.
+// body keeps the original Markdown for display; question is the text Android hashes.
 function sections(markdown) {
   const result = [];
-  let title = 'Overview', lines = [], fence = false;
+  let title = 'Overview', lines = [], question = [];
   const flush = () => {
-    if (lines.some(line => line.trim())) result.push({ title, body: lines.join('\n').trim() });
-    lines = [];
+    if (question.length) result.push({ title, body: lines.join('\n').trim(), question: `${title}\n${question.join('\n\n')}` });
+    lines = []; question = [];
   };
-  for (const line of String(markdown || '').split(/\r?\n/)) {
-    if (/^\s*```/.test(line)) fence = !fence;
-    const heading = !fence && line.match(/^\s*#{1,6}\s+(.+?)\s*#*\s*$/);
-    if (heading) { flush(); title = heading[1]; }
-    else lines.push(line);
+  for (const raw of String(markdown || '').split(/\r?\n/)) {
+    const trim = raw.trim();
+    if (/^#{1,6}\s+/.test(trim)) {
+      flush();
+      title = trim.replace(/^#+/, '').trim().replace(/\s+#+\s*$/, '') || 'Overview';
+    } else if (trim) {
+      lines.push(raw);
+      if (!['---', '***', '___'].includes(trim)) {
+        // Android drops list and quote markers but keeps numbered items as written.
+        question.push(/^[*+-] /.test(trim) || trim.startsWith('> ') ? trim.slice(2).trim() : trim);
+      }
+    } else lines.push(raw);
   }
   flush();
-  return result.length ? result : [{ title: 'Lesson', body: String(markdown || '') }];
+  return result.length ? result : [{ title: 'Lesson', body: String(markdown || ''), question: `Lesson\n${String(markdown || '').trim()}` }];
 }
 
 export async function renderLessons(container, api) {
@@ -64,6 +74,10 @@ export async function renderLessons(container, api) {
     disposed = true;
     window.removeEventListener('beforeunload', beforeUnload);
     document.removeEventListener('click', outsideNavigation, true);
+    document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('focus', onVisible);
+    // Push anything still waiting out of the debounce so leaving the page loses nothing.
+    for (const draft of drafts.values()) if (draft.answer !== draft.savedAnswer || draft.feedback !== draft.savedFeedback) draft.saver.flush();
   }
   // The host router can use canLeave() for programmatic navigation, then dispose().
   dispose.canLeave = canLeave;
@@ -105,16 +119,19 @@ export async function renderLessons(container, api) {
         content.append(empty);
         return;
       }
+      // A saved reading position means this lesson was started, perhaps on another device.
+      const where = await Promise.all(todays.map(lesson => api(`/lessons/${lesson.id}/progress`).catch(() => null)));
       const left = todays.filter(lesson => !lesson.completed_at).length;
       content.append(element('p', left ? `${todays.length - left} of ${todays.length} done` : 'All of today’s lessons are done. Well done.', 'muted'));
       const grid = element('div', '', 'card-grid wide');
-      for (const lesson of todays) {
+      for (const [position, lesson] of todays.entries()) {
+        const started = !lesson.completed_at && (where[position]?.section || 0) > 0;
         const card = element('article', '', 'card stack lesson-card');
         const done = Boolean(lesson.completed_at);
         const tags = element('div', '', 'toolbar');
-        tags.append(element('span', `${lesson.subject} · ${lesson.topic}`, 'chip'), element('span', done ? 'Completed' : 'To do', `chip ${done ? 'ok' : 'warn'}`));
+        tags.append(element('span', `${lesson.subject} · ${lesson.topic}`, 'chip'), element('span', done ? 'Completed' : started ? 'In progress' : 'To do', `chip ${done ? 'ok' : 'warn'}`));
         card.append(tags, element('h2', readable(lesson.query)),
-          button(done ? 'Review lesson' : 'Start lesson', () => open(lesson), done ? '' : 'primary'));
+          button(done ? 'Review lesson' : started ? 'Continue lesson' : 'Start lesson', () => open(lesson), done ? '' : 'primary'));
         grid.append(card);
       }
       content.append(grid);
@@ -125,29 +142,93 @@ export async function renderLessons(container, api) {
     if (loading || !canLeave()) return;
     loading = true;
     try {
-      const [lesson, answers] = await Promise.all([
+      const [lesson, answers, progress] = await Promise.all([
         api(`/lessons/${summary.id}`), api(`/lessons/${summary.id}/answers`),
+        api(`/lessons/${summary.id}/progress`).catch(() => ({ section: 0, revision: 0 })),
       ]);
       if (disposed) return;
       drafts.clear();
       const chunks = sections(lesson.lesson);
-      // Match existing saved question text first, including Android section keys.
       for (let index = 0; index < chunks.length; index++) {
         const chunk = chunks[index];
         if (!/your turn|question|check|quiz/i.test(chunk.title)) continue;
-        const question = `${chunk.title}\n${chunk.body}`;
-        const saved = answers.find(row => row.question === question);
-        const digest = saved ? null : await crypto.subtle.digest('SHA-256', new TextEncoder().encode(question));
-        const key = saved?.question_key || [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
-        drafts.set(index, { key, question, answer: saved?.answer || '', feedback: saved?.feedback || '',
-          savedAnswer: saved?.answer || '', savedFeedback: saved?.feedback || '', revision: saved?.revision || 0, busy: false });
+        const key = await sha256Hex(chunk.question);
+        const saved = answers.find(row => row.question_key === key);
+        const draft = { index, key, question: chunk.question, answer: saved?.answer || '', feedback: saved?.feedback || '',
+          savedAnswer: saved?.answer || '', savedFeedback: saved?.feedback || '', revision: saved?.revision || 0, busy: false, ui: null };
+        // Text typed here but not yet saved (closed tab, lost connection) comes back first.
+        const local = stash.read(`answer:${summary.id}:${key}`);
+        if (local && (local.answer !== draft.answer || local.feedback !== draft.feedback)) { draft.answer = local.answer; draft.feedback = local.feedback; draft.restored = true; }
+        draft.saver = autosave({
+          isDirty: () => draft.answer !== draft.savedAnswer || draft.feedback !== draft.savedFeedback,
+          status: (kind, error) => { draft.state = { kind, error }; draft.ui?.(kind, error); },
+          save: async () => {
+            const sent = { question: draft.question, answer: draft.answer, feedback: draft.feedback, revision: draft.revision };
+            const result = await api(`/lessons/${summary.id}/answers/${key}`, { method: 'PUT', ...json(sent) });
+            draft.revision = result.revision; draft.savedAnswer = sent.answer; draft.savedFeedback = sent.feedback;
+            if (draft.answer === sent.answer && draft.feedback === sent.feedback) stash.clear(`answer:${summary.id}:${key}`);
+          },
+        });
+        drafts.set(index, draft);
+        if (draft.restored) draft.saver.touch();
       }
       if (disposed) return;
-      active = { ...lesson, chunks, completed_at: summary.completed_at, history: [], questionDraft: '', replies: [] };
-      current = 0;
+      const saved = Math.min(Math.max(Number(progress.section) || 0, 0), chunks.length - 1);
+      active = { ...lesson, chunks, completed_at: summary.completed_at, history: [], questionDraft: '', replies: [], position: { saved, revision: progress.revision || 0 } };
+      current = saved;
       showLesson();
     } finally { loading = false; }
   }
+
+  // Remember where the learner is so any device can carry on from the same section.
+  async function savePosition(lesson, section) {
+    const position = lesson.position;
+    if (position.saving) { position.next = section; return; }
+    position.saving = true;
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await api(`/lessons/${lesson.id}/progress`, { method: 'PUT', ...json({ section, revision: position.revision }) });
+          position.revision = result.revision; position.saved = section; return;
+        } catch (error) {
+          // Another device moved first; the newest position wins, so take its revision and write again.
+          const latest = await api(`/lessons/${lesson.id}/progress`).catch(() => null);
+          if (!latest || attempt) return;
+          position.revision = latest.revision;
+        }
+      }
+    } finally {
+      position.saving = false;
+      if (position.next !== undefined && position.next !== position.saved) { const next = position.next; position.next = undefined; savePosition(lesson, next); }
+      else position.next = undefined;
+    }
+  }
+  function goTo(section) {
+    current = section; savePosition(active, section); showLesson(); window.scrollTo({ top: 0 });
+  }
+
+  // Coming back to the tab picks up answers written on another device, unless this one has newer text.
+  async function refreshFromServer() {
+    if (!active || disposed || document.hidden) return;
+    const lesson = active;
+    try {
+      const rows = await api(`/lessons/${lesson.id}/answers`);
+      if (active !== lesson) return;
+      let changed = false;
+      for (const draft of drafts.values()) {
+        const row = rows.find(r => r.question_key === draft.key);
+        if (!row || row.revision <= draft.revision) continue;
+        if (draft.answer !== draft.savedAnswer || draft.feedback !== draft.savedFeedback || draft.busy) continue; // keep unsaved local work
+        draft.answer = draft.savedAnswer = row.answer; draft.feedback = draft.savedFeedback = row.feedback; draft.revision = row.revision;
+        stash.clear(`answer:${lesson.id}:${draft.key}`);
+        changed = changed || draft === drafts.get(current);
+      }
+      if (changed && !document.activeElement?.matches?.('textarea')) showLesson();
+    } catch { /* offline: the next focus tries again */ }
+  }
+  const onVisible = () => { if (!document.hidden) refreshFromServer(); };
+  document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('focus', onVisible);
 
   function showLesson() {
     const lesson = active, chunk = lesson.chunks[current];
@@ -162,7 +243,7 @@ export async function renderLessons(container, api) {
       const li = element('li'); const go = element('button'); go.type = 'button';
       go.append(element('span', String(index + 1), 'num'), element('span', readable(section.title)));
       if (index === current) go.setAttribute('aria-current', 'step');
-      go.onclick = () => { current = index; showLesson(); window.scrollTo({ top: 0 }); };
+      go.onclick = () => goTo(index);
       li.append(go); items.append(li);
     });
     outline.append(element('p', `Section ${current + 1} of ${lesson.chunks.length}`, 'muted'), items);
@@ -175,10 +256,11 @@ export async function renderLessons(container, api) {
     const draft = drafts.get(current);
     if (draft) practice(card, draft, lesson);
     const pager = element('div', '', 'toolbar');
-    if (current > 0) pager.append(button('← Previous', () => { current--; showLesson(); window.scrollTo({ top: 0 }); }));
-    if (current + 1 < lesson.chunks.length) pager.append(button('Next →', () => { current++; showLesson(); window.scrollTo({ top: 0 }); }, 'primary'));
+    if (current > 0) pager.append(button('← Previous', () => goTo(current - 1)));
+    if (current + 1 < lesson.chunks.length) pager.append(button('Next →', () => goTo(current + 1), 'primary'));
     else {
       const complete = button(lesson.completed_at ? 'Lesson completed' : 'Complete lesson', async () => {
+        await Promise.all([...drafts.values()].map(d => d.saver.flush()));
         if (pending()) throw new Error('Save your answers and finish or clear your explanation question before completing this lesson.');
         const result = await api(`/lessons/${lesson.id}/complete`, { method: 'POST' });
         lesson.completed_at = result.completed_at;
@@ -208,24 +290,48 @@ export async function renderLessons(container, api) {
     const label = element('label', 'Your answer', 'stack');
     const input = element('textarea');
     input.rows = 6; input.maxLength = 50000; input.value = draft.answer;
-    const status = element('p', '', 'muted');
-    input.oninput = () => { draft.answer = input.value; status.textContent = 'Unsaved answer'; };
-    label.append(mathInput(input));
+    const status = element('p', '', 'muted'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+    const choices = element('div', '', 'toolbar'); choices.hidden = true;
     const feedback = element('div');
     if (draft.feedback) feedback.append(rendered(draft.feedback));
-    const save = button('Save answer and feedback', async () => {
-      if (draft.busy) return;
-      draft.busy = true;
-      const sent = { question: draft.question, answer: draft.answer, feedback: draft.feedback, revision: draft.revision };
-      try {
-        const result = await api(`/lessons/${lesson.id}/answers/${draft.key}`, { method: 'PUT', ...json(sent) });
-        draft.revision = result.revision; draft.savedAnswer = sent.answer; draft.savedFeedback = sent.feedback;
-        status.textContent = draft.answer === sent.answer && draft.feedback === sent.feedback ? 'Saved' : 'New changes not yet saved';
-      } catch (error) {
-        status.textContent = 'Not saved. Your local draft is retained. If another device changed it, copy your draft before reopening the lesson.';
-        throw error;
-      } finally { draft.busy = false; }
+    const stashKey = `answer:${lesson.id}:${draft.key}`;
+
+    const say = (kind, error) => {
+      status.className = kind === 'error' || kind === 'conflict' ? 'error' : 'muted';
+      choices.hidden = kind !== 'conflict';
+      status.textContent = kind === 'saving' ? 'Saving…'
+        : kind === 'saved' ? 'Saved — available on your other devices'
+        : kind === 'conflict' ? 'This answer was changed on another device. Choose which version to keep.'
+        : `Not saved yet (${error?.message || 'offline'}). Your text is kept on this device and will retry.`;
+    };
+    draft.ui = say;   // lets the autosaver update whichever copy of this panel is on screen
+    if (draft.state) say(draft.state.kind, draft.state.error);
+    else if (draft.restored) say('saving');
+    else if (draft.savedAnswer || draft.savedFeedback) say('saved');
+    else status.textContent = 'Your answers save automatically and follow you to other devices.';
+
+    const changed = () => {
+      stash.write(stashKey, { answer: draft.answer, feedback: draft.feedback });
+      draft.saver.touch();
+    };
+    input.addEventListener('input', () => { draft.answer = input.value; changed(); });
+    // Leaving the box saves straight away instead of waiting for the pause.
+    input.addEventListener('blur', () => { if (draft.answer !== draft.savedAnswer) draft.saver.flush(); });
+
+    // A conflict means the server holds a newer revision: either overwrite it or adopt it.
+    const latest = async () => (await api(`/lessons/${lesson.id}/answers`)).find(row => row.question_key === draft.key);
+    const keepMine = button('Keep my version', async () => {
+      const row = await latest(); draft.revision = row?.revision || 0; draft.saver.resume();
     });
+    const useTheirs = button('Use the other version', async () => {
+      const row = await latest();
+      draft.answer = draft.savedAnswer = row?.answer || ''; draft.feedback = draft.savedFeedback = row?.feedback || '';
+      draft.revision = row?.revision || 0; stash.clear(stashKey);
+      input.value = draft.answer; feedback.replaceChildren(draft.feedback ? rendered(draft.feedback) : '');
+      draft.saver.resume(); say('saved');
+    });
+    choices.append(keepMine, useTheirs);
+
     const mark = button('Check my answer', async () => {
       if (draft.busy) return;
       if (!draft.answer.trim()) throw new Error('Write an answer first.');
@@ -235,11 +341,13 @@ export async function renderLessons(container, api) {
       try {
         const result = await api(`/lessons/${lesson.id}/explain`, { method: 'POST', ...json({ question }) });
         draft.feedback = result.explanation; feedback.replaceChildren(rendered(draft.feedback));
-        status.textContent = 'AI feedback is unverified. Save explicitly to keep it.';
+        changed(); // the feedback is saved with the answer, so both devices show it
       } finally { draft.busy = false; }
     });
-    card.append(label, element('div', '', 'toolbar'), status, feedback);
-    label.nextSibling.append(mark, save);
+    label.append(mathInput(input));
+    const actions = element('div', '', 'toolbar'); actions.append(mark);
+    const note = element('p', 'AI feedback is unverified.', 'muted');
+    card.append(label, actions, status, choices, feedback, note);
   }
 
   function explainPanel(lesson, chunk, target) {

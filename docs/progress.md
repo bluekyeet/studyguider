@@ -1594,3 +1594,24 @@ Changes made in this round, and exactly what was and was not verified.
 - Verified in Edge with mock data: Markdown, nested lists, maths inside bullets, toolbar
   insertion and preview, column alignment. Not verified: a real lesson, real exam figures
   (the test image was small, so the height cap itself was not exercised), light mode.
+
+## Website sync and autosave (3 November 2026)
+
+- Cause of the sync gap: the website chunked lessons differently from Android, so its section
+  numbers and its answer keys (SHA-256 of the section text) never matched the phone's.
+  `sections()` now reproduces Android's chunking and question text exactly (heading levels,
+  blank/rule lines dropped, list and quote markers stripped), and the key is computed the same way
+  (with a pure-JS SHA-256 fallback for non-HTTPS addresses).
+- The website now loads the saved reading position and opens the lesson there, saves the position
+  when you move (newest wins), shows "In progress / Continue lesson" on today's cards, and picks up
+  answers written on another device when the tab regains focus (never over unsaved local text).
+- Lesson and exam answers autosave about 0.8 s after typing stops and on leaving the box, with a
+  revision check. A conflict shows "Keep my version" or "Use the other version" instead of overwriting.
+  Unsaved text is kept in the browser and restored after a reload; failed saves retry every 6 s.
+  Review answers keep an unsent draft across reloads.
+- Verified in Edge against a mock server that models revisions and 409s: resume at the saved section,
+  phone-written answer shown (key matches Android's formula), autosave with the right revision,
+  conflict handling both ways, position saved and restored, exam autosave and conflict. Not verified
+  against the real server or a real phone; Android's extra per-section questions on non-practice
+  sections ("SectionQuestion") are not on the website, and answers saved by the old website under
+  its old keys are no longer shown.

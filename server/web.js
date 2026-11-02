@@ -9,7 +9,9 @@ async function api(path, options={}) {
   const response = await fetch(path,{credentials:'same-origin',...options});
   if (!response.ok) {
     const data = await response.json().catch(()=>({}));
-    throw new Error(typeof data.detail === 'string' ? data.detail : `Request failed (${response.status})`);
+    const failure = new Error(typeof data.detail === 'string' ? data.detail : `Request failed (${response.status})`);
+    failure.status = response.status;
+    throw failure;
   }
   return response.status === 204 ? null : response.json();
 }

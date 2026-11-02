@@ -1,4 +1,4 @@
-import { mathText, mathInput } from './web-common.js';
+import { mathText, mathInput, autosave } from './web-common.js';
 
 const el = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -260,7 +260,36 @@ export async function renderExams(container, api) {
         const feedback = el('div', '', 'stack');
         const draft = { saved: raw.value, value: () => raw.value };
         drafts.push(draft);
-        const changed = () => { container.dataset.dirty = String(dirty()); status.textContent = 'Unsaved changes'; feedback.replaceChildren(); };
+        // Answers save themselves a moment after typing stops, and again when the box loses focus.
+        const conflictBox = el('div', '', 'toolbar'); conflictBox.hidden = true;
+        const saver = autosave({
+          isDirty: () => draft.value() !== draft.saved,
+          status: (kind, err) => {
+            conflictBox.hidden = kind !== 'conflict';
+            status.className = kind === 'error' || kind === 'conflict' ? 'error' : 'muted';
+            status.textContent = kind === 'saving' ? 'Saving…' : kind === 'saved' ? 'Saved — available on your other devices'
+              : kind === 'conflict' ? 'This answer was changed on another device. Choose which version to keep.'
+              : `Not saved yet (${err?.message || 'offline'}). Your text stays here and will retry.`;
+            if (kind === 'saved') navButton.classList.add('done');
+          },
+          save: async () => {
+            const answer = draft.value();
+            if (answer.length > 100000) throw new Error('Answer exceeds 100,000 characters. Shorten it before saving.');
+            const result = await api(`/exams/${id}/answers/${q.id}`, json('PUT', { answer, revision: q.answer_revision, scan_revision: q.scan_revision }));
+            q.answer_revision = result.revision; draft.saved = answer;
+            container.dataset.dirty = String(dirty());
+          },
+        });
+        const keepMine = el('button', 'Keep my version', 'small');
+        keepMine.addEventListener('click', async () => {
+          const latest = (await api(`/exams/${id}`)).questions.find(item => item.id === q.id);
+          q.answer_revision = latest.answer_revision; q.scan_revision = latest.scan_revision; saver.resume();
+        });
+        const useTheirs = el('button', 'Use the other version', 'small');
+        useTheirs.addEventListener('click', () => { draft.saved = draft.value(); container.dataset.dirty = String(dirty()); openExam(id); });
+        conflictBox.append(keepMine, useTheirs);
+        raw.addEventListener('blur', () => { if (dirty()) saver.flush(); });
+        const changed = () => { container.dataset.dirty = String(dirty()); feedback.replaceChildren(); saver.touch(); };
         raw.addEventListener('input', changed);
         for (const input of partInputs.values()) input.addEventListener('input', () => {
           // ponytail: preserve unknown JSON fields; raw editing handles other answer schemas.
@@ -288,10 +317,9 @@ export async function renderExams(container, api) {
           try {
             const path = `/exams/${id}/answers/${q.id}`;
             if (action !== 'feedback') {
-              const answer = draft.value();
-              if (answer.length > 100000) throw new Error('Answer exceeds 100,000 characters. Shorten it before saving.');
-              const result = await api(path, json('PUT', { answer, revision: q.answer_revision, scan_revision: q.scan_revision }));
-              q.answer_revision = result.revision; draft.saved = answer;
+              if (draft.value().length > 100000) throw new Error('Answer exceeds 100,000 characters. Shorten it before saving.');
+              await saver.flush();   // the autosaver owns the revision, so a click never races it
+              if (saver.conflicted || draft.value() !== draft.saved) throw new Error('Your answer could not be saved yet; see the message under the box.');
               container.dataset.dirty = String(dirty());
               if (!alive()) return;
               feedback.replaceChildren(); status.textContent = 'Saved'; navButton.classList.add('done');
@@ -317,7 +345,7 @@ export async function renderExams(container, api) {
         mark.addEventListener('click', () => run('mark'));
         previous.addEventListener('click', () => run('feedback'));
         controls.append(save, mark, previous);
-        card.append(rawField, controls, status, feedback); detail.append(card); cards.push(card);
+        card.append(rawField, controls, conflictBox, status, feedback); detail.append(card); cards.push(card);
         if (q.answer) navButton.classList.add('done');
       }
       detail.append(pager); showQuestion(0);

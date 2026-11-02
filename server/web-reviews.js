@@ -1,4 +1,4 @@
-import { mathText, mathInput } from './web-common.js';
+import { mathText, mathInput, stash } from './web-common.js';
 
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -143,7 +143,8 @@ export async function renderReviews(container, api) {
     const answerLabel = element('label', 'Your answer', 'stack');
     const answer = element('textarea');
     answer.required = true; answer.maxLength = 50000; answer.rows = 6;
-    const draft = drafts.get(question.id) || { answer: '', confidence: '' };
+    // An unsent answer survives a reload or a closed tab on this device.
+    const draft = drafts.get(question.id) || stash.read(`review:${question.id}`) || { answer: '', confidence: '' };
     answer.value = draft.answer;
     answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); answer.setCustomValidity(''); });
     answerLabel.append(mathInput(answer));
@@ -158,7 +159,11 @@ export async function renderReviews(container, api) {
       row.append(label);
     }
     scale.append(row);
-    const saveDraft = () => drafts.set(question.id, { answer: answer.value, confidence: form.querySelector('input[name="confidence"]:checked')?.value || '' });
+    const saveDraft = () => {
+      const value = { answer: answer.value, confidence: form.querySelector('input[name="confidence"]:checked')?.value || '' };
+      drafts.set(question.id, value);
+      if (value.answer || value.confidence) stash.write(`review:${question.id}`, value); else stash.clear(`review:${question.id}`);
+    };
     form.addEventListener('input', saveDraft); form.addEventListener('change', saveDraft);
     const submit = button('Submit answer', 'primary'); submit.type = 'submit';
     const toolbar = element('div', undefined, 'toolbar'); toolbar.append(submit);
@@ -185,7 +190,7 @@ export async function renderReviews(container, api) {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ answer: answer.value, confidence: selected }),
         });
-        drafts.delete(question.id); container.dataset.dirty = 'false';
+        drafts.delete(question.id); stash.clear(`review:${question.id}`); container.dataset.dirty = 'false';
         const stored = all.find(q => q.id === question.id);
         if (stored) { stored.due_date = result.next_due; stored.answer_count = (stored.answer_count || 0) + 1; stored.mastery = Math.min(1, (stored.mastery || 0) * 0.75 + (result.correct ? 0.25 : 0)); }
         const outcome = result.outcome === 'correct' ? ['Correct', 'ok'] : result.outcome === 'incorrect' ? ['Not quite', 'bad'] : ['Not independently marked', 'warn'];
