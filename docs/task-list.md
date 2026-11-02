@@ -148,7 +148,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Check diagram attachment, loading and Explain interactions in Android.
 - [x] Add full KaTeX-compatible formula parsing to the review/rewrite loop (renderability, not mathematical correctness).
 - [ ] Validate formula/units correctness with seeded reviewer tests; parsing alone is not mathematical verification.
-- [ ] Investigate Cairo's unwritable Fontconfig cache warning if it affects rendering.
+- [x] Investigate Cairo's unwritable Fontconfig cache warning (non-root writable XDG cache; PNG render check passes without Fontconfig error).
 - [ ] Optional: diagram source editing/regeneration controls.
 - [ ] Optional: additional diagram formats only if SVG cannot meet a concrete need.
 

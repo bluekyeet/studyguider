@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Fixed Fontconfig cache warning with XDG_CACHE_HOME=/tmp/studyguider-cache,
+  owned by existing nobody user. No privilege increase/new dependency. Built image
+  passes runnable font_cache_check.py as non-root: PNG text render (11,093 bytes)
+  and captured stderr contains no Fontconfig error. API recreated, health ok.
+  Does not fix scientific diagram faults or prove image visual correctness.
+  No full pytest rerun (Docker environment-only change), emulator/GPU unchanged.
+
 - Added gateway recovery fault-injection checks (no real service outage): urllib
   connection refused -> explicit 502; restored fake transport -> same payload
   succeeds, caller messages unchanged, usage logs error then ok. Reviewer outage

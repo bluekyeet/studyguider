@@ -25,8 +25,10 @@ COPY lesson_quality.py .
 COPY check_formula.cjs .
 COPY --from=katex_assets / /app/katex/
 ENV KATEX_ASSET_DIR=/app/katex
+ENV XDG_CACHE_HOME=/tmp/studyguider-cache
 COPY set_password.py .
 COPY manage.html .
-RUN mkdir -p /data/uploads && chown nobody:nogroup /data/uploads
+RUN mkdir -p /data/uploads /tmp/studyguider-cache \
+    && chown nobody:nogroup /data/uploads /tmp/studyguider-cache
 USER nobody
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
