@@ -31,6 +31,11 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Add retry of independent visual review for an existing diagram without regenerating its image.
 - [x] Add actual formula parsing beyond the existing delimiter/brace checks (bundled KaTeX/mhchem via Node.js, bounded execution).
 - [ ] Evaluate semantic retrieval against keyword search; add embeddings if needed.
+  - [x] Six-standard top-five lexical concept-coverage probe: 6/6 queries have
+    matching target concept terms at rank 1; topic isolation passes. Read-only,
+    no paper excerpts printed. This is a proxy, not human relevance assessment.
+  - Embeddings deferred until broader human-labelled queries show unmet recall
+    or ranking needs; no semantic-comparison completion claimed.
   - Read-only 12-query six-topic probe: strict search had three empty plain-language queries;
     ranked OR-term fallback now returns in-topic matches for all three. Relevance/semantic
     benchmark remains open; non-empty results do not prove evidence quality.

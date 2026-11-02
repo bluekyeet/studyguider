@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added/executed read-only retrieval_relevance_check.py: six plain-language queries,
+  one per standard, top-five concept-term coverage and resource ownership checks.
+  All six have target term combinations at rank 1; all topic-isolated. Mechanics
+  returns one strict result, others five sampled. Prints metadata only, no source
+  excerpts. This is lexical coverage proxy, NOT semantic/human relevance scoring.
+  Evidence does not justify new embedding dependency yet; broader human-labelled
+  benchmark remains open. No production code/deploy/model calls/emulator changes.
+
 - Extended live marking probe with partial two-part answer and optional partial-
   only execution to avoid rerunning prior gateway calls. Actual route/gateway
   three fresh results all 1/2, correct frequency cited, omitted wavelength listed
