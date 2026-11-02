@@ -8,6 +8,17 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Fixed reported typing-during-autosave race: answer-keyed LaunchedEffect cancelled
+  in-flight PUT acknowledgement after server commit, losing revision. Replaced
+  with stable sequential snapshotFlow collection; typing queues latest draft,
+  completed PUT updates revision before next write; recovery copy only removed
+  when acknowledged content is still latest. Controlled emulator regression holds
+  first response while typing and asserts next PUT revision1/latest text. Initial
+  test failed because Compose virtual debounce clock was not advanced; corrected
+  fixture, targeted runtime test passed. Debug APK explicitly installed Success,
+  launch Status ok on emulator-5554. Existing conflict drafts still need explicit
+  server reload/recovery restore; genuine cross-client conflicts remain protected.
+
 - User's 91170/2023 exam screenshot exposed fragmented no-writing gutter text in
   extracted questions. Confirmed original PDF tiny fragments lie in outer 40pt
   gutters; parser now excludes lines wholly inside those gutters, retaining body

@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -704,7 +705,7 @@ private fun PracticePanel(base: String, token: String, draft: JSONObject, chunk:
 
 /** Device-independent drafts and feedback; the server keeps the latest saved version. */
 @Composable
-private fun SavedAnswer(base: String, token: String, lessonId: Long, question: String, answer: String, feedback: String, restoreAnswer: (String) -> Unit, restoreFeedback: (String) -> Unit): Boolean {
+internal fun SavedAnswer(base: String, token: String, lessonId: Long, question: String, answer: String, feedback: String, restoreAnswer: (String) -> Unit, restoreFeedback: (String) -> Unit): Boolean {
     val key = remember(question) { java.security.MessageDigest.getInstance("SHA-256").digest(question.toByteArray()).joinToString("") { "%02x".format(it) } }
     val context = androidx.compose.ui.platform.LocalContext.current
     val recovery = remember { context.getSharedPreferences("lesson_answer_recovery", android.content.Context.MODE_PRIVATE) }
@@ -734,17 +735,31 @@ private fun SavedAnswer(base: String, token: String, lessonId: Long, question: S
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { status = "Could not load saved answer. Retry before editing." }
     }
-    LaunchedEffect(answer, feedback, loaded, retry) {
-        if (!loaded || saved == (answer to feedback)) return@LaunchedEffect
-        status = "Saving…"
-        delay(600)
-        try {
-            val result = JSONObject(answerRequest(base, token, "/lessons/$lessonId/answers/$key", JSONObject().put("question", question).put("answer", answer).put("feedback", feedback).put("revision", revision)))
-            revision = result.getInt("revision")
-            saved = answer to feedback; status = "Saved to server"
-            recovery.edit().remove(recoveryKey).apply()
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) { status = if (e.message?.contains("another device") == true) "Answer not saved: changed on another device. Local draft retained." else "Answer not saved. Retry before leaving." }
+    val latestDraft = rememberUpdatedState(answer to feedback)
+    LaunchedEffect(base, token, lessonId, key, loaded, retry) {
+        if (!loaded) return@LaunchedEffect
+        // Collect sequentially: typing must not cancel a PUT that may already
+        // have committed, otherwise its returned revision is lost.
+        snapshotFlow { latestDraft.value }.collect {
+            if (saved == latestDraft.value) return@collect
+            status = "Saving…"
+            delay(600)
+            val sending = latestDraft.value
+            if (saved == sending) return@collect
+            try {
+                val result = JSONObject(answerRequest(base, token, "/lessons/$lessonId/answers/$key", JSONObject().put("question", question).put("answer", sending.first).put("feedback", sending.second).put("revision", revision)))
+                revision = result.getInt("revision")
+                saved = sending
+                if (latestDraft.value == sending) {
+                    status = "Saved to server"
+                    recovery.edit().remove(recoveryKey).apply()
+                } else {
+                    status = "Saving…"
+                    recovery.edit().putString(recoveryKey, JSONObject().put("answer", latestDraft.value.first).put("feedback", latestDraft.value.second).put("revision", revision).toString()).commit()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { status = if (e.message?.contains("another device") == true) "Answer not saved: changed on another device. Local draft retained." else "Answer not saved. Retry before leaving." }
+        }
     }
     // Persist before the debounced network write so navigation/process death can recover it.
     DisposableEffect(answer, feedback, loaded) {
