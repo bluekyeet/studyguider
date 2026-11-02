@@ -8,6 +8,11 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Wired existing image-cookie auth, collated selection and non-root font-cache
+  checks into CI (no paid live gateway probes). Explicit compose.yaml build avoids
+  ambiguous alternate Compose filenames. All three checks rerun locally PASS;
+  GitHub-hosted run not claimed. No production feature/deploy/APK/emulator change.
+
 - Fixed collated paper repeatedly selecting first questions: mixed mode serialises
   selection via existing exam_items lock and orders unseen first, then lowest last
   saved exam ID. Original-year mode preserves published ordering. No automatic
