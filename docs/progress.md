@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Extended live uncached marking probe to wrong answer 55 Hz: three marks all
+  0/1 not_achieved, populated missing criteria, no original zero-evidence 502.
+  Correct-answer rerun three marks all 1/1 (generic excellence label remains
+  unofficial). Repeated wrong marks enqueue exactly one review row. Full live
+  script PASS; all synthetic study rows rolled back, gateway usage retained.
+  No broader partial/borderline/official exemplar accuracy claim; upstream cache
+  unknown. No production code/deploy/Android/emulator changes.
+
 - Extended rollback-only acceptance check with actual note-edit route + PostgreSQL:
   first client updates content, stale original returns 409 and newer text remains,
   editing after deletion returns 404. Restores injected connection in finally;

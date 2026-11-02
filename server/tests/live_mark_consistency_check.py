@@ -1,4 +1,4 @@
-"""Opt-in three uncached marks using actual marking route and rollback-only data.
+"""Opt-in uncached correct/wrong marks using actual route and rollback-only data.
 
 Get-Content server/tests/live_mark_consistency_check.py -Raw |
   docker compose exec -T -e RUN_LIVE_MARK_CHECK=yes api python -
@@ -38,18 +38,25 @@ try:
     db.execute("INSERT INTO exam_items(exam_id,question_id,position,answer) VALUES (%s,%s,1,'0.4 Hz')", (exam, question))
     router = marking_router(connection, lambda: None, model)
     mark = next(r.endpoint for r in router.routes if r.path == '/exams/{exam_id}/answers/{question_id}/feedback' and 'POST' in r.methods)
-    results = []
-    for attempt in range(3):
-        # Only disposable attempt rows; force fresh generation, never touch user cache.
-        db.execute('DELETE FROM markings WHERE exam_id=%s', (exam,))
-        result = mark(exam, question)
-        assert result['cached'] is False
-        assert result['evidence'], 'Positive mark must cite rubric'
-        results.append((result['marks_awarded'], result['marks_available'], result['outcome']))
-        print('FRESH_MARK', attempt + 1, results[-1], flush=True)
-    assert len(set(results)) == 1 and results[0][:2] == (1, 1), results
-    assert calls.count('exam-mark') >= 3, calls
-    print('PASS: three fresh marks agree on this synthetic full-credit answer; not official NZQA accuracy or proof gateway has no upstream cache')
+    for answer, expected in [('0.4 Hz', 1), ('55 Hz', 0)]:
+        db.execute('UPDATE exam_items SET answer=%s WHERE exam_id=%s AND question_id=%s', (answer, exam, question))
+        results = []
+        for attempt in range(3):
+            # Only disposable attempt rows; force fresh generation, never touch user cache.
+            db.execute('DELETE FROM markings WHERE exam_id=%s', (exam,))
+            result = mark(exam, question)
+            assert result['cached'] is False
+            if expected:
+                assert result['evidence'], 'Positive mark must cite rubric'
+            else:
+                assert result['missing'], 'Incorrect answer needs missing-criterion feedback'
+            results.append((result['marks_awarded'], result['marks_available'], result['outcome']))
+            print('FRESH_MARK', answer, attempt + 1, results[-1], flush=True)
+        assert len(set(results)) == 1 and results[0][:2] == (expected, 1), results
+    assert calls.count('exam-mark') >= 6, calls
+    count = db.execute('SELECT count(*) FROM review_questions WHERE exam_origin=%s', (f'{exam}:{question}',)).fetchone()[0]
+    assert count == 1, 'Wrong-answer repeats must enqueue exactly one review'
+    print('PASS: fresh correct/wrong marks agree, zero-mark feedback works, wrong answer queued once; not official NZQA accuracy or proof gateway has no upstream cache')
 finally:
     db.rollback()
     db.close()

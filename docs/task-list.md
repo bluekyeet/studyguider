@@ -129,6 +129,9 @@ does not mean its end-to-end acceptance checks have passed.
     percentage fallback labelled it excellence; not an official NCEA judgement.
   - [ ] Broader wrong/partial/borderline answers and real schedule exemplars;
     upstream gateway caching and underlying provider independence unverified.
+    - [x] Three fresh wrong-answer marks (55 Hz) all 0/1 with missing feedback;
+      repeated misses enqueue exactly one grounded review. Correct-answer rerun
+      also stable 1/1. Partial/borderline/official exemplars still open.
 - [ ] Verify Android answer/schedule comparison and override workflow.
 - [x] Connect incorrect exam answers to the daily review queue (reuses question/rubric; skips uncertain, disputed, overridden or stale answers).
 - [ ] Validate historical cut-score layouts not supported by current extraction; do not guess missing boundaries.
