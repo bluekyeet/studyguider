@@ -1675,3 +1675,8 @@ From the pasted source review (not a penetration test):
 - Explain and Save to notes verified on the emulator; the test note was deleted afterwards.
 - Found and fixed: lesson 83 showed `[S1, learner_answers]` in the reading text. Android `withoutSourceMarkers` and the website `readable()` now strip `[uuid|S#, snake_case_tag]`. Only lesson 83 had this tag among the 22 saved lessons. Compile-time check added; not executed.
 - Not done: exam override (it would write to your saved exams), notifications (need an emulator reboot or timezone change, which I am not allowed to do without asking), plus the items in the earlier note.
+
+## 3 Nov 2026: reminder time and earlier lessons
+
+- Android: reminder time picker added (`Reminders.kt`, preferences `hour`/`minute`, default 19:00); installed; the dialog opened and was cancelled, so the saved time is still 7 pm. Delivery at a chosen time is untested.
+- Website: collapsed "Earlier lessons (N)" list under today's cards. Checked in headless Edge against the mock server (list, row and chip render, no script errors); opening an older lesson was not exercised because the mock has no data for it, though it uses the same open path as today's lessons. API rebuilt.

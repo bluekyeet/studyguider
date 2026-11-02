@@ -51,7 +51,7 @@ about how things should look. Written 3 November 2026 from the code in `server/w
   lesson title, and one button (Start lesson / Continue lesson / Review lesson).
 - Header shows the date and "N of M done", or "all done".
 - Empty state: no lessons today, with a link to Settings to choose topics.
-- Earlier days' lessons are not listed on the website (known gap; the Android app lists them).
+- Earlier days' lessons are in a collapsed "Earlier lessons (N)" list under today's cards (date, topic, status, Open).
 
 **Reader** (opens when a lesson is chosen)
 - A lesson is split into sections by its headings (Overview, Learning goal, Explanation, Worked
@@ -181,7 +181,7 @@ run history, review-draft generation, mastery view. Its look is independent.
 
 ## Known gaps a designer can plan around
 
-- Earlier lessons, lesson history and deleting lessons are not on the website.
+- Lesson history and deleting lessons are not on the website.
 - No scanned or handwritten exam answers, and no diagram generation on the website.
 - No reminder settings on the website (reminders are Android-only).
 - The Android app asks an extra question at the end of non-practice sections; the website does not.

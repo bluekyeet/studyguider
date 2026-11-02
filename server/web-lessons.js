@@ -111,6 +111,23 @@ export async function renderLessons(container, api) {
       title.append(element('h1', 'Today’s lessons'),
         element('p', new Intl.DateTimeFormat('en-NZ', { timeZone: 'Pacific/Auckland', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()), 'muted'));
       head.append(title); content.append(head);
+      // Older lessons stay reachable, collapsed so the page remains about today.
+      const earlier = () => {
+        const older = lessons.filter(lesson => !todays.includes(lesson));
+        if (!older.length) return null;
+        const box = element('details', '', 'card stack'); box.append(element('summary', `Earlier lessons (${older.length})`));
+        const rows = element('div', '', 'stack');
+        for (const lesson of older) {
+          const row = element('div', '', 'toolbar');
+          row.append(element('span', lesson.created_at ? day(lesson.created_at) : '', 'chip'),
+            element('span', `${lesson.subject} · ${lesson.topic}`, 'muted'),
+            element('span', lesson.completed_at ? 'Completed' : 'Not finished', `chip ${lesson.completed_at ? 'ok' : 'warn'}`),
+            button('Open', () => open(lesson)));
+          rows.append(row);
+        }
+        box.append(rows);
+        return box;
+      };
       if (!todays.length) {
         const empty = element('div', '', 'empty');
         empty.append(element('p', lessons.length
@@ -118,6 +135,7 @@ export async function renderLessons(container, api) {
           : 'No lessons yet. Choose the topics you are learning in Settings and your first lesson will be ready tomorrow.'));
         const settings = element('a', 'Choose topics in Settings'); settings.href = '#settings'; empty.append(settings);
         content.append(empty);
+        const past = earlier(); if (past) content.append(past);
         return;
       }
       // A saved reading position means this lesson was started, perhaps on another device.
@@ -136,6 +154,7 @@ export async function renderLessons(container, api) {
         grid.append(card);
       }
       content.append(grid);
+      const past = earlier(); if (past) content.append(past);
     } finally { loading = false; }
   }
 

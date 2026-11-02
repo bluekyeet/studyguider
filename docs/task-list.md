@@ -269,7 +269,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Dollar-cost reporting and budget controls: not needed (user decision, 3 Nov 2026); token counts stay as shown.
 - [x] Add a model-failure warning threshold based on recorded outcomes.
 - [ ] Check recent settings, exam dropdown/mode-row, notes and Explain layouts visually.
-- [ ] Optional: reminder time picker.
+- [x] Optional: reminder time picker (Learning > Daily reminder > Change time; default 7 pm; dialog opens on the emulator, a saved time and its delivery are untested).
 - [ ] Deferred: full website study-workflow parity, including drawing and maths rendering.
 
 ## Technical differences from the writeup — not automatic rewrite tasks
