@@ -17,6 +17,48 @@ def contamination_issues(text):
     return ["Contains coding-assistant instructions or boilerplate; remove it and return only the complete educational lesson."] if any(re.search(p, text) for p in patterns) else []
 
 
+def teaching_structure_issues(text):
+    """Check the prompt's practice-page contract, without judging question meaning.
+
+    Advisory only until generation/recovery fixtures adopt the heading contract.
+    A clean result does not verify self-containment or absence of revealed answers.
+    """
+    sections = []
+    current = None
+    fence = None
+    for line in text.splitlines():
+        line = line.strip()
+        marker = re.match(r"(`{3,}|~{3,})", line)
+        if marker:
+            if fence is None:
+                fence = marker.group()
+            elif re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}", line):
+                fence = None
+            continue
+        if fence:
+            continue
+        # Match Android's page boundaries, including headings that end a task.
+        heading = re.match(r"^(#{1,3}) (.*)$", line)
+        if heading:
+            current = None
+            if re.match(r"your\s+turn\b", heading[2], re.I):
+                current = {"heading": line, "body": []}
+                sections.append(current)
+        elif current is not None and line and line not in ("---", "***", "___"):
+            current["body"].append(line)
+
+    issues = []
+    if not 3 <= len(sections) <= 5:
+        issues.append("Include 3–5 Your Turn sections, each under its own level-three heading.")
+    for number, section in enumerate(sections, 1):
+        if section["heading"] != f"### Your Turn {number}":
+            issues.append(f"Name practice heading {number} exactly '### Your Turn {number}', in sequence.")
+        if not section["body"]:
+            issues.append(f"Your Turn section {number} is empty; include the question in that section.")
+    # ponytail: structure only; wire into promotion after adopting full-lesson fixtures.
+    return issues
+
+
 def formula_issues(text):
     """Check the dollar-delimited LaTeX syntax supported by the Android renderer.
 

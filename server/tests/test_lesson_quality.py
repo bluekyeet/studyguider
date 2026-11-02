@@ -2,7 +2,43 @@ import json
 
 import pytest
 
-from lesson_quality import review_and_revise, contamination_issues, formula_issues
+from lesson_quality import review_and_revise, contamination_issues, formula_issues, teaching_structure_issues
+
+
+def practice_sections(count=3):
+    return "\n".join(f"### Your Turn {i}\nExplain what frequency measures." for i in range(1, count + 1))
+
+
+@pytest.mark.parametrize("count", [3, 4, 5])
+def test_practice_page_structure(count):
+    assert not teaching_structure_issues("# Learning goal\nUnderstand waves.\n" + practice_sections(count))
+
+
+@pytest.mark.parametrize("text", [
+    "Draft", practice_sections(2), practice_sections(6),
+    practice_sections().replace("### Your Turn 2", "## Your Turn 2"),
+    practice_sections().replace("### Your Turn 2", "### Your Turn 1"),
+    practice_sections().replace("### Your Turn 2", "### Your Turn 4"),
+    practice_sections().replace("### Your Turn 2", "### Your Turn 2: Waves"),
+    practice_sections().replace("### Your Turn 2\nExplain what frequency measures.", "### Your Turn 2\n---"),
+    practice_sections().replace("### Your Turn 2\n", "### Your Turn 2\n## Other section\n"),
+    "```markdown\n" + practice_sections() + "\n```",
+    "~~~~markdown\n" + practice_sections() + "\n~~~~",
+    practice_sections().replace("###", "####"),
+])
+def test_malformed_practice_page_structure(text):
+    assert teaching_structure_issues(text)
+
+
+def test_structural_check_does_not_claim_semantic_validation():
+    # Intentional ceiling: meaning/solutions still require independent review.
+    assert not teaching_structure_issues(practice_sections().replace("Explain what frequency measures.", "Answer: 42."))
+
+
+def test_code_fence_does_not_supply_a_question_body():
+    text = practice_sections().replace("### Your Turn 2\nExplain what frequency measures.",
+                                      "### Your Turn 2\n```\nNot a question\n``` ")
+    assert any("empty" in issue for issue in teaching_structure_issues(text))
 
 
 def test_rejected_lesson_is_rewritten_then_rechecked():

@@ -86,6 +86,10 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Make source inspection convenient without restoring inline citation clutter (reader Sources panel; saved filename/page/excerpts, runtime check pending).
 - [ ] Stream lesson generation safely without presenting unreviewed content as ready.
 - [ ] Evaluate validated structured lesson objects instead of relying on Markdown/model structure.
+  - [x] Evaluated minimal alternative: deterministic Markdown practice-heading
+    checker with 17 cases; no schema migration needed for heading/count validation.
+  - [ ] Integrate structure checks into promotion with full-lesson fixtures;
+    helper alone does not enforce readiness or semantic question completeness.
 - [ ] Optional: persistent/full explanation chat history.
 
 ## Daily learning loop
@@ -113,6 +117,11 @@ does not mean its end-to-end acceptance checks have passed.
   - [ ] Validate that live lessons use the context appropriately; persistent narrative
     summaries/preference learning remain deferred pending evidence of need.
 - [ ] Evaluate durable queued AI jobs and safe crash recovery; do not retry potentially completed jobs blindly.
+  - [x] Reviewed current claims/lifecycle and documented contract in
+    `docs/job-recovery.md`: no queue rewrite justified yet; unlinked saved lesson/
+    scheduled run boundary and manual idempotency remain concrete risks.
+  - [ ] Atomically persist/link scheduled lessons, test ambiguous crash outcomes
+    and concurrent claims; never automatically retry unknown outcomes.
 - [ ] Run Android nightly-status UI checks after the emulator is available.
 
 ## Exams and marking
@@ -228,7 +237,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 173 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 190 passed, six warnings, six subtests passed.
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.

@@ -195,6 +195,20 @@ try:
     marking = marking_router(transaction_connection, lambda: None, None)
     read_feedback = next(r.endpoint for r in marking.routes if r.path == '/exams/{exam_id}/answers/{question_id}/feedback' and 'GET' in r.methods)
     assert read_feedback(exam, question)['marks'][0]['marks_awarded'] == 0
+    db.execute('UPDATE exam_answer_scans SET confirmed=false WHERE exam_id=%s AND question_id=%s', (exam, question))
+    try:
+        read_feedback(exam, question)
+        raise AssertionError('Unconfirmed scan feedback must be withheld')
+    except HTTPException as exc:
+        assert exc.status_code == 404
+    db.execute('UPDATE exam_answer_scans SET confirmed=true,revision=2 WHERE exam_id=%s AND question_id=%s', (exam, question))
+    try:
+        read_feedback(exam, question)
+        raise AssertionError('Old scan feedback must be withheld even when answer text is unchanged')
+    except HTTPException as exc:
+        assert exc.status_code == 404
+    db.execute('UPDATE exam_answer_scans SET revision=1 WHERE exam_id=%s AND question_id=%s', (exam, question))
+    print('PASS: saved feedback withheld for unconfirmed/replaced scans even with unchanged answer text')
     db.execute("""INSERT INTO marking_overrides(exam_id,question_id,outcome,note)
         VALUES (%s,%s,'not_achieved','Synthetic override')""", (exam, question))
     router = exam_router(transaction_connection, lambda: None)

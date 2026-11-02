@@ -8,6 +8,17 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- User authorised parallel subagents. Structure worker added standalone tested
+  teaching_structure_issues (3–5 sequential level-three Your Turn sections with
+  nonempty bodies, fenced headings excluded). Not yet wired into promotion;
+  semantic self-containment/unsolved status remains reviewer responsibility.
+  Recovery worker assessed claims/lifecycle read-only: broker rewrite not needed,
+  but lesson/run atomic linkage and manual request idempotency are unresolved.
+  Contract and conservative offline procedure recorded in docs/job-recovery.md.
+  Parent extended PostgreSQL acceptance: unconfirmed/replaced scans hide old
+  feedback even with identical answer text; full rollback script passed. Full
+  server suite 190 passed, six warnings/six subtests. Emulator/GPU unchanged.
+
 - Android previously ignored second_review payloads: now displays second score,
   outcome/feedback and explicit agreement/disagreement warning separate from first
   mark. Saved-feedback reconstruction retains second mark and computes conflict

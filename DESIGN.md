@@ -1,18 +1,22 @@
 # StudyGuider design
 
-The product design and roadmap are in `writeup.md`. The first increment is a
-FastAPI health endpoint, password authentication and subject/topic creation
-backed by PostgreSQL. Public deployment requires TLS and a security review.
+The original product design is in `writeup.md`; the user's edited working scope
+and priorities are in `docs/task-list.md`. Follow that task list, including its
+exclusions, rather than restoring superseded writeup recommendations. Recorded
+checks and remaining blockers are in `docs/progress.md`.
 
 The database is private to the Compose network. The API binds to localhost by
 default. No uploads, credentials or personal study material belong in the repo.
 
-Current prototype: authenticated subjects, topics and standards, resource
-uploads and text extraction, search, saved lesson drafts, confidence-based
-review scheduling, and manually verified exam references. AI feedback is
-advisory, not an official mark or factual guarantee. Public deployment, scan
-ingestion and complete exam workflows remain outstanding. Validate browser
-workflows and real gateway calls before relying on the prototype for study.
+Current implementation includes source-snapshot lessons, bounded teacher/reviewer
+rewrites, KaTeX/mhchem syntax checking, streaming explanations, revision-protected
+answers, scan transcription confirmation, exam marking and review scheduling.
+Use existing database constraints, native platform features and installed assets
+before adding services or dependencies. AI feedback/review remains advisory, not
+an official mark, human approval or factual guarantee. Machine imports must never
+be presented as human-reviewed. Check runtime/acceptance status in the task list;
+code existing does not imply a workflow has passed verification. Public deployment
+requires TLS and a security review; access and backups are user-managed.
 
 ## Visual direction
 
