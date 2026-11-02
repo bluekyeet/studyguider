@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Android previously ignored second_review payloads: now displays second score,
+  outcome/feedback and explicit agreement/disagreement warning separate from first
+  mark. Saved-feedback reconstruction retains second mark and computes conflict
+  from score/outcome. Provider independence explicitly unverified. Debug/test APK
+  builds passed, agreeing/disagreeing JSON checks compiled but not run. No backend
+  change/deployment/install; emulator/GPU untouched.
+
 - Android exam now offers Load saved feedback when local answer matches saved
   answer; uses current-answer/scan-filtered GET instead of re-marking. Restores
   first mark plus separate saved override; no gateway call. Corrected misleading

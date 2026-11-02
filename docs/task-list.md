@@ -123,6 +123,9 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Implement typed answers, scan transcription confirmation and diagram/image answers.
 - [x] Implement answer/scan revisions and stale-write rejection.
 - [x] Implement evidence-linked marking, cached marks and uncertain/low-confidence second review.
+  - Android now shows second-marker score/feedback and explicit disagreement;
+    saved-feedback loading retains second review too. Build/test compilation passed,
+    runtime display remains unverified.
 - [x] Implement separate learner overrides on the server.
 - [x] Recognise N0–E8 schedules and extract supported cut-score tables.
 - [x] Implement saved-exam deletion with confirmation.

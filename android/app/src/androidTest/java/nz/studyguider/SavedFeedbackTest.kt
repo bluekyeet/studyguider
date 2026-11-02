@@ -12,6 +12,13 @@ class SavedFeedbackTest {
         assertEquals(1, restored.getInt("marks_awarded"))
         assertEquals("merit", restored.getJSONObject("override").getString("outcome"))
         assertTrue(restored.getString("disclaimer").contains("not an official"))
+        assertEquals(2, restored.getJSONObject("second_review").getInt("marks_awarded"))
+        assertTrue(restored.getBoolean("disagreement"))
         assertTrue(!stored.getJSONArray("marks").getJSONObject(1).has("disclaimer"))
+    }
+
+    @Test fun matchingSecondMarkIsNotFlaggedAsDisagreement() {
+        val stored = JSONObject("""{"marks":[{"kind":"first","marks_awarded":1,"outcome":"achieved"},{"kind":"second","marks_awarded":1,"outcome":"achieved"}]}""")
+        assertTrue(!savedExamFeedback(stored).getBoolean("disagreement"))
     }
 }

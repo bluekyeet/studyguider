@@ -434,6 +434,11 @@ internal fun savedExamFeedback(stored: JSONObject): JSONObject {
         ?: throw IllegalStateException("No saved first mark for this answer")
     return JSONObject(first.toString()).apply {
         put("disclaimer", "Saved AI study feedback, not an official or verified grade. Check the original schedule.")
+        val second = (0 until marks.length()).map { marks.getJSONObject(it) }.firstOrNull { it.optString("kind") == "second" }
+        if (second != null) {
+            put("second_review", second)
+            put("disagreement", second.optInt("marks_awarded") != first.optInt("marks_awarded") || second.optString("outcome") != first.optString("outcome"))
+        }
         if (!stored.isNull("override")) put("override", stored.getJSONObject("override"))
     }
 }
@@ -517,6 +522,15 @@ private fun FeedbackCard(result: JSONObject) {
             Text(saved.optString("note"), style = MaterialTheme.typography.bodySmall)
         }
         MathText(result.optString("feedback"))
+        result.optJSONObject("second_review")?.let { second ->
+            HorizontalDivider()
+            Text(if (result.optBoolean("disagreement")) "Markers disagree — check the original schedule" else "Second marker agrees on score and outcome",
+                style = MaterialTheme.typography.titleSmall,
+                color = if (result.optBoolean("disagreement")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+            Text("Second suggested mark: ${second.optInt("marks_awarded")} / ${second.optInt("marks_available")} · ${second.optString("outcome").replace('_', ' ')}", style = MaterialTheme.typography.labelMedium)
+            MathText(second.optString("feedback"))
+            Text("AI second review is advisory; different underlying providers are not verified.", style = MaterialTheme.typography.bodySmall)
+        }
         val evidence = result.optJSONArray("evidence")
         if (evidence != null) for (j in 0 until evidence.length()) {
             val item = evidence.getJSONObject(j)
