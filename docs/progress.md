@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added/executed opt-in live_mark_consistency_check.py: actual marking route,
+  synthetic 1-mark frequency rubric, three fresh requests after deleting only
+  disposable attempt's cached marks. All uncached results 1/1, cited evidence,
+  outcome excellence via existing generic percentage fallback. That label is NOT
+  official NZQA grading or proof achievement-level reasoning merits Excellence.
+  Synthetic study rows rolled back, real gateway accounting retained. Upstream
+  caching cannot be excluded. Broader partial/borderline/exemplar consistency task
+  remains open. No production/deploy/Android/emulator changes.
+
 - Strength selection verified in rollback-only PostgreSQL lesson-route check:
   three correct reviews include Frequency units; a Chemistry mistake with same
   concept label does not suppress Physics strength; recent Physics mistake does.

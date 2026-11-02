@@ -121,6 +121,11 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Validate realistic subject-wide paper coverage, mark totals and non-repetition/exhaustion behaviour.
 - [ ] Validate A/M/E exemplar marking against schedules.
 - [ ] Test fresh-model marking consistency separately from cache consistency.
+  - [x] Three actual marking-route requests with disposable app cache cleared each
+    time agreed on 1/1 for synthetic 0.4 Hz answer and cited rubric. Generic
+    percentage fallback labelled it excellence; not an official NCEA judgement.
+  - [ ] Broader wrong/partial/borderline answers and real schedule exemplars;
+    upstream gateway caching and underlying provider independence unverified.
 - [ ] Verify Android answer/schedule comparison and override workflow.
 - [x] Connect incorrect exam answers to the daily review queue (reuses question/rubric; skips uncertain, disputed, overridden or stale answers).
 - [ ] Validate historical cut-score layouts not supported by current extraction; do not guess missing boundaries.
