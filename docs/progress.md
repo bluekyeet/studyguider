@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Aligned SVG generation prompt with sanitizer: explicit simple element set,
+  direct presentation attributes, no style blocks/classes/links, white background
+  and bounded labels. Sanitizer unchanged. 168 tests passed, six warnings/six
+  subtests; API rebuilt/deployed. Live probe now renders first attempt (30,194-byte
+  PNG), but reviewer returns malformed JSON, confirmed by separate diagnostics;
+  stays flagged. Temporary rows/files removed. Fontconfig warning still present.
+  Next blocker: recover malformed visual-review output without accepting invalid
+  verdicts. No Android/emulator changes.
+
 - Diagram diagnostics now distinguish gateway HTTP status, malformed JSON,
   invalid verdict fields and connection failures rather than collapsing them into
   unavailable review. Existing retry error test asserts malformed-JSON wording.

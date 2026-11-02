@@ -109,6 +109,7 @@ def test_lesson_diagram_is_grounded_and_only_clean_review_passes(monkeypatch, tm
 
     def generate(model, messages, task):
         captured.append(messages[-1]["content"])
+        assert "Do not use style elements" in messages[-1]["content"]
         return SAFE
 
     def review(model, prompt, png, task):

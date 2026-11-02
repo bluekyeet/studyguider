@@ -135,6 +135,8 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Retry review of existing images after reviewer outages.
 - [ ] Automatically select/generate diagrams where useful during lesson creation, not on every section.
 - [ ] Verify a successful live diagram correction/review cycle and scientific visual correctness.
+  - Latest prompt correction renders first attempt; visual reviewer returned
+    malformed JSON. Failure remains flagged; successful AI review still open.
   - Latest live synthetic wave probe: SVG generation needed two attempts, PNG
     rendered (26,055 bytes), but visual review unavailable/invalid; correctly flagged.
     Temporary files and rows removed. Successful visual review remains blocked.
