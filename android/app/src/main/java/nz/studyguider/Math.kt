@@ -39,7 +39,7 @@ object KaTeX {
     /** Text colour comes from Compose so dark mode does not need a page reload. */
     fun head(): String = """
         <style>
-          html, body { margin:0; padding:0; background:transparent; }
+          html, body { margin:0; padding:0; background:transparent; max-width:100%; }
           #content { position:absolute; top:0; left:0; width:100%; }
           #content > div { display:flow-root; }
           body { color:#1A1B22; font-family:system-ui, sans-serif; font-size:16px; line-height:1.55;
@@ -51,6 +51,8 @@ object KaTeX {
           .katex-display { margin:8px 0; overflow-x:auto; overflow-y:hidden; }
           .katex-display > .katex { white-space:normal; }
           .katex .katex-html { white-space:normal; }
+          .katex .text { white-space:normal; overflow-wrap:anywhere; }
+          .katex .base:has(.text) { white-space:normal; }
         </style>
         <link rel="stylesheet" href="katex/katex.min.css">
         <script src="katex/katex.min.js"></script>
@@ -110,6 +112,10 @@ object KaTeX {
           document.querySelectorAll('span[data-tex]').forEach(function(node){
             var tex = node.getAttribute('data-tex');
             var display = node.getAttribute('data-display') === '1';
+            // A provider may wrap a whole prose sentence in maths. Plain text
+            // needs normal browser wrapping, not KaTeX's unbreakable math base.
+            var prose = /^\\text\{([^{}]*)\}$/.exec(tex.trim());
+            if (prose) { node.textContent = prose[1]; return; }
             try {
               katex.render(tex, node, { displayMode: display, throwOnError: true,
                   strict: 'ignore', trust: false, output: 'html' });

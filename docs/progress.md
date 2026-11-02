@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Reader maths-text wrapping follow-up: KaTeX text spans now permit wrapping;
+  prose-only \text{...} formulas render as normal text rather than unbreakable
+  maths. Mixed/long mathematical expressions retain existing overflow behaviour;
+  no semantic formula rewriting or stored-content changes. Debug/test APK builds
+  passed, two existing WebView setting deprecation warnings; static renderer check
+  compiled only, not connected-run. Normal emulator APK install Success. Exact
+  screenshot sentence wrapping remains visually unverified.
+
 - Reader heading fix: model-generated ####–###### headings were rendered as prose
   inside one long section because lessonChunks recognised only levels 1–3. Now
   all six ATX heading levels create section boundaries; closing heading hashes
