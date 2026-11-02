@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Live bounded lesson correction check passed on synthetic frequency lesson:
+  initial inverse-definition/metre-unit errors rejected; teacher revised twice;
+  third independent review passed with no issues. Final draft correctly gives
+  f=N/t, 8/20=0.40 Hz, citations and three unsolved practice tasks; KaTeX checks
+  passed. Five real calls logged, no lesson/student rows saved. Reviewer made an
+  overly strict/unclear heading complaint despite numbered headings; successful
+  correction does not establish broad reviewer reliability/provider independence.
+  Retained opt-in live_revision_check.py. No deploy/APK/emulator changes required.
+
 - Extended rollback-only PostgreSQL acceptance script with actual exam answer
   route calls: first revision-0 save succeeds; second client's revision-0 save
   returns 409 and preserves new answer/revision. After scan replacement, old scan

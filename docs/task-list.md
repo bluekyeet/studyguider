@@ -165,6 +165,8 @@ does not mean its end-to-end acceptance checks have passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.
 - The complete six-standard acceptance programme has not passed.
 - [x] Seed lesson factual/formula/unit errors and verify independent review catches them (two live synthetic cases rejected; reviewer also added an unsupported catalyst statement—broader accuracy not verified).
+  - [x] Live teacher/reviewer correction loop on synthetic frequency lesson: initial
+    error rejected, two rewrites, final pass, corrected 0.40 Hz and valid KaTeX.
 - [ ] Stop/restore the gateway and verify recovery without losing learner work.
 - [ ] Validate both gateway aliases under the coding-prompt override and verify genuinely different underlying reviewers where required.
 - [ ] Record exact check results and remaining blockers in `docs/progress.md`; do not label untested behaviour verified.
