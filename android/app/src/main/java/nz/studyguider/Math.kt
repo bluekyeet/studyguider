@@ -68,9 +68,13 @@ object KaTeX {
      * with KaTeX. Invalid formulas fall back to the literal source so nothing is
      * silently lost.
      */
+    /** Safe in both element text and quoted attributes: formulas are placed inside `data-tex="..."`. */
+    fun escapeHtml(value: String) = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace("\"", "&quot;").replace("'", "&#39;")
+
     fun toHtml(text: String): String {
         val builder = StringBuilder()
-        fun escape(value: String) = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        fun escape(value: String) = escapeHtml(value)
         var seenText = false
         inlineRuns(text).map { run ->
             if (!seenText && run.text.isNotBlank()) { seenText = true; run.copy(text = run.text.trimStart()) } else run
@@ -231,6 +235,7 @@ fun MathText(
                 WebView(context).apply {
                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
                     settings.javaScriptEnabled = true
+                    settings.blockNetworkLoads = true
                     // Only the bundled KaTeX assets load; no network, no file or content access.
                     settings.allowFileAccess = true
                     settings.allowContentAccess = false
@@ -249,6 +254,11 @@ fun MathText(
                         }
                     }, "Native")
                     webViewClient = object : WebViewClient() {
+                        // Rendered content is inert: never follow links or load anything but the bundled assets.
+                        override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest) = true
+                        override fun shouldInterceptRequest(view: WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? =
+                            if (request.url.toString().startsWith("file:///android_asset/")) null
+                            else android.webkit.WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream(ByteArray(0)))
                         override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
                             if (request.isForMainFrame) android.util.Log.e("KaTeX", "Load failed: ${error.description}")
                         }

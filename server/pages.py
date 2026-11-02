@@ -13,6 +13,20 @@ from fastapi.responses import Response
 CACHE = {}
 CACHE_LOCK = threading.Lock()
 MAX_CACHE = 200
+MAX_RENDER_PIXELS = 25_000_000
+MAX_PAGE_POINTS = 14400  # 200 inches; real pages are far smaller
+
+
+def safe_dpi(rect, dpi):
+    """Lower `dpi` so a page or clip never rasterises beyond MAX_RENDER_PIXELS.
+
+    A small PDF can declare an enormous page; refuse absurd sizes and scale the rest down.
+    """
+    width, height = float(rect.width), float(rect.height)
+    if not (0 < width <= MAX_PAGE_POINTS and 0 < height <= MAX_PAGE_POINTS):
+        raise HTTPException(422, "This page is too large to render")
+    pixels = (width / 72 * dpi) * (height / 72 * dpi)
+    return dpi if pixels <= MAX_RENDER_PIXELS else max(10, int(dpi * (MAX_RENDER_PIXELS / pixels) ** 0.5))
 
 
 def page_router(connect, authorised):
@@ -54,7 +68,8 @@ def page_router(connect, authorised):
         if not all(math.isfinite(v) for v in values) or not any(all(abs(region[k] - v) < 0.1 for k, v in zip(("x0", "y0", "x1", "y1"), values)) for region in regions):
             raise HTTPException(422, "Select an extracted diagram region")
         with pymupdf.open(Path(f"/data/uploads/{resource_id}")) as document:
-            data = document[page - 1].get_pixmap(clip=pymupdf.Rect(*values), dpi=160).tobytes("png")
+            clip = pymupdf.Rect(*values)
+            data = document[page - 1].get_pixmap(clip=clip, dpi=safe_dpi(clip, 160)).tobytes("png")
         return Response(data, media_type="image/png")
 
     @router.get("/resources/{resource_id}/pages/{page}/image")
@@ -77,7 +92,8 @@ def page_router(connect, authorised):
                 with pymupdf.open(path) as document:
                     if page < 1 or page > document.page_count:
                         raise HTTPException(404, "Page not found in this PDF")
-                    cached = document[page - 1].get_pixmap(dpi=110).tobytes("png")
+                    target = document[page - 1]
+                    cached = target.get_pixmap(dpi=safe_dpi(target.rect, 110)).tobytes("png")
             except HTTPException:
                 raise
             except Exception:

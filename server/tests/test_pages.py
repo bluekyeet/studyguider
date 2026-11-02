@@ -92,3 +92,14 @@ def test_non_pdf_resources_have_no_page_images(storage):
     with pytest.raises(HTTPException) as error:
         endpoint(router)("id", 1)
     assert error.value.status_code == 422
+
+
+def test_safe_dpi_scales_down_huge_pages_and_refuses_absurd_ones():
+    a4 = pymupdf.Rect(0, 0, 595, 842)
+    assert pages.safe_dpi(a4, 200) == 200
+    big = pymupdf.Rect(0, 0, 10000, 10000)
+    scaled = pages.safe_dpi(big, 200)
+    assert scaled < 200 and (10000 / 72 * scaled) * (10000 / 72 * scaled) <= pages.MAX_RENDER_PIXELS * 1.05
+    with pytest.raises(HTTPException) as raised:
+        pages.safe_dpi(pymupdf.Rect(0, 0, 20000, 100), 110)
+    assert raised.value.status_code == 422

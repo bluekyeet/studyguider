@@ -36,7 +36,7 @@ from worker import start_worker, worker_router
 from explain import explain_router
 from review_generation import review_generation_router
 from styles import create_style_tables, style_router
-from pages import page_router
+from pages import page_router, safe_dpi
 import ocr
 
 
@@ -120,13 +120,14 @@ hasher = PasswordHasher()
 async def limit_request_size(request, call_next):
     # ponytail: require a declared length; use a streaming reverse proxy limit
     # when chunked uploads or public deployment are needed.
-    if request.method == "POST" and request.url.path.endswith("/resources"):
+    path = request.url.path
+    if request.method == "POST" and (path.endswith("/resources") or path.endswith("/resources/batch")):
         from fastapi.responses import JSONResponse
 
         length = request.headers.get("content-length", "")
         if not length.isascii() or not length.isdecimal():
             return JSONResponse({"detail": "Content-Length required"}, status_code=411)
-        if int(length) > 50 * 1024 * 1024 + 65536:
+        if int(length) > (MAX_BATCH_BYTES if path.endswith("/batch") else 50 * 1024 * 1024) + 65536:
             return JSONResponse({"detail": "Request too large"}, status_code=413)
     return await call_next(request)
 
@@ -566,6 +567,9 @@ def delete_note(topic_id: int, note_id: int):
 
 SUPPORTED_UPLOAD_SUFFIXES = {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".txt", ".md", ".html", ".png", ".jpg", ".jpeg"}
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_BATCH_BYTES = 200 * 1024 * 1024
+MAX_BATCH_FILES = 50
+MAX_BATCH_EXPANDED = 500 * 1024 * 1024
 
 
 def _safe_member_name(name: str) -> str:
@@ -645,6 +649,9 @@ def upload_resources_batch(topic_id: int, files: list[UploadFile] = File(...), c
     directory = Path(os.environ.get("UPLOAD_DIR", "/data/uploads"))
     directory.mkdir(parents=True, exist_ok=True)
     accepted, skipped, duplicates = [], [], 0
+    if len(files) > MAX_BATCH_FILES:
+        raise HTTPException(413, f"At most {MAX_BATCH_FILES} files per upload")
+    uploaded = expanded = 0  # request-wide totals, on top of the per-file limits
     with connect() as db:
         if not db.execute("SELECT 1 FROM topics WHERE id = %s FOR UPDATE", (topic_id,)).fetchone():
             raise HTTPException(404, "Topic not found")
@@ -654,6 +661,9 @@ def upload_resources_batch(topic_id: int, files: list[UploadFile] = File(...), c
                 data = upload.file.read(MAX_UPLOAD_BYTES + 1)
                 if len(data) > MAX_UPLOAD_BYTES:
                     raise HTTPException(413, f"{filename} exceeds 50 MiB")
+                uploaded += len(data)
+                if uploaded > MAX_BATCH_BYTES:
+                    raise HTTPException(413, "This upload exceeds 200 MiB in total")
                 if not data:
                     raise HTTPException(400, f"{filename} is empty")
                 if filename.lower().endswith(".zip"):
@@ -661,7 +671,8 @@ def upload_resources_batch(topic_id: int, files: list[UploadFile] = File(...), c
                     # unknown types are reported rather than silently dropped.
                     with ZipFile(io.BytesIO(data)) as archive:
                         members = [info for info in archive.infolist() if not info.is_dir()]
-                        if len(members) > 200 or sum(info.file_size for info in members) > 500 * 1024 * 1024:
+                        expanded += sum(info.file_size for info in members)
+                        if len(members) > 200 or expanded > MAX_BATCH_EXPANDED:
                             raise HTTPException(422, f"{filename} expands beyond the allowed size")
                         for info in members:
                             member = _safe_member_name(info.filename)
@@ -1080,7 +1091,7 @@ def _extract_into_database(resource_id: uuid.UUID):
                             text = text.replace("\x00", "")
                             warnings.append(f"Page {number} contained null characters; they were removed.")
                         if not text.strip():
-                            text = _ocr_png(page.get_pixmap(dpi=200).tobytes("png"))
+                            text = _ocr_png(page.get_pixmap(dpi=safe_dpi(page.rect, 200)).tobytes("png"))
                             if text:
                                 warnings.append(f"Page {number} was scanned; text came from OCR and may contain errors.")
                             else:
@@ -1181,7 +1192,8 @@ def get_page_image(resource_id: uuid.UUID, page: int):
             with pymupdf.open(path) as document:
                 if page < 1 or page > len(document):
                     raise HTTPException(404, "Page not found")
-                png = document[page - 1].get_pixmap(dpi=140).tobytes("png")
+                target = document[page - 1]
+                png = target.get_pixmap(dpi=safe_dpi(target.rect, 140)).tobytes("png")
         except (pymupdf.FileDataError, pymupdf.EmptyFileError):
             raise HTTPException(422, "Invalid PDF")
         return Response(png, media_type="image/png")

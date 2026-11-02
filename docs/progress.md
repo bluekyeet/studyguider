@@ -1651,3 +1651,12 @@ Changes made in this round, and exactly what was and was not verified.
 
 - User noted real schedules are in the datasets, that dollar costs/budgets can be dropped, and that overnight lessons appear every morning.
 - `live_schedule_mark_check.py` (rollback-only): non-answers 0/15 on 4 of 4; schedule text as answer 15/15 on 2, 0/15 on 2 (marker reported no answer, inconclusive). Real student A/M/E exemplars are not in the data, so exemplar agreement remains unmeasured.
+
+## 3 Nov 2026: security review fixes
+
+From the pasted source review (not a penetration test):
+- Fixed (1) Android maths attribute injection: `KaTeX.escapeHtml` now escapes `"` and `'`; the maths WebView blocks network loads, link navigation and any non-asset request. Compile-time check added to `FormattingCheck.kt` (compiled, not executed). Verified on the emulator: lesson text and the λ formula still render.
+- Fixed (3) batch uploads: the size middleware covers `/resources/batch` (200 MiB), and the handler caps 50 files, 200 MiB read and 500 MiB expanded across the whole request. Test added.
+- Fixed (4) PDF rendering: `pages.safe_dpi` caps rasterisation at 25 megapixels and refuses pages over 200 inches; used for page images, diagram clips and OCR. Test added. Page-count and render-time limits and process isolation are not added.
+- Not changed: (2) login lockout is global by design for one user; the API is bound to 127.0.0.1 only. (5) Debug builds allow cleartext for the emulator; a release build with HTTPS is not set up. (6) Cookie `Secure` depends on the proxy; not inspected.
+- Seen on the emulator: the Explain button overlaps "Next section" on practice sections.

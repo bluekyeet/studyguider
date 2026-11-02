@@ -28,3 +28,14 @@ def test_member_name_rejects_traversal():
         with pytest.raises(HTTPException) as raised:
             _safe_member_name(name)
         assert raised.value.status_code == 400
+
+
+def test_batch_requests_are_bounded_before_and_after_parsing():
+    from fastapi.testclient import TestClient
+    import app as study_app
+
+    client = TestClient(study_app.app)
+    # The early size check now covers the batch route, which previously bypassed it.
+    assert client.post("/topics/1/resources/batch", headers={"content-length": str(study_app.MAX_BATCH_BYTES + 70000)}).status_code == 413
+    assert client.post("/topics/1/resources/batch").status_code in (411, 401, 422)
+    assert study_app.MAX_BATCH_FILES == 50 and study_app.MAX_BATCH_EXPANDED == 500 * 1024 * 1024
