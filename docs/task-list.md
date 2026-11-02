@@ -105,7 +105,9 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Run exam deletion/cascade and two-client/network-failure acceptance checks using disposable attempts.
   - [x] Real PostgreSQL rollback-only deletion: cascades items/scans/marks/overrides,
     preserves question/resource/review snapshot; repeated deletion returns 404.
-  - [ ] Two-client and network-failure workflows.
+  - [x] Sequential stale-client route checks with PostgreSQL: old answer revision and
+    replaced scan rejected with 409; newer data preserved; checked replacement confirms.
+  - [ ] Concurrent independent clients, lost HTTP response and Android draft recovery.
 - [x] Add an optional timer (Android implementation; does not lock or submit answers).
 - [ ] Acquire missing 2025 papers if the user supplies them; never commit them.
 

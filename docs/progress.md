@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Extended rollback-only PostgreSQL acceptance script with actual exam answer
+  route calls: first revision-0 save succeeds; second client's revision-0 save
+  returns 409 and preserves new answer/revision. After scan replacement, old scan
+  revision returns 409 without confirming replacement; checked scan revision-2
+  save succeeds, increments answer revision and confirms scan. Full script PASS
+  including learning flow and deletion checks; synthetic transaction rolled back.
+  Sequential stale-client checks, NOT concurrent sockets or network-loss/draft
+  recovery tests. No production changes/deploy/install, emulator untouched.
+
 - Extended existing rollback-only learning-cycle check with populated attempt
   deletion through the actual exam route. Live PostgreSQL PASS: items, scan bytes,
   markings and overrides cascade; bank question, resource and review snapshot

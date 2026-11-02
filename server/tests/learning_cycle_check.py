@@ -11,7 +11,7 @@ from app import connect
 from lessons import LessonGeneration, lesson_router
 from marking import queue_exam_review
 from reviews import ReviewAnswer, review_router
-from exams import exam_router
+from exams import ExamAnswer, exam_router
 from fastapi import HTTPException
 
 
@@ -78,6 +78,27 @@ try:
     db.execute("""INSERT INTO marking_overrides(exam_id,question_id,outcome,note)
         VALUES (%s,%s,'not_achieved','Synthetic override')""", (exam, question))
     router = exam_router(transaction_connection, lambda: None)
+    save = next(route.endpoint for route in router.routes if route.path == '/exams/{exam_id}/answers/{question_id}' and 'PUT' in route.methods)
+    assert save(exam, question, ExamAnswer(answer='Client A answer', revision=0, scan_revision=1))['revision'] == 1
+    # Savepoints model request transaction rollback after expected HTTP conflicts.
+    def conflict(body):
+        db.execute('SAVEPOINT expected_conflict')
+        try:
+            save(exam, question, body)
+            raise AssertionError('Stale client must not save')
+        except HTTPException as exc:
+            assert exc.status_code == 409
+        finally:
+            db.execute('ROLLBACK TO SAVEPOINT expected_conflict')
+            db.execute('RELEASE SAVEPOINT expected_conflict')
+    conflict(ExamAnswer(answer='Client B stale answer', revision=0, scan_revision=1))
+    assert db.execute('SELECT answer,answer_revision FROM exam_items WHERE exam_id=%s AND question_id=%s', (exam, question)).fetchone() == ('Client A answer', 1)
+    db.execute("UPDATE exam_answer_scans SET revision=2, confirmed=false, transcription='Replacement scan' WHERE exam_id=%s AND question_id=%s", (exam, question))
+    conflict(ExamAnswer(answer='Old transcription', revision=1, scan_revision=1))
+    assert db.execute('SELECT confirmed FROM exam_answer_scans WHERE exam_id=%s AND question_id=%s', (exam, question)).fetchone()[0] is False
+    assert save(exam, question, ExamAnswer(answer='Checked replacement scan', revision=1, scan_revision=2))['revision'] == 2
+    assert db.execute('SELECT confirmed FROM exam_answer_scans WHERE exam_id=%s AND question_id=%s', (exam, question)).fetchone()[0] is True
+    print('PASS: stale answer/scan clients rejected with 409; newer answer preserved; checked replacement saves and confirms')
     delete = next(route.endpoint for route in router.routes if route.path == '/exams/{exam_id}' and 'DELETE' in route.methods)
     assert delete(exam).status_code == 204
     for table in ('exam_items', 'exam_answer_scans', 'markings', 'marking_overrides'):
