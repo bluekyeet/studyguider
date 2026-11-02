@@ -49,6 +49,9 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Verify ingestion, counts and deduplication through Android and web for all six standards.
 - [ ] Check extracted content against original documents, including slides and scanned pages.
 - [ ] Spot-check subject/standard tags on ten chunks and ten questions per standard.
+  - [x] Read-only metadata audit of 120 records: topic/resource ownership,
+    standard tags and recognised paper/schedule filename/year pairs consistent.
+  - [ ] Check content against originals; timestamps are not human-review evidence.
 - [ ] Verify Physics/Chemistry retrieval isolation and multi-standard source selection.
 
 ## Lessons and Explain

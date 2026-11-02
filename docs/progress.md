@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Read-only six-standard resource_audit.py passed: ten chunks and ten real-paper
+  question rows per standard (120 records), no sampled topic/resource ownership,
+  standard or recognised filename/year mismatches. Registered real questions by
+  91170/91171/91173/91164/91165/91166: 40/39/42/36/39/39, latest year 2024 for all.
+  Three rows per standard have verified_at populated; this is a database fact,
+  NOT proof of human review or grounds for marking originals checked. No content
+  text printed, no data writes, no gateway calls. Original accuracy/tag relevance
+  and human review tasks remain open. No deploy/Android/emulator changes.
+
 - Added one bounded visual-review output retry on same image for malformed JSON/
   invalid schema in generation and saved-image re-review. Gateway exceptions not
   retried; strict boolean pass + empty string issue list still required. 169 tests
