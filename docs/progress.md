@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Reported diagram defects: pre-render SVG text validation now rejects raw dollar/
+  common TeX labels; generator explicitly uses plain/SVG labels, focused concept,
+  1000x750 viewBox, readable text and outer padding. Reviewer asks to reject clipping,
+  overlaps and incorrect graph relationships. Web diagram list flex layout keeps
+  image and title/status separate. Existing stored images not rewritten or approved.
+  204 server tests passed, six warnings/six subtests; manager route/syntax passed;
+  API rebuilt/deployed. Live diagram probe still failed acceptance with clipped
+  equilibrium label, correctly flagged; temporary rows/images cleaned. Checklist
+  reviewed; incomplete device/science/feature items retained, no blanket completion.
+
 - Explorer toolbar consistency: New subject/topic actions moved out of faux folder
   tiles into top-right header, same placement/shape as Upload. Sidebar now exposes
   current subject topics and topic section/category shortcuts, including Settings

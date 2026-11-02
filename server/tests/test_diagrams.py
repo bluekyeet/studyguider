@@ -59,6 +59,12 @@ def test_safe_svg_is_kept_verbatim():
     assert _sanitise(SAFE) == SAFE
 
 
+@pytest.mark.parametrize('label', [r'Energy ($E_a$)', r'\frac{1}{2}', r'\text{energy}'])
+def test_raw_latex_labels_are_rejected_before_rendering(label):
+    with pytest.raises(ValueError, match='cannot render LaTeX'):
+        _sanitise(SAFE.replace('Force', label))
+
+
 def test_fenced_svg_is_unwrapped():
     assert _sanitise("```svg\n" + SAFE + "\n```") == SAFE
 
