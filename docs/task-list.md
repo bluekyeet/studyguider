@@ -68,6 +68,8 @@ does not mean its end-to-end acceptance checks have passed.
     context, two normal stream completions and exact note save; synthetic records rolled back.
   - [ ] Android interaction and unsupported-example handling (live reply added an
     unprovided magnesium/acid example; transport success is not grounding verification).
+    - Tightened source-supported-example instructions; live rerun omitted that
+      experiment. Broad claim-level grounding is still not automatically verified.
 - [x] Make source inspection convenient without restoring inline citation clutter (reader Sources panel; saved filename/page/excerpts, runtime check pending).
 - [ ] Stream lesson generation safely without presenting unreviewed content as ready.
 - [ ] Evaluate validated structured lesson objects instead of relying on Markdown/model structure.

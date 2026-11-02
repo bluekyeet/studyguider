@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Explain grounding follow-up: prompts now explicitly prohibit new named substances,
+  experiments/measurements/givens absent from sources; omit unsupported examples,
+  label everyday analogies and never cite unsupported details. Focus instruction
+  also requests source-supported examples. 168 server tests passed (six warnings/
+  six subtests); API rebuilt/deployed. Real two-turn Explain acceptance rerun passed
+  and omitted earlier unsupported magnesium/acid experiment; replies stayed on
+  concentration/collision frequency and constant kinetic energy. This is one sample,
+  not claim-level grounding enforcement. Synthetic records rolled back, two real
+  usage entries retained. Emulator unchanged; Android interaction still untested.
+
 - Live Explain/follow-up acceptance probe passed server workflow: actual Explain
   route supplies synthetic section/source evidence, previous reply reaches second
   prompt, two real gateway streams finish with done, and actual create_note route

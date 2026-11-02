@@ -73,6 +73,8 @@ def test_explain_paragraph_includes_focus_in_payload():
     assert "current lesson section" in payload["instruction"]
     assert "do not mark" in payload["instruction"]
     assert "Only when explicitly marking" in captured[0][0]["content"]
+    assert "do not introduce new named substances" in captured[0][0]["content"]
+    assert "Never cite a source as support for details it does not contain" in captured[0][0]["content"]
 
 
 def test_explain_missing_lesson_returns_404():
