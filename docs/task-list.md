@@ -132,6 +132,9 @@ does not mean its end-to-end acceptance checks have passed.
     - [x] Three fresh wrong-answer marks (55 Hz) all 0/1 with missing feedback;
       repeated misses enqueue exactly one grounded review. Correct-answer rerun
       also stable 1/1. Partial/borderline/official exemplars still open.
+    - [x] Three fresh partial-answer marks (frequency correct, wavelength omitted)
+      all 1/2 with positive evidence and missing feedback; one review enqueued.
+      Generic achieved label is not official NCEA descriptor assessment.
 - [ ] Verify Android answer/schedule comparison and override workflow.
 - [x] Connect incorrect exam answers to the daily review queue (reuses question/rubric; skips uncertain, disputed, overridden or stale answers).
 - [ ] Validate historical cut-score layouts not supported by current extraction; do not guess missing boundaries.

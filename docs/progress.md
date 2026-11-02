@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Extended live marking probe with partial two-part answer and optional partial-
+  only execution to avoid rerunning prior gateway calls. Actual route/gateway
+  three fresh results all 1/2, correct frequency cited, omitted wavelength listed
+  as missing, one review enqueued. PASS; synthetic rows rolled back, usage retained.
+  Generic outcome achieved comes from percentage fallback, not official NCEA
+  descriptors. Real exemplar/borderline accuracy remains open. No production
+  change/deployment/Android/emulator activity.
+
 - Extended live uncached marking probe to wrong answer 55 Hz: three marks all
   0/1 not_achieved, populated missing criteria, no original zero-evidence 502.
   Correct-answer rerun three marks all 1/1 (generic excellence label remains

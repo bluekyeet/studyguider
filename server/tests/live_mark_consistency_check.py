@@ -38,7 +38,18 @@ try:
     db.execute("INSERT INTO exam_items(exam_id,question_id,position,answer) VALUES (%s,%s,1,'0.4 Hz')", (exam, question))
     router = marking_router(connection, lambda: None, model)
     mark = next(r.endpoint for r in router.routes if r.path == '/exams/{exam_id}/answers/{question_id}/feedback' and 'POST' in r.methods)
-    for answer, expected in [('0.4 Hz', 1), ('55 Hz', 0)]:
+    cases = [('0.4 Hz', 1, 1), ('55 Hz', 0, 1), ('(a) 0.4 Hz. (b) Not answered.', 1, 2)]
+    selected = os.environ.get('MARK_CHECK_CASE', 'all')
+    assert selected in ('all', 'partial'), 'MARK_CHECK_CASE must be all or partial'
+    for answer, expected, available in cases:
+        if selected == 'partial' and available != 2:
+            continue
+        if available == 2:
+            rubric = ('Award 1 mark for frequency 0.40 Hz (or 0.4 Hz) with units. '
+                      'Award 1 additional mark for wavelength 7.0 m (or 7 m) with units. '
+                      'An omitted part earns zero for that part. Maximum 2 marks.')
+            db.execute('UPDATE exam_questions SET marks=2,question_text=%s,schedule_text=%s WHERE id=%s',
+                ('Eight waves pass in twenty seconds at 2.8 m/s. (a) Calculate frequency with units. (b) Calculate wavelength with units.', rubric, question))
         db.execute('UPDATE exam_items SET answer=%s WHERE exam_id=%s AND question_id=%s', (answer, exam, question))
         results = []
         for attempt in range(3):
@@ -48,15 +59,15 @@ try:
             assert result['cached'] is False
             if expected:
                 assert result['evidence'], 'Positive mark must cite rubric'
-            else:
+            if expected < available:
                 assert result['missing'], 'Incorrect answer needs missing-criterion feedback'
             results.append((result['marks_awarded'], result['marks_available'], result['outcome']))
             print('FRESH_MARK', answer, attempt + 1, results[-1], flush=True)
-        assert len(set(results)) == 1 and results[0][:2] == (expected, 1), results
-    assert calls.count('exam-mark') >= 6, calls
+        assert len(set(results)) == 1 and results[0][:2] == (expected, available), results
+    assert calls.count('exam-mark') >= (3 if selected == 'partial' else 9), calls
     count = db.execute('SELECT count(*) FROM review_questions WHERE exam_origin=%s', (f'{exam}:{question}',)).fetchone()[0]
     assert count == 1, 'Wrong-answer repeats must enqueue exactly one review'
-    print('PASS: fresh correct/wrong marks agree, zero-mark feedback works, wrong answer queued once; not official NZQA accuracy or proof gateway has no upstream cache')
+    print('PASS: selected fresh marks agree and missed criteria enqueue once; not official NZQA accuracy or proof gateway has no upstream cache')
 finally:
     db.rollback()
     db.close()
