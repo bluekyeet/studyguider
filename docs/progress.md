@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added gateway recovery fault-injection checks (no real service outage): urllib
+  connection refused -> explicit 502; restored fake transport -> same payload
+  succeeds, caller messages unchanged, usage logs error then ok. Reviewer outage
+  returns exact original draft with unavailable status; later review retries
+  without data loss. 171 server tests passed, six warnings/six subtests. These
+  are transport/reviewer unit checks, NOT real gateway restart or Android draft
+  recovery acceptance. No production change/deployment/model calls/emulator use.
+
 - Read-only six-standard resource_audit.py passed: ten chunks and ten real-paper
   question rows per standard (120 records), no sampled topic/resource ownership,
   standard or recognised filename/year mismatches. Registered real questions by

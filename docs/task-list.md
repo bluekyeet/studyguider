@@ -182,7 +182,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 169 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 171 passed, six warnings, six subtests passed.
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.
@@ -191,5 +191,9 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Live teacher/reviewer correction loop on synthetic frequency lesson: initial
     error rejected, two rewrites, final pass, corrected 0.40 Hz and valid KaTeX.
 - [ ] Stop/restore the gateway and verify recovery without losing learner work.
+  - [x] Fault-injected connection outage returns 502; restored connection accepts
+    identical request unchanged, records error then success. Reviewer outage keeps
+    exact draft unavailable; retry can pass it. Real gateway never interrupted.
+  - [ ] Actual outage plus Android draft/network-response recovery.
 - [ ] Validate both gateway aliases under the coding-prompt override and verify genuinely different underlying reviewers where required.
 - [ ] Record exact check results and remaining blockers in `docs/progress.md`; do not label untested behaviour verified.
