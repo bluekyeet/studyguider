@@ -361,7 +361,10 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                         }
                         }
                     }
-                    feedback[id]?.let { result -> FeedbackCard(result) }
+                    feedback[id]?.let { result ->
+                        FeedbackCard(result)
+                        ExamOverride(base, token, examId, id, result.optJSONObject("override"))
+                    }
                 }
             }
             if (page == questions.length() && answerMode == "handwritten") StudyCard(tone = CardTone.Container) {
@@ -396,6 +399,51 @@ private fun InlineExamDiagrams(base: String, token: String, resource: String, pa
 }
 
 @Composable
+internal fun ExamOverride(base: String, token: String, examId: Long, questionId: Long, savedOverride: JSONObject?) {
+    var outcome by rememberSaveable(base, examId, questionId) { mutableStateOf(savedOverride?.optString("outcome") ?: "uncertain") }
+    var note by rememberSaveable(base, examId, questionId) { mutableStateOf(savedOverride?.optString("note").orEmpty()) }
+    var expanded by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    TextButton(onClick = { expanded = !expanded }) { Text("Your judgement / override") }
+    if (expanded) StudyCard(tone = CardTone.Low) {
+        Text("Your judgement is saved separately. It does not change the AI mark or official-schedule result.", style = MaterialTheme.typography.bodySmall)
+        Box {
+            OutlinedButton(enabled = !saving, onClick = { menu = true }) { Text(outcome.replace('_', ' ')) }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                listOf("not_achieved", "achieved", "merit", "excellence", "uncertain").forEach { value ->
+                    DropdownMenuItem(text = { Text(value.replace('_', ' ')) }, onClick = { outcome = value; menu = false; notice = "" })
+                }
+            }
+        }
+        OutlinedTextField(note, { note = it; notice = "" }, enabled = !saving, label = { Text("Reason for your judgement") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+        TextButton(enabled = !saving && note.isNotBlank() && note.length <= 2000, onClick = {
+            scope.launch {
+                saving = true; notice = ""
+                try {
+                    withContext(Dispatchers.IO) {
+                        val c = URL(base.trimEnd('/') + "/exams/$examId/answers/$questionId/override").openConnection() as HttpURLConnection
+                        try {
+                            c.connectTimeout = 10000; c.readTimeout = 20000; c.requestMethod = "PUT"; c.doOutput = true
+                            c.setRequestProperty("Authorization", "Bearer $token"); c.setRequestProperty("Content-Type", "application/json")
+                            c.outputStream.use { it.write(JSONObject().put("outcome", outcome).put("note", note).toString().toByteArray(Charsets.UTF_8)) }
+                            val status = c.responseCode
+                            check(status in 200..299) { "Override save failed ($status). Your note is retained." }
+                        } finally { c.disconnect() }
+                    }
+                    notice = "Your judgement saved separately from the AI mark."
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { notice = e.message ?: "Could not save your judgement; your note is retained." }
+                finally { saving = false }
+            }
+        }) { Text(if (saving) "Saving…" else "Save your judgement") }
+        if (notice.isNotEmpty()) Text(notice, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
 private fun FeedbackCard(result: JSONObject) {
     val colours = LocalStudyColours.current
     val outcome = result.optString("outcome").replace('_', ' ')
@@ -412,6 +460,10 @@ private fun FeedbackCard(result: JSONObject) {
         }
         Text(result.optString("disclaimer"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (result.has("marks_awarded")) Text("Suggested mark: ${result.optInt("marks_awarded")} — not a grade", style = MaterialTheme.typography.labelMedium)
+        result.optJSONObject("override")?.let { saved ->
+            Text("Your saved judgement: ${saved.optString("outcome").replace('_', ' ')}", style = MaterialTheme.typography.labelMedium)
+            Text(saved.optString("note"), style = MaterialTheme.typography.bodySmall)
+        }
         MathText(result.optString("feedback"))
         val evidence = result.optJSONArray("evidence")
         if (evidence != null) for (j in 0 until evidence.length()) {

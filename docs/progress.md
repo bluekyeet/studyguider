@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added missing Android saved override controls beneath current feedback: outcome
+  dropdown, required reason and explicit statement that AI/schedule result stays
+  unchanged. Uses existing PUT endpoint; failure retains local note, success says
+  saved separately. Existing feedback override shown and prefilled when supplied.
+  Debug/test APK builds passed; ExamOverrideTest compiled (reason required and
+  advisory separation), not run because emulator remains off. No server change,
+  deployment or APK install; full save/reload/source comparison still unchecked.
+
 - Wired existing image-cookie auth, collated selection and non-root font-cache
   checks into CI (no paid live gateway probes). Explicit compose.yaml build avoids
   ambiguous alternate Compose filenames. All three checks rerun locally PASS;

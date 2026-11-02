@@ -144,6 +144,9 @@ does not mean its end-to-end acceptance checks have passed.
       all 1/2 with positive evidence and missing feedback; one review enqueued.
       Generic achieved label is not official NCEA descriptor assessment.
 - [ ] Verify Android answer/schedule comparison and override workflow.
+  - [x] Added Android Your judgement / override control with outcome dropdown,
+    required reason, retained draft on failure and explicit separation from AI marks.
+  - [ ] Runtime save/reload and source comparison checks; UI test compiled only.
 - [x] Connect incorrect exam answers to the daily review queue (reuses question/rubric; skips uncertain, disputed, overridden or stale answers).
 - [ ] Validate historical cut-score layouts not supported by current extraction; do not guess missing boundaries.
 - [ ] Validate real handwritten answers and diagrams, including scan replacement/conflicts.
