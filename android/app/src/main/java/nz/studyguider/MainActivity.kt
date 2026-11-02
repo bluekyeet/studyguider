@@ -302,7 +302,7 @@ private fun StudyApp() {
                 val subject = list.getJSONObject(i)
                 val name = subject.optString("name")
                 val topicsForSubject = JSONArray(request(base, "/subjects/${subject.getLong("id")}/topics", token))
-                for (j in 0 until topicsForSubject.length()) found.add(name to topicsForSubject.getJSONObject(j))
+                for (j in 0 until topicsForSubject.length()) found.add(name to topicsForSubject.getJSONObject(j).apply { put("subject_level", subject.getInt("level")); put("subject_id", subject.getLong("id")) })
             }
             allTopics = found
         } catch (e: CancellationException) { throw e }
@@ -608,7 +608,15 @@ private fun TopicPickerSheet(
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text("Loading topics…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            allTopics.groupBy({ it.first }, { it.second }).forEach { (subject, list) ->
+            var shownLevel: Int? = null
+            allTopics.sortedWith(compareBy<Pair<String, JSONObject>> { it.second.optInt("subject_level") }.thenBy { it.first.lowercase() })
+                .groupBy { Triple(it.second.optInt("subject_level"), it.second.optLong("subject_id"), it.first) }.forEach { (group, entries) ->
+                val (level, _, subject) = group
+                if (shownLevel != level) {
+                    Text("Level $level", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                    shownLevel = level
+                }
+                val list = entries.map { it.second }
                 Text(subject, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
                 list.forEach { topic ->
                     val id = topic.getLong("id")
@@ -1300,9 +1308,9 @@ private fun SettingsSheet(
     androidx.compose.ui.window.Dialog(onDismissRequest = { if (page.isNotEmpty()) page = "" else onDismiss() }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { if (page.isNotEmpty()) page = "" else onDismiss() }) { Text("‹ Back") }
-                Text(page.ifEmpty { "Settings" }, style = MaterialTheme.typography.titleLarge)
+            Box(Modifier.fillMaxWidth().heightIn(min = 64.dp), contentAlignment = Alignment.Center) {
+                TextButton(modifier = Modifier.align(Alignment.CenterStart), onClick = { if (page.isNotEmpty()) page = "" else onDismiss() }) { Text("‹ Back") }
+                Text(page.ifEmpty { "Settings" }, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 72.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             if (page.isEmpty()) {
                 Text("App", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 8.dp, start = 16.dp))
@@ -1370,8 +1378,14 @@ private fun ResourceHub(
                 Text("Resource Hub", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                 Text("Choose a subject to explore its topics and resources.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (subjects.length() == 0) StudyCard(tone = CardTone.Low) { Text("No subjects yet. Add one below to get started.") }
-                for (i in 0 until subjects.length()) {
-                    val subject = subjects.getJSONObject(i)
+                var shownLevel: Int? = null
+                val sortedSubjects = (0 until subjects.length()).map { subjects.getJSONObject(it) }
+                    .sortedWith(compareBy<JSONObject> { it.getInt("level") }.thenBy { it.getString("name").lowercase() })
+                for (subject in sortedSubjects) {
+                    if (shownLevel != subject.getInt("level")) {
+                        Text("Level ${subject.getInt("level")}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                        shownLevel = subject.getInt("level")
+                    }
                     Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container, modifier = Modifier.fillMaxWidth().clickable(enabled = !busy, onClickLabel = "Open ${subject.getString("name")}") { onOpenSubject(subject.getLong("id"), subject.getString("name")) }) {
                         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("NCEA LEVEL ${subject.getInt("level")}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)

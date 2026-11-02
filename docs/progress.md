@@ -8,6 +8,19 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Centred Settings/Account/Appearance & library/About dialog titles independently
+  of left Back action. Removed legacy manual lesson search/generate form from topic
+  reader navigation; topic view now shows saved lessons or an enrolment hint.
+  Backend generation and daily workflow unchanged. Includes prior requested level
+  grouping in picker/Resource Hub. Debug build passed, normal emulator install
+  Success; no instrumentation tests, UI verification left to user.
+
+- User-requested level grouping added to Topics you're learning picker and Resource
+  Hub: ascending level headings then alphabetical subjects. Picker carries subject
+  level/ID metadata, preventing same-named subjects at different levels merging.
+  Debug build passed; normal emulator APK install Success. No connected tests run;
+  visual/multiple-level interaction verification pending.
+
 - User clarified: normal APK build/install allowed; no connected tests against the
   installed study app (explicit permission or isolated app ID needed). Reader Sources centring corrected using equal-
   weight left/right header slots instead of unequal SpaceBetween siblings. No

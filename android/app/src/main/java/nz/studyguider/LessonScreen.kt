@@ -175,7 +175,6 @@ fun LessonScreen(
     onExit: () -> Unit = {},
     onPendingChange: (Boolean) -> Unit = {},
 ) {
-    var query by remember(base, token, topicId) { mutableStateOf("") }
     var result by remember(base, token, topicId) { mutableStateOf<JSONObject?>(null) }
     var error by remember(base, token, topicId) { mutableStateOf("") }
     var busy by remember(base, token, topicId) { mutableStateOf(false) }
@@ -215,25 +214,10 @@ fun LessonScreen(
         if (lessonId > 0 && result == null) {
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error) else LinearProgressIndicator(Modifier.fillMaxWidth())
         } else {
-        result?.let { draft -> LessonArticle(base, token, draft, onExit, onPendingChange) } ?: LessonEmptyState(
-            query = query,
-            onQueryChange = { query = it },
-            busy = busy,
-            error = error,
-            canGenerate = !busy && !historyLoading && query.isNotBlank() && query.length <= 200 && topicId > 0,
-            onGenerate = {
-                val submitted = query.trim()
-                scope.launch {
-                    busy = true; error = ""
-                    try {
-                        val draft = requestLesson(base, token, topicId, submitted)
-                        result = draft
-                        history = listOf(draft) + history
-                    } catch (e: Exception) { error = e.message ?: "Request failed" }
-                    finally { busy = false }
-                }
-            },
-        )
+        result?.let { draft -> LessonArticle(base, token, draft, onExit, onPendingChange) }
+        if (result == null && !historyLoading && history.isEmpty() && historyError.isEmpty()) {
+            Text("No saved lessons for this topic yet. Choose it in Learning to include it in your daily lessons.", style = MaterialTheme.typography.bodyMedium)
+        }
         if (lessonId == 0L) result?.let { draft -> SourcesCard(draft, citedResourceIds(draft)) { deleteId = draft.getLong("id") } }
         if (error.isNotEmpty() && result != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         if (lessonId == 0L) SavedLessons(
