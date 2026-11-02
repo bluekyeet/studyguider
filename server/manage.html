@@ -176,7 +176,7 @@
           <div class="section-heading"><span class="section-number">04</span><h2 id="resources-heading">Resources</h2></div>
           <p class="hint">Upload files to the selected topic and extract their text for searching.</p>
           <form id="upload"><label for="file">Files or ZIP (maximum 50 MiB per upload)</label><input id="file" type="file" multiple accept=".zip,.pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.png,.jpg,.jpeg" required>
-            <label for="resource-category">Category</label><select id="resource-category"><option value="exam_paper">Exam paper</option><option value="exam_answers">Exam answers or schedule</option><option value="slides">Slides</option><option value="extra" selected>Extra resource</option></select>
+            <details><summary>Classification override (optional)</summary><label for="resource-category">Category</label><select id="resource-category"><option value="auto" selected>Detect automatically</option><option value="exam_paper">Exam paper</option><option value="exam_answers">Exam answers or schedule</option><option value="slides">Slides</option><option value="extra">Extra resource</option></select></details>
             <button>Upload</button></form>
           <p class="hint">Files are deduplicated by content. Status: Queued, Processing, Ready, Needs attention. The same file from the app or this page appears once.</p>
           <label for="resource-filter">Filter files</label><input id="resource-filter" type="search" placeholder="Search filenames or status">

@@ -8,6 +8,17 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- User requested automatic resource categories: new uploads default auto in web/
+  Android/API; optional web classification override collapsed. Extraction resolves
+  known NZQA exm/ass filenames and PPTX locally; ambiguous files use bounded
+  extracted excerpt with education-reviewer, strict category allowlist, conservative
+  extra fallback on invalid/gateway failure. Existing explicit categories unchanged;
+  no retroactive reclassification. Classification currently runs in extraction
+  transaction; unavailable AI leaves extra rather than failing stored resource.
+  200 tests passed, six warnings/six subtests; API rebuilt/deployed, Android debug
+  build and normal emulator install Success. No connected tests; live classifier
+  accuracy and full upload workflow not verified. Does not imply human approval.
+
 - Added shared tap-to-enlarge image dialog for authenticated exam/lesson images
   and source PDF pages: pinch zoom (1–8x), bounded pan, zoom buttons, reset/close.
   Resource viewer now recognises JPEG/PNG originals as well as PDFs, with bounded

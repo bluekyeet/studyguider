@@ -133,7 +133,7 @@ private suspend fun upload(context: android.content.Context, base: String, token
  * Uploads one file or several at once. Several files are wrapped in a zip on
  * the device and sent to the batch endpoint, so one request covers the lot.
  */
-private suspend fun uploadMany(context: android.content.Context, base: String, token: String, topic: Long, uris: List<Uri>, category: String = "extra"): String = withContext(Dispatchers.IO) {
+private suspend fun uploadMany(context: android.content.Context, base: String, token: String, topic: Long, uris: List<Uri>, category: String = "auto"): String = withContext(Dispatchers.IO) {
     fun read(uri: Uri): Triple<String, ByteArray, String?> {
         val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (!it.moveToFirst()) throw IllegalStateException("Cannot read file details")
