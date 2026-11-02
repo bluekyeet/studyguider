@@ -4,6 +4,15 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
 
 from scheduler import run_due, scheduler_router
+from lessons import LessonGeneration
+
+
+def test_scheduled_ownership_cannot_be_supplied_by_request_json():
+    body = LessonGeneration.model_validate({"query": "algebra", "_schedule_run": [1, "2026-01-01"],
+                                           "_schedule_persisted": True})
+    assert body._schedule_run is None and body._schedule_persisted is False
+    assert body.model_dump() == {"query": "algebra"}
+    assert set(LessonGeneration.model_json_schema()["properties"]) == {"query"}
 
 
 def test_run_history_includes_actual_lesson_review_status():
@@ -54,6 +63,8 @@ class Database:
         else:
             value, topic, day = params
             run = self.runs[topic, day]
+            if "AND status = 'running'" in sql and (run['status'] != 'running' or run.get('lesson_id') is not None):
+                return self
             if "'failed'" in sql:
                 run.update(status="failed", error=value)
             else:
@@ -104,6 +115,26 @@ def test_auckland_daylight_saving_uses_local_date_and_hour():
         db = NZDatabase()
         run_due(lambda: db, lambda topic, body: {"id": 1}, instant)
         assert db.runs[1, instant.date().replace(day=2)]["status"] == "completed"
+
+
+def test_unknown_outcomes_are_not_retried_and_completed_runs_are_not_downgraded():
+    db = Database()
+    due = datetime(2026, 1, 1, 2, tzinfo=timezone.utc)
+    db.runs[2, due.date()] = {"status": "running", "query": "geometry"}
+    calls = []
+
+    def generate(topic, body):
+        assert body._schedule_run == (topic, due.date())
+        calls.append(topic)
+        # Model the DB accepting persistence but the caller losing the response.
+        db.runs[body._schedule_run].update(status='completed', lesson_id=42)
+        raise RuntimeError('commit acknowledgement lost')
+
+    run_due(lambda: db, generate, due)
+    run_due(lambda: db, generate, due)
+    assert calls == [1]
+    assert db.runs[1, due.date()] == {"status": "completed", "query": "algebra", "lesson_id": 42}
+    assert db.runs[2, due.date()]["status"] == 'running'
 
 
 def test_schedule_endpoints():

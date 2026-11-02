@@ -121,8 +121,11 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Reviewed current claims/lifecycle and documented contract in
     `docs/job-recovery.md`: no queue rewrite justified yet; unlinked saved lesson/
     scheduled run boundary and manual idempotency remain concrete risks.
-  - [ ] Atomically persist/link scheduled lessons, test ambiguous crash outcomes
-    and concurrent claims; never automatically retry unknown outcomes.
+  - [x] Atomically persist/link newly scheduled lessons using private run identity;
+    simulated insert/link failures roll back, lost-result paths preserve completed
+    linkage and do not repeat provider calls. Old ambiguous runs never auto-retried.
+  - [ ] Real concurrent claims/process termination/commit-loss checks; manual
+    request idempotency and legacy unlinked-run reconciliation remain open.
 - [ ] Run Android nightly-status UI checks after the emulator is available.
 
 ## Exams and marking

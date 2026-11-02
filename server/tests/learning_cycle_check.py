@@ -8,6 +8,7 @@ import uuid
 import app as application
 from datetime import datetime, timezone
 from contextlib import contextmanager
+from zoneinfo import ZoneInfo
 
 from app import connect
 from lessons import LessonGeneration, lesson_router
@@ -29,6 +30,23 @@ def transaction_connection():
 
 def endpoint(router, path):
     return next(route.endpoint for route in router.routes if route.path == path and "POST" in route.methods)
+
+
+def draft(explanation, questions):
+    return (f"## Learning goal\n{explanation}\n\n## Prior knowledge check\nRecall the meaning of the quantities.\n\n"
+            f"## Explanation\n{explanation}\n\n## Worked Example\n{explanation}\n\n" +
+            '\n\n'.join(f'### Your Turn {i}\n{question}' for i, question in enumerate(questions, 1)) +
+            f"\n\n## Common mistakes\nCheck the units carefully.\n\n## Summary\n{explanation}")
+
+
+frequency_draft = draft('Frequency is waves divided by time. Review the previous frequency mistake.', [
+    'Eight waves pass in 20 seconds. Calculate the frequency in Hz. Relevant formulae: $f=N/t$, where $f$ is frequency in Hz, $N$ is wave count and $t$ is time in seconds.',
+    'Explain what frequency measures for a repeating wave.',
+    'Explain why a wave count alone is insufficient to calculate frequency.'])
+chemistry_draft = draft('At fixed temperature, concentration changes collision frequency, not average kinetic energy.', [
+    'Explain how increasing concentration affects collision frequency at fixed temperature.',
+    'Explain whether increasing concentration at fixed temperature changes average kinetic energy.',
+    'Explain why collision frequency and average kinetic energy are different quantities.'])
 
 
 try:
@@ -85,7 +103,7 @@ try:
             assert any(item['concept'] == 'Frequency' for item in payload['review_focus'])
             assert payload['evidence']['sources'][0]['resource_id'] == str(resource)
             assert payload['learner_strengths'] == [{'concept': 'Frequency units', 'correct_answers': 3}]
-            return 'Frequency is waves divided by time. Review the previous frequency mistake.'
+            return frequency_draft
         if task == 'lesson-review':
             return '{"pass":true,"issues":[]}'
         raise AssertionError(task)
@@ -119,7 +137,7 @@ try:
             assert payload['learner_strengths'] == []
             assert payload['evidence']['sources'][0]['resource_id'] == str(chemistry_resource)
             assert [item['number'] for item in payload['evidence']['standards']] == [91166]
-            return 'At fixed temperature, concentration changes collision frequency, not average kinetic energy.'
+            return chemistry_draft
         assert task == 'lesson-review'
         assert payload['evidence']['sources'][0]['resource_id'] == str(chemistry_resource)
         return '{"pass":true,"issues":[]}'
@@ -147,7 +165,7 @@ try:
             payload = json.loads(messages[-1]['content'])
             assert payload['learner_strengths'] == []
             strength_checked.append(True)
-            return 'Review frequency units: frequency is measured in Hz.'
+            return frequency_draft
         return '{"pass":true,"issues":[]}'
 
     exclusion_router = lesson_router(transaction_connection, lambda: None, recently_wrong_model,
@@ -187,6 +205,67 @@ try:
     assert all(str(run[1]) == '2026-11-03' and run[2] == 'completed' for run in runs)
     assert {run[0]: run[3] for run in runs} == {topic: generated['id'], chemistry_topic: chemistry['id']}
     print('PASS: actual scheduler waits until Auckland 02:00, records next local date, links both subjects correctly and does not duplicate claims')
+    # Each route connection gets a savepoint so persistence faults roll back just
+    # that route, while all synthetic state remains in the outer rollback-only DB.
+    for fault in ('none', 'before_link', 'commit_ack_lost', 'response_lost', 'provider_lost', 'claim_only'):
+        db.execute('DELETE FROM lesson_schedule_runs')
+        db.execute('UPDATE lesson_schedules SET enabled=(topic_id=%s)', (topic,))
+        before = db.execute('SELECT count(*) FROM lessons WHERE topic_id=%s', (topic,)).fetchone()[0]
+        calls = []
+
+        class FaultDatabase:
+            def execute(self, sql, params=()):
+                if fault == 'before_link' and "SET status = 'completed'" in sql:
+                    raise RuntimeError('Injected failure after lesson insert, before linkage')
+                return db.execute(sql, params)
+
+        @contextmanager
+        def route_connection():
+            db.execute('SAVEPOINT scheduled_route')
+            try:
+                yield FaultDatabase()
+            except BaseException:
+                db.execute('ROLLBACK TO SAVEPOINT scheduled_route')
+                raise
+            finally:
+                db.execute('RELEASE SAVEPOINT scheduled_route')
+            if fault == 'commit_ack_lost' and db.execute('SELECT status FROM lesson_schedule_runs WHERE topic_id=%s', (topic,)).fetchone()[0] == 'completed':
+                # Simulate a commit accepted by the DB with its acknowledgement
+                # lost to the caller; the outer transaction still rolls back.
+                raise RuntimeError('Persistence commit acknowledgement lost')
+
+        def fault_model(name, messages, task):
+            if task == 'lesson-generate':
+                calls.append(task)
+                if fault == 'provider_lost':
+                    raise RuntimeError('Provider response outcome unknown')
+                return frequency_draft
+            assert task == 'lesson-review'
+            return '{"pass":true,"issues":[]}'
+
+        fault_router = lesson_router(route_connection, lambda: None, fault_model,
+            lambda *args: [{"resource_id": str(resource), "filename": 'synthetic.txt', "page": 1, "content": rubric}],
+            lambda *args: [])
+
+        def fault_generate(topic_id, body):
+            saved = endpoint(fault_router, '/topics/{topic_id}/lessons')(topic_id, body)
+            if fault == 'response_lost':
+                raise RuntimeError('Persistence succeeded but response was lost')
+            return saved
+
+        if fault == 'claim_only':
+            db.execute("""INSERT INTO lesson_schedule_runs(topic_id,run_date,query,status)
+                VALUES (%s,%s,'Frequency','running')""", (topic, instant.astimezone(ZoneInfo('Pacific/Auckland')).date()))
+        run_due(transaction_connection, fault_generate, instant)
+        run_due(transaction_connection, fault_generate, instant)
+        state = db.execute('SELECT status,lesson_id FROM lesson_schedule_runs WHERE topic_id=%s', (topic,)).fetchone()
+        after = db.execute('SELECT count(*) FROM lessons WHERE topic_id=%s', (topic,)).fetchone()[0]
+        if fault in ('none', 'commit_ack_lost', 'response_lost'):
+            assert state[0] == 'completed' and state[1] is not None and after == before + 1, (fault, state)
+        else:
+            assert state == ('running' if fault == 'claim_only' else 'failed', None) and after == before, (fault, state)
+        assert len(calls) == (0 if fault == 'claim_only' else 1), (fault, calls)
+    print('PASS: real lesson insertion/run completion atomic; insert/link fault rolls back; lost persistence/provider responses and old running claims never trigger a second provider call')
     db.execute("""INSERT INTO exam_answer_scans(exam_id,question_id,image,transcription,confirmed)
         VALUES (%s,%s,%s,'55 Hz',true)""", (exam, question, b'synthetic image bytes'))
     db.execute("""INSERT INTO markings(exam_id,question_id,answer_hash,kind,result,model)

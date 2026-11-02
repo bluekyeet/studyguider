@@ -21,4 +21,19 @@ class SavedFeedbackTest {
         val stored = JSONObject("""{"marks":[{"kind":"first","marks_awarded":1,"outcome":"achieved"},{"kind":"second","marks_awarded":1,"outcome":"achieved"}]}""")
         assertTrue(!savedExamFeedback(stored).getBoolean("disagreement"))
     }
+
+    @Test fun matchingScoreDoesNotHideDifferentOutcomes() {
+        val stored = JSONObject("""{"marks":[{"kind":"first","marks_awarded":1,"outcome":"achieved"},{"kind":"second","marks_awarded":1,"outcome":"uncertain"}]}""")
+        assertTrue(savedExamFeedback(stored).getBoolean("disagreement"))
+    }
+
+    @Test fun explicitDisagreementIsNotOverwrittenByMatchingScores() {
+        val stored = JSONObject("""{"marks":[{"kind":"first","marks_awarded":1,"outcome":"achieved","disagreement":true},{"kind":"second","marks_awarded":1,"outcome":"achieved"}]}""")
+        assertTrue(savedExamFeedback(stored).getBoolean("disagreement"))
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun secondMarkAloneCannotMasqueradeAsFirstMark() {
+        savedExamFeedback(JSONObject("""{"marks":[{"kind":"second","marks_awarded":1}]}"""))
+    }
 }

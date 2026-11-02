@@ -108,19 +108,27 @@ def run_due(connect, generate, now=None):
                 (local.date(), topic_id, local.hour)).fetchone()
         if not claim:
             continue
+        body = LessonGeneration(query=claim[0])
+        body._schedule_run = (topic_id, local.date())
         try:
-            lesson = generate(topic_id, LessonGeneration(query=claim[0]))
+            lesson = generate(topic_id, body)
             lesson_id = lesson["id"]
         except Exception as exc:
             log.exception("Scheduled lesson failed for topic %s on %s", topic_id, local.date())
             with connect() as db:
                 db.execute("""UPDATE lesson_schedule_runs SET status = 'failed', error = %s,
-                    finished_at = now() WHERE topic_id = %s AND run_date = %s""",
+                    finished_at = now() WHERE topic_id = %s AND run_date = %s
+                    AND status = 'running' AND lesson_id IS NULL""",
                     (str(exc)[:2000] or type(exc).__name__, topic_id, local.date()))
             continue
+        if body._schedule_persisted:
+            continue
+        # ponytail: legacy callbacks may return an already-saved lesson; only the
+        # lesson route above guarantees atomic insertion/linkage for new lessons.
         with connect() as db:
             db.execute("""UPDATE lesson_schedule_runs SET status = 'completed', lesson_id = %s,
-                finished_at = now() WHERE topic_id = %s AND run_date = %s""",
+                finished_at = now() WHERE topic_id = %s AND run_date = %s
+                AND status = 'running' AND lesson_id IS NULL""",
                 (lesson_id, topic_id, local.date()))
 
 

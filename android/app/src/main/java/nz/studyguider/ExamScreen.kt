@@ -53,7 +53,7 @@ private val answerMapSaver = Saver<SnapshotStateMap<Long, String>, ArrayList<Str
 
 /** The host must guard its own navigation when [onDirtyChange] reports unsaved answers. */
 @Composable
-fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String, Int) -> Unit = { _, _ -> }, onDirtyChange: (Boolean) -> Unit = {}, onPageChange: () -> Unit = {}) {
+fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String, Int) -> Unit = { _, _ -> }, onDirtyChange: (Boolean) -> Unit = {}, onPageChange: () -> Unit = {}) = key(base, token, examId) {
     var exam by remember(base, token, examId) { mutableStateOf<JSONObject?>(null) }
     var error by remember(base, token, examId) { mutableStateOf("") }
     var busy by remember(base, token, examId) { mutableStateOf(false) }
@@ -119,6 +119,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                 }
                 if (id != null) { answers[id] = reply.getString("transcription"); scanRevisions[id] = reply.getInt("scan_revision").toString(); feedback.remove(id) }
                 else {
+                    feedback.clear()
                     val recognised = reply.getJSONArray("answers")
                     for (i in 0 until recognised.length()) {
                         val item = recognised.getJSONObject(i)
@@ -341,6 +342,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                         }
                         if (partAnswers.containsKey("diagram")) MathField(partAnswers["diagram"].orEmpty(), { value ->
                             partAnswers["diagram"] = value; answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
+                            feedback.remove(id)
                         }, label = "Check diagram recognition", enabled = !busy, minLines = 2)
                         if (answerMode == "handwritten" || parts.none { it.first.isNotEmpty() } || (answers[id].orEmpty().isNotBlank() && !answers[id].orEmpty().startsWith("{\"parts\":"))) MathField(answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, label = if (answerMode == "handwritten") "Check recognised answer" else "Your answer", enabled = !busy, minLines = 4, maxLines = 14, supportingText = "Maximum 100,000 characters")
                         if (answers[id] != saved[id]) Text("Unsaved changes", style = MaterialTheme.typography.labelSmall, color = colours.amber)
@@ -437,16 +439,18 @@ internal fun savedExamFeedback(stored: JSONObject): JSONObject {
         val second = (0 until marks.length()).map { marks.getJSONObject(it) }.firstOrNull { it.optString("kind") == "second" }
         if (second != null) {
             put("second_review", second)
-            put("disagreement", second.optInt("marks_awarded") != first.optInt("marks_awarded") || second.optString("outcome") != first.optString("outcome"))
+            put("disagreement", first.optBoolean("disagreement") || second.optInt("marks_awarded") != first.optInt("marks_awarded") || second.optString("outcome") != first.optString("outcome"))
         }
         if (!stored.isNull("override")) put("override", stored.getJSONObject("override"))
     }
 }
 
 @Composable
-internal fun ExamOverride(base: String, token: String, examId: Long, questionId: Long, savedOverride: JSONObject?) {
-    var outcome by rememberSaveable(base, examId, questionId) { mutableStateOf(savedOverride?.optString("outcome") ?: "uncertain") }
-    var note by rememberSaveable(base, examId, questionId) { mutableStateOf(savedOverride?.optString("note").orEmpty()) }
+internal fun ExamOverride(base: String, token: String, examId: Long, questionId: Long, savedOverride: JSONObject?) = key(base, token, examId, questionId) {
+    var outcome by rememberSaveable { mutableStateOf(savedOverride?.optString("outcome") ?: "uncertain") }
+    var note by rememberSaveable { mutableStateOf(savedOverride?.optString("note").orEmpty()) }
+    var savedOutcome by rememberSaveable { mutableStateOf(outcome) }
+    var savedNote by rememberSaveable { mutableStateOf(note) }
     var expanded by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
@@ -458,7 +462,10 @@ internal fun ExamOverride(base: String, token: String, examId: Long, questionId:
         if (!expanded || loaded) return@LaunchedEffect
         try {
             val stored = JSONObject(examRequest(base, token, "/exams/$examId/answers/$questionId/override")).optJSONObject("override")
-            if (stored != null) { outcome = stored.getString("outcome"); note = stored.getString("note") }
+            val hasDraft = outcome != savedOutcome || note != savedNote
+            savedOutcome = stored?.getString("outcome") ?: "uncertain"
+            savedNote = stored?.getString("note").orEmpty()
+            if (!hasDraft) { outcome = savedOutcome; note = savedNote }
             loaded = true; notice = ""
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { notice = e.message ?: "Could not load your saved judgement" }
@@ -490,6 +497,7 @@ internal fun ExamOverride(base: String, token: String, examId: Long, questionId:
                             check(status in 200..299) { "Override save failed ($status). Your note is retained." }
                         } finally { c.disconnect() }
                     }
+                    savedOutcome = outcome; savedNote = note
                     notice = "Your judgement saved separately from the AI mark."
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) { notice = e.message ?: "Could not save your judgement; your note is retained." }
@@ -523,10 +531,13 @@ private fun FeedbackCard(result: JSONObject) {
         }
         MathText(result.optString("feedback"))
         result.optJSONObject("second_review")?.let { second ->
+            val disagreement = result.optBoolean("disagreement") ||
+                second.optInt("marks_awarded") != result.optInt("marks_awarded") ||
+                second.optString("outcome") != result.optString("outcome")
             HorizontalDivider()
-            Text(if (result.optBoolean("disagreement")) "Markers disagree — check the original schedule" else "Second marker agrees on score and outcome",
+            Text(if (disagreement) "Markers disagree — check the original schedule" else "Second marker agrees on score and outcome",
                 style = MaterialTheme.typography.titleSmall,
-                color = if (result.optBoolean("disagreement")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                color = if (disagreement) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             Text("Second suggested mark: ${second.optInt("marks_awarded")} / ${second.optInt("marks_available")} · ${second.optString("outcome").replace('_', ' ')}", style = MaterialTheme.typography.labelMedium)
             MathText(second.optString("feedback"))
             Text("AI second review is advisory; different underlying providers are not verified.", style = MaterialTheme.typography.bodySmall)

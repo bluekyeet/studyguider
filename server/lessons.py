@@ -1,8 +1,9 @@
 """Persistent AI lesson drafts. Neither generation nor review verifies accuracy."""
 import json
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 from styles import style_for_topic
 
 
@@ -12,6 +13,9 @@ MAX_MODEL_TEXT = 100000
 
 class LessonGeneration(BaseModel):
     query: str = Field(min_length=1, max_length=200, pattern=r"\S")
+    # Internal only: request JSON cannot claim ownership of a scheduled run.
+    _schedule_run: tuple[int, date] | None = PrivateAttr(default=None)
+    _schedule_persisted: bool = PrivateAttr(default=False)
 
 
 class LessonAnswer(BaseModel):
@@ -275,6 +279,14 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
         from lesson_quality import review_and_revise
         lesson, review, review_status = review_and_revise(lesson, evidence, model_reply)
         with connect() as db:
+            if body._schedule_run is not None:
+                if body._schedule_run[0] != topic_id:
+                    raise RuntimeError("Scheduled run topic does not match lesson")
+                claimed = db.execute("""SELECT 1 FROM lesson_schedule_runs
+                    WHERE topic_id = %s AND run_date = %s AND status = 'running'
+                    AND lesson_id IS NULL FOR UPDATE""", body._schedule_run).fetchone()
+                if not claimed:
+                    raise RuntimeError("Scheduled run is no longer an unlinked running claim")
             # Lock sources before saving snapshots so concurrent deletion cannot
             # remove the original while a lesson is being created.
             source_ids = sorted({s["resource_id"] for s in sources})
@@ -288,6 +300,11 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
                  review_focus, reviewer_verdict, version, created_at""",
                 (topic_id, query, lesson, review, review_status, json.dumps(sources), json.dumps(standards),
                  json.dumps(review_focus), review_status, course_id, stage)).fetchone()
+            if body._schedule_run is not None:
+                db.execute("""UPDATE lesson_schedule_runs SET status = 'completed', lesson_id = %s,
+                    error = NULL, finished_at = now() WHERE topic_id = %s AND run_date = %s""",
+                    (row[0], *body._schedule_run))
+        body._schedule_persisted = body._schedule_run is not None
         return {**result(row), "course_id": course_id, "stage": stage}
 
     @router.get("/topics/{topic_id}/lessons")

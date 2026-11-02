@@ -8,6 +8,18 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Atomic scheduling worker integrated: private non-JSON run identity, locked running
+  claim, lesson insert and run completion in same final transaction. Pre-call claim
+  remains committed; failure updates cannot downgrade completed run. Legacy callback
+  path retained; no blind historical retry. Full server suite 197 passed, six warnings/
+  six subtests. Rollback-only PostgreSQL acceptance with current source passed
+  including simulated insert/link rollback, persistence response loss, provider loss
+  and no duplicate attempts. Initial parent run omitted KaTeX bind asset directory
+  and failed readiness; corrected test container env/mount, full rerun passed.
+  Android worker fixed restored override drafts/account isolation, stale scan feedback
+  and second-marker disagreement; stub-server UI tests compiled, not executed.
+  Worker reported app/test APK build exit0. No emulator startup/GPU changes/install.
+
 - Second parallel batch: structure enforcement now mandatory in review promotion;
   malformed/missing practice sections trigger bounded revision, not a false pass.
   Worker updated tiny passing fixtures; semantic question quality remains advisory.

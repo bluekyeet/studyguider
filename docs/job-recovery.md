@@ -5,9 +5,11 @@
 - Scheduled lessons have one attempt per topic/local date, claimed before model
   calls. There is no automatic previous-day catch-up or retry of failed/running
   attempts. This is not exactly-once provider execution or guaranteed completion.
-- Lesson insertion and scheduled-run completion currently commit separately. A
-  crash between them may leave a saved lesson and an unlinked running/failed run.
-  Treat such a run as **outcome unknown**, not safe to retry.
+- New scheduled lesson generation carries a private run identity and atomically
+  inserts its lesson and completes/links the run in the final persistence
+  transaction. Model calls still occur outside that transaction. Existing old
+  unlinked runs and legacy callbacks may retain the earlier ambiguity; treat them
+  as **outcome unknown**, not safe to retry.
 - A timeout, exception, old timestamp or absent lesson ID does not prove the
   provider did not finish. Do not reconcile using query/time similarity alone.
 - API shutdown waits only briefly for daemon workers. Shutdown returning is not
@@ -30,9 +32,10 @@ fencing; reclaiming while a prior worker runs can race its writes.
 
 ## Minimum next implementation
 
-- Carry an authoritative scheduled-run identity into lesson persistence; insert
-  the lesson and link/complete that run in one database transaction after model
-  calls. Keep the initial claim committed before any external work.
+- Implemented: authoritative private scheduled-run identity, atomic lesson/link
+  transaction after model calls, and initial claim committed before external work.
+  Fault-injection checks exercise insert/link rollback and lost-result handling;
+  real process termination/commit-acknowledgement loss remains untested.
 - Preserve unknown-outcome runs for explicit reconciliation. Do not blindly retry
   existing unlinked records during migration or startup.
 - Test claim races, crash-after-claim, provider response loss and the persistence
