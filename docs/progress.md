@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Web explorer follow-up: topic folders now group Exams (paper + schedule together),
+  Slides, Extra resources and Classifying, with folder in URL/breadcrumb. Compact
+  alphabetically sorted file rows, open/download links, accessible checkboxes,
+  Select all/count and confirmed Delete selected. Sequential deletion reports
+  partial successes and per-file failures instead of stopping silently. Dependency
+  protections retained; corrected stale saved-lesson deletion guidance. Node route/
+  category-grouping/syntax and image-auth checks passed; API rebuilt/deployed.
+  Real browser layout/multi-select/deletion workflow untested, no user files deleted.
+  No Android/device actions or change to auto-classification.
+
 - Web Library now browses Subjects -> Topics -> Files with breadcrumb links and
   hash routes (#Library?subject=ID&topic=ID); location restored after refresh/login,
   hash navigation supports Back/Forward. Upload cards hidden until inside a topic;

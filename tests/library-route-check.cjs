@@ -12,6 +12,12 @@ assert.equal(vm.runInContext('currentRoute().params.get("topic")', context), '34
 assert.equal(vm.runInContext('libraryUrl("12", "34")', context), '#Library?subject=12&topic=34');
 assert.equal(vm.runInContext('libraryUrl("12")', context), '#Library?subject=12');
 assert.equal(vm.runInContext('libraryUrl()', context), '#Library');
+assert.equal(vm.runInContext('libraryUrl("12", "34", "exams")', context), '#Library?subject=12&topic=34&folder=exams');
+assert.equal(vm.runInContext('libraryUrl("12", "34", "invalid")', context), '#Library?subject=12&topic=34');
+vm.runInContext(html.slice(html.indexOf('function resourceFolder('), html.indexOf('    function updateFileSelection()')), context);
+assert.equal(vm.runInContext('resourceFolder("exam_answers")', context), 'exams');
+assert.equal(vm.runInContext('resourceFolder("exam_paper")', context), 'exams');
+assert.equal(vm.runInContext('resourceFolder("slides")', context), 'slides');
 context.location.hash = '#Library%20setup?subject=12';
 assert.equal(vm.runInContext('currentRoute().page', context), 'Library setup');
 new Function(html.match(/<script>([\s\S]*?)<\/script>/)[1]);

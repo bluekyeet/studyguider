@@ -81,6 +81,16 @@
     li, pre { background: #f4f2fd; border-color: #e8e7f1; }
     @media (max-width: 800px) { .manager-layout { grid-template-columns: 1fr; } .manager-nav { position: static; } .manager-nav div { display: flex; flex-wrap: wrap; } }
     @media (max-width: 650px) { .shell { padding-left: 1rem; padding-right: 1rem; } .hero .shell { flex-wrap: wrap; } .hero p:last-child { flex-basis: 100%; margin: 0; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 1.15rem; } }
+    .folder-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; padding:0; list-style:none; }
+    .folder-list li { margin:0; padding:0; }
+    .folder-list a { text-decoration:none; border:1px solid var(--border,#394253); border-radius:10px; }
+    .folder-list a:hover { background:rgba(130,150,220,.12); }
+    #resources { padding:0; list-style:none; }
+    #resources > li { display:grid; grid-template-columns:32px minmax(0,1fr) auto; gap:12px; align-items:center; border-radius:0; margin:0; padding:12px; border-width:0 0 1px; }
+    #resources input[type=checkbox], #file-selection input { width:20px; height:20px; margin:0; }
+    #resources strong { overflow-wrap:anywhere; }
+    #resources p { margin:4px 0; font-size:.85rem; }
+    #file-selection { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 0; }
   </style>
   <style>
     .hero p:last-child, .section-number { display:none; }
@@ -180,6 +190,7 @@
             <button>Upload</button></form>
           <p class="hint">Files are deduplicated by content. Status: Queued, Processing, Ready, Needs attention. The same file from the app or this page appears once.</p>
           <label for="resource-filter">Filter files</label><input id="resource-filter" type="search" placeholder="Search filenames or status">
+          <div id="file-selection"><label><input id="select-all-files" type="checkbox"> Select all</label><span id="selected-file-count">0 selected</span><button id="delete-selected-files" type="button" disabled>Delete selected</button></div>
           <ul id="resources"></ul>
         </section>
         <section class="card" aria-labelledby="search-heading">
@@ -359,10 +370,11 @@
       const [page, query = ''] = location.hash.slice(1).split('?');
       return { page: decodeURIComponent(page || 'Library'), params: new URLSearchParams(query) };
     }
-    function libraryUrl(subject = '', topic = '') {
+    function libraryUrl(subject = '', topic = '', folder = '') {
       const params = new URLSearchParams();
       if (subject) params.set('subject', subject);
       if (subject && topic) params.set('topic', topic);
+      if (subject && topic && ['exams','slides','extra','pending'].includes(folder)) params.set('folder', folder);
       return '#Library' + (params.size ? '?' + params : '');
     }
     function saveScopeUrl() {
@@ -375,7 +387,7 @@
       if (!workspaces[name]) name = 'Library';
       cards.forEach(card => {
         card.hidden = !workspaces[name].some(id => card.contains($(id)));
-        if (name === 'Library' && !$('topics').value) card.hidden = true;
+        if (name === 'Library' && (!$('topics').value || !currentRoute().params.get('folder'))) card.hidden = true;
       });
       scope.hidden = name === 'Library';
       explorer.hidden = name !== 'Library';
@@ -410,20 +422,26 @@
         breadcrumb.append(' / ');
         const link = document.createElement('a'); link.href = libraryUrl(subject); link.textContent = $('subjects').selectedOptions[0].textContent; breadcrumb.append(link);
       }
-      if (topic) breadcrumb.append(' / ' + $('topics').selectedOptions[0].textContent);
-      explorer.append(breadcrumb);
-      const heading = document.createElement('h3'); heading.textContent = topic ? 'Files' : subject ? 'Topics' : 'Subjects'; explorer.append(heading);
       if (topic) {
+        breadcrumb.append(' / ');
+        const link = document.createElement('a'); link.href = libraryUrl(subject, topic); link.textContent = $('topics').selectedOptions[0].textContent; breadcrumb.append(link);
+      }
+      const folder = currentRoute().params.get('folder');
+      const folderNames = {exams:'Exams',slides:'Slides',extra:'Extra resources',pending:'Classifying'};
+      if (folder) breadcrumb.append(' / ' + (folderNames[folder] || 'Unknown folder'));
+      explorer.append(breadcrumb);
+      const heading = document.createElement('h3'); heading.textContent = topic ? (folderNames[folder] || 'Folders') : subject ? 'Topics' : 'Subjects'; explorer.append(heading);
+      if (topic && folder) {
         const hint = document.createElement('p'); hint.textContent = 'Upload into this topic. File categories are detected automatically; subject and topic follow this folder location.'; explorer.append(hint);
         return;
       }
       const list = document.createElement('ul'); list.className = 'folder-list';
-      const folders = subject ? [...$('topics').options].filter(o => o.value).map(o => ({ id: o.value, name: o.textContent })) :
+      const folders = topic ? Object.entries(folderNames).map(([id,name]) => ({id,name})) : subject ? [...$('topics').options].filter(o => o.value).map(o => ({ id: o.value, name: o.textContent })) :
         (await api('/subjects')).sort((a,b) => a.level-b.level || a.name.localeCompare(b.name));
       for (const folder of folders) {
         const item = document.createElement('li');
-        const link = document.createElement('a'); link.href = subject ? libraryUrl(subject, folder.id) : libraryUrl(folder.id);
-        link.textContent = subject ? folder.name : `Level ${folder.level} · ${folder.name}`;
+        const link = document.createElement('a'); link.href = topic ? libraryUrl(subject, topic, folder.id) : subject ? libraryUrl(subject, folder.id) : libraryUrl(folder.id);
+        link.textContent = '📁 ' + (subject ? folder.name : `Level ${folder.level} · ${folder.name}`);
         link.style.display = 'block'; link.style.padding = '12px'; item.append(link); list.append(item);
       }
       explorer.append(list);
@@ -536,15 +554,41 @@
         item.append(text, remove); list.append(item);
       }
     }
+    const selectedFiles = new Map();
+    function resourceFolder(category) { return ['exam_paper','exam_answers'].includes(category) ? 'exams' : category === 'auto' ? 'pending' : category; }
+    function updateFileSelection() {
+      $('selected-file-count').textContent = `${selectedFiles.size} selected`;
+      $('delete-selected-files').disabled = !selectedFiles.size;
+      const boxes = [...$('resources').querySelectorAll('input[type=checkbox]')];
+      $('select-all-files').checked = boxes.length > 0 && boxes.every(box => box.checked);
+      $('select-all-files').indeterminate = boxes.some(box => box.checked) && !boxes.every(box => box.checked);
+    }
+    $('select-all-files').onchange = () => {
+      const checked = $('select-all-files').checked;
+      $('resources').querySelectorAll('input[type=checkbox]').forEach(box => { box.checked = checked; box.onchange(); });
+    };
+    async function deleteFiles(files) {
+      if (!files.length || !confirm(`Permanently delete ${files.length} file(s) and their extracted data? Files referenced by saved work will be kept.`)) return;
+      const failures = []; let deleted = 0;
+      $('delete-selected-files').disabled = true;
+      for (const [id,name] of files) {
+        try { await api(`/resources/${id}`, {method:'DELETE'}); deleted++; }
+        catch (error) { failures.push(`${name}: ${error.message}`); }
+      }
+      await loadResources();
+      message(`Deleted ${deleted} file(s).${failures.length ? '\nKept / failed:\n' + failures.join('\n') : ''}`);
+    }
+    $('delete-selected-files').onclick = () => deleteFiles([...selectedFiles]).catch(error => message(error.message));
     async function loadResources() {
       const id = $('topics').value;
       const list = $('resources');
       list.replaceChildren();
+      selectedFiles.clear(); updateFileSelection();
       for (const select of [$('paper-resource'), $('schedule-resource'), $('parse-paper-resource'), $('parse-schedule-resource')]) options(select, [], item => item.filename);
       $('results').replaceChildren();
       if (!id) return;
       const resources = await api(`/topics/${id}/resources`);
-      for (const item of resources) {
+      for (const item of resources.sort((a,b) => a.filename.localeCompare(b.filename, undefined, {numeric:true}))) {
         if (item.status !== 'deleting') {
           $('paper-resource').add(new Option(item.filename, item.id));
           $('schedule-resource').add(new Option(item.filename, item.id));
@@ -552,6 +596,10 @@
           $('parse-schedule-resource').add(new Option(item.filename, item.id));
         }
         const li = document.createElement('li');
+        const folder = currentRoute().params.get('folder');
+        if (currentRoute().page === 'Library' && resourceFolder(item.category) !== folder) continue;
+        const check = document.createElement('input'); check.type = 'checkbox'; check.setAttribute('aria-label', `Select ${item.filename}`);
+        check.onchange = () => { if (check.checked) selectedFiles.set(item.id,item.filename); else selectedFiles.delete(item.id); updateFileSelection(); };
         const title = document.createElement('strong');
         title.textContent = `${item.filename}`;
         const status = document.createElement('p');
@@ -564,7 +612,10 @@
         remove.onclick = run(async () => { if (confirm(`Delete ${item.filename} and its extracted data?`)) { await api(`/resources/${item.id}`, { method: 'DELETE' }); await loadResources(); } });
         const actions = document.createElement('details');
         const actionTitle = document.createElement('summary'); actionTitle.textContent = 'Actions'; actions.append(actionTitle, extract);
-        li.append(title, status);
+        const info = document.createElement('div'); info.append(title, status);
+        const open = document.createElement('a'); open.href = `/resources/${item.id}/download`; open.textContent = 'Open / download'; open.target = '_blank'; open.rel = 'noopener'; info.append(open);
+        li.append(check, info);
+        remove.onclick = () => deleteFiles([[item.id,item.filename]]).catch(error => message(error.message));
         if (item.status === 'failed') {
           const retry = document.createElement('button');
           retry.textContent = 'Retry';
@@ -574,7 +625,8 @@
         actions.append(' ', remove); li.append(actions);
         list.append(li);
       }
-      if (!resources.length) message('No resources for this topic yet.');
+      updateFileSelection();
+      if (!list.children.length) { const empty = document.createElement('li'); empty.textContent = 'This folder is empty.'; list.append(empty); }
     }
     $('login').onsubmit = run(async () => {
       const result = await api('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('password').value }) });
