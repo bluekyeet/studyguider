@@ -28,7 +28,7 @@ ENV KATEX_ASSET_DIR=/app/katex
 ENV XDG_CACHE_HOME=/tmp/studyguider-cache
 COPY set_password.py .
 COPY manage.html .
-COPY web.html web*.js ./
+COPY web.html web.css web*.js ./
 COPY branding/ ./branding/
 RUN mkdir -p /data/uploads /tmp/studyguider-cache \
     && chown nobody:nogroup /data/uploads /tmp/studyguider-cache

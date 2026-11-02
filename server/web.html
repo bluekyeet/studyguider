@@ -3,12 +3,25 @@
 <title>StudyGuider</title>
 <link rel="icon" type="image/png" href="/branding/favicon.png"><link rel="apple-touch-icon" href="/branding/icon.png">
 <link rel="stylesheet" href="/assets/katex/katex.min.css">
+<link rel="stylesheet" href="/web.css">
 <script defer src="/assets/katex/katex.min.js"></script><script defer src="/assets/katex/contrib/mhchem.min.js"></script>
-<style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif;background:#fbf8ff;color:#1a1b22;line-height:1.6}*{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button,a,input,textarea,select{touch-action:manipulation}button{cursor:pointer;border:1px solid #8d97b166;border-radius:22px;padding:9px 18px;background:transparent;color:inherit;min-height:44px}button:hover{background:#6589e51a}button:disabled{opacity:.5;cursor:default}input,select,textarea{border:1px solid #8d97b177;border-radius:10px;padding:12px;background:transparent;color:inherit;max-width:100%;min-height:44px}textarea{width:100%;min-height:120px;resize:vertical}label{display:block}a{color:#4262b0}header{position:sticky;top:0;background:#fbf8fff2;border-bottom:1px solid #8d97b133;padding:14px 3vw;display:flex;align-items:center;gap:24px;z-index:2;flex-wrap:wrap}header strong{font-size:1.3rem;color:#1e3a8a}nav{display:flex;gap:8px;flex:1}nav a{text-decoration:none;padding:8px 16px;border-radius:22px}nav a[aria-current=page]{background:#dce1ff;color:#00236f}.header-end{display:flex;gap:12px;align-items:center}main{width:100%;padding:28px 3vw 60px}h1{margin:0 0 20px;font-size:1.9rem}h2,h3{margin-top:0}.card{border:1px solid #8d97b133;border-radius:16px;padding:24px;background:#fff;margin-bottom:18px;min-width:0}.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}.stack{display:flex;flex-direction:column;gap:14px}.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.primary{background:#1e3a8a;color:#fff;border-color:transparent}.muted{color:#666b7b;font-size:.9rem}.error{color:#b3261e;white-space:pre-wrap}.math-content{overflow-wrap:anywhere}.math-content p{white-space:pre-wrap}.katex-display{overflow-x:auto;overflow-y:hidden}details{margin:12px 0}summary{cursor:pointer;padding:8px 0}#login{max-width:420px;margin:8vh auto}#login input{width:100%}[hidden]{display:none!important}:focus-visible{outline:3px solid #8aafff;outline-offset:3px}
-@media(prefers-color-scheme:dark){:root{background:#11151e;color:#e4e5ed}header{background:#11151ef2}header strong,a{color:#bdcaff}.card{background:#1c222d}.muted{color:#abb4c6}.error{color:#ffb4ab}nav a[aria-current=page]{background:#293b69;color:#dce1ff}}
-@media(max-width:650px){header{gap:8px;padding:12px 16px}nav{order:3;flex-basis:100%}.header-end{margin-left:auto}main{padding:20px 16px}.card{padding:16px}.fields{grid-template-columns:1fr}}
-</style></head><body>
-<header><a href="/" aria-label="StudyGuider home"><img src="/branding/wordmark.png" alt="StudyGuider" style="width:210px;height:50px;object-fit:contain;border-radius:8px;background:#031025"></a><nav aria-label="Study navigation"><a href="#lessons">Lessons</a><a href="#reviews">Review</a><a href="#exams">Exams</a></nav><div class="header-end"><a href="/manage">Library & settings</a><button id="logout" hidden>Sign out</button></div></header>
-<main><form id="login" class="card" hidden><h1>Welcome back</h1><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><div class="toolbar"><button class="primary">Sign in</button></div><p id="login-error" class="error" role="alert"></p></form><div id="study" hidden><p id="notice" class="error" role="alert"></p><div id="view"></div></div></main>
+</head><body class="signed-out">
+<div class="shell">
+<aside class="sidebar">
+<a class="brand" href="#lessons" aria-label="StudyGuider home"><img src="/branding/wordmark.png" alt="StudyGuider"></a>
+<nav aria-label="Main">
+<a href="#lessons"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 8h6"/></svg>Lessons</a>
+<a href="#reviews"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>Review</a>
+<a href="#exams"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M14 3v5h5M10 13h6M10 17h4"/></svg>Exams</a>
+<a href="#library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Library</a>
+<a href="#settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>Settings</a>
+</nav>
+<div class="spacer"></div>
+<footer><button id="logout" class="small" hidden>Sign out</button></footer>
+</aside>
+<main>
+<form id="login" class="card" hidden><img src="/branding/wordmark.png" alt="StudyGuider"><h1>Welcome back</h1><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><div class="toolbar"><button class="primary">Sign in</button></div><p id="login-error" class="error" role="alert"></p></form>
+<div id="study" hidden><p id="notice" class="error" role="alert"></p><div id="view"></div></div>
+</main>
+</div>
 <script type="module" src="/web.js"></script></body></html>

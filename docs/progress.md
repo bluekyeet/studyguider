@@ -1533,3 +1533,24 @@ Changes made in this round, and exactly what was and was not verified.
   installed on the emulator (`adb install -r`, Success). No connected tests were
   run, and the stage display and a full streamed generation have not been
   exercised yet; they need a live run.
+
+## Website redesign (3 November 2026)
+
+- New design system (`server/web.css`): sidebar navigation on wide screens, a top
+  bar with scrolling tabs on phones, light/dark themes, shared card/list/tab/chip
+  components. Existing class names kept so Lessons, Review and Exams still style.
+- Library and Settings are now pages of the main site (`#library`, `#settings`),
+  not a separate page. Library: subjects -> topics -> Files (upload with drag and
+  drop, folder filter, status polling, retry/re-extract/delete, bulk delete),
+  Standards (link, unlink, save), Notes (add, edit with conflict protection,
+  delete) and Search. Settings: topics being learned, teaching style, AI usage
+  with the failure warning, and a link to advanced tools.
+- `/manage` stays as "Advanced tools" (question/marking checks, diagram manager,
+  exam assembly, lesson history). It is not ported.
+- Verified: server suite 210 passed; a real Edge run against a mock API rendered
+  every new page with no script errors and the layout was inspected on desktop and
+  phone width. API image rebuilt after finding the Dockerfile did not copy
+  `web.css`; live site and new modules now return 200.
+- Not verified: against real data, uploads, edits and deletes (mock API only),
+  light mode, and the redesigned Lessons, Review and Exams pages beyond their
+  empty states.
