@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Corrected regression from maths wrapping change: inherited overflow-wrap:anywhere
+  and whitespace overrides broke chemistry into vertical symbols. KaTeX base/text/
+  HTML now retain nowrap and normal word-breaking; prose-only text conversion kept.
+  Long equations remain horizontally scrollable rather than corrupting geometry.
+  Debug/test APK builds passed, existing WebView deprecation warnings; normal
+  emulator install Success. No connected tests run; screenshot layout pending user.
+
 - Reader maths-text wrapping follow-up: KaTeX text spans now permit wrapping;
   prose-only \text{...} formulas render as normal text rather than unbreakable
   maths. Mixed/long mathematical expressions retain existing overflow behaviour;
