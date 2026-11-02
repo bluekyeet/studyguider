@@ -147,6 +147,8 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Added Android Your judgement / override control with outcome dropdown,
     required reason, retained draft on failure and explicit separation from AI marks.
   - [ ] Runtime save/reload and source comparison checks; UI test compiled only.
+    - Saved override GET endpoint added; Android loads existing value before enabling
+      editor. Server save/read regression passed; Android runtime reload still open.
 - [x] Connect incorrect exam answers to the daily review queue (reuses question/rubric; skips uncertain, disputed, overridden or stale answers).
 - [ ] Validate historical cut-score layouts not supported by current extraction; do not guess missing boundaries.
 - [ ] Validate real handwritten answers and diagrams, including scan replacement/conflicts.
@@ -214,7 +216,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 171 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 172 passed, six warnings, six subtests passed.
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.

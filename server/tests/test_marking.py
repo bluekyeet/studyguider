@@ -239,6 +239,15 @@ def test_invalid_model_outputs_are_rejected_after_retry():
         assert len(calls) == 2  # one bounded retry before giving up
 
 
+def test_saved_override_can_be_loaded_without_model_call():
+    client, calls, _ = make_client()
+    path = "/exams/1/answers/2/override"
+    assert client.get(path).json() == {"override": None}
+    assert client.put(path, json={"outcome": "merit", "note": "Checked the schedule"}).status_code == 200
+    assert client.get(path).json() == {"override": {"outcome": "merit", "note": "Checked the schedule"}}
+    assert not calls
+
+
 def test_invalid_json_is_recovered_on_retry():
     client, calls, _ = make_client(replies=["not json", marking_json(marks=5)])
     response = client.post("/exams/1/answers/2/feedback")

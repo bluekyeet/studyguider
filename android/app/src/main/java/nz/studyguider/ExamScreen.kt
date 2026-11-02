@@ -406,20 +406,32 @@ internal fun ExamOverride(base: String, token: String, examId: Long, questionId:
     var menu by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
+    var loaded by remember(base, token, examId, questionId) { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(base, token, examId, questionId, expanded, reload) {
+        if (!expanded || loaded) return@LaunchedEffect
+        try {
+            val stored = JSONObject(examRequest(base, token, "/exams/$examId/answers/$questionId/override")).optJSONObject("override")
+            if (stored != null) { outcome = stored.getString("outcome"); note = stored.getString("note") }
+            loaded = true; notice = ""
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { notice = e.message ?: "Could not load your saved judgement" }
+    }
     TextButton(onClick = { expanded = !expanded }) { Text("Your judgement / override") }
     if (expanded) StudyCard(tone = CardTone.Low) {
         Text("Your judgement is saved separately. It does not change the AI mark or official-schedule result.", style = MaterialTheme.typography.bodySmall)
         Box {
-            OutlinedButton(enabled = !saving, onClick = { menu = true }) { Text(outcome.replace('_', ' ')) }
+            OutlinedButton(enabled = loaded && !saving, onClick = { menu = true }) { Text(outcome.replace('_', ' ')) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 listOf("not_achieved", "achieved", "merit", "excellence", "uncertain").forEach { value ->
                     DropdownMenuItem(text = { Text(value.replace('_', ' ')) }, onClick = { outcome = value; menu = false; notice = "" })
                 }
             }
         }
-        OutlinedTextField(note, { note = it; notice = "" }, enabled = !saving, label = { Text("Reason for your judgement") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-        TextButton(enabled = !saving && note.isNotBlank() && note.length <= 2000, onClick = {
+        if (!loaded) TextButton(onClick = { reload++ }) { Text("Load / retry saved judgement") }
+        OutlinedTextField(note, { note = it; notice = "" }, enabled = loaded && !saving, label = { Text("Reason for your judgement") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+        TextButton(enabled = loaded && !saving && note.isNotBlank() && note.length <= 2000, onClick = {
             scope.launch {
                 saving = true; notice = ""
                 try {

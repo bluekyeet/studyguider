@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Override reload follow-up: added authenticated GET override endpoint (null when
+  none, 404 for missing item). Android expanded override control loads stored
+  judgement before enabling edits, with retry on loading failure. No model call
+  required; avoids opening existing judgement as default uncertain. Server save/
+  read regression added. 172 tests passed, six warnings/six subtests; Android
+  debug/test APK builds passed; API rebuilt/deployed. Emulator off, no install or
+  runtime interaction check. Cross-client override last-write semantics unchanged.
+
 - Added missing Android saved override controls beneath current feedback: outcome
   dropdown, required reason and explicit statement that AI/schedule result stays
   unchanged. Uses existing PUT endpoint; failure retains local note, success says

@@ -520,6 +520,14 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                 "marks": [{"kind": row[0], **row[1]} for row in rows],
                 "override": {"outcome": override[0], "note": override[1]} if override else None}
 
+    @router.get("/exams/{exam_id}/answers/{question_id}/override")
+    def get_override(exam_id: int, question_id: int):
+        with connect() as db:
+            if not db.execute("SELECT 1 FROM exam_items WHERE exam_id = %s AND question_id = %s", (exam_id, question_id)).fetchone():
+                raise HTTPException(404, "Exam question not found")
+            row = db.execute("SELECT outcome, note FROM marking_overrides WHERE exam_id = %s AND question_id = %s", (exam_id, question_id)).fetchone()
+        return {"override": {"outcome": row[0], "note": row[1]} if row else None}
+
     @router.put("/exams/{exam_id}/answers/{question_id}/override")
     def override(exam_id: int, question_id: int, body: OverrideRequest):
         with connect() as db:
