@@ -27,7 +27,9 @@ fun shortCitations(text: String, ids: List<String>): String {
 /** Presentation only: retain original citations in saved lessons and notes. */
 fun withoutSourceMarkers(text: String): String {
     val uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-    val citationsRemoved = text.replace(Regex("[ \\t]*[\\[(]`?$uuid`?(?:\\s*[,;]\\s*(?:`?$uuid`?|pp?\\.?\\s*\\d+(?:[–-]\\d+)?))*\\s*[\\])]", RegexOption.IGNORE_CASE), "")
+    // Non-file evidence tags, e.g. `[S1, learner_answers]`, are internal labels, not reading content.
+    val tagged = text.replace(Regex("[ \\t]*[\\[(](?:`?$uuid`?|S\\d+)\\s*[,;]\\s*[a-z]+(?:_[a-z]+)+\\s*[\\])]", RegexOption.IGNORE_CASE), "")
+    val citationsRemoved = tagged.replace(Regex("[ \\t]*[\\[(]`?$uuid`?(?:\\s*[,;]\\s*(?:`?$uuid`?|pp?\\.?\\s*\\d+(?:[–-]\\d+)?))*\\s*[\\])]", RegexOption.IGNORE_CASE), "")
         .replace(Regex("`?$uuid`?", RegexOption.IGNORE_CASE), "")
     return citationsRemoved.replace(
     Regex("[ \\t]*[\\[(]S\\d+(?:\\s*(?:,|;)?\\s*(?:pp?\\.?\\s*\\d+(?:[–-]\\d+)?|S\\d+))*\\s*[\\])]", RegexOption.IGNORE_CASE),

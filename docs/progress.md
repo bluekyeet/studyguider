@@ -1668,3 +1668,10 @@ From the pasted source review (not a penetration test):
 - Test data cleanup: that answer and feedback were blanked and lesson 77's reading position reset to section 0 afterwards (revisions advanced; no row deleted).
 - Android feedback is labelled "Tutor feedback"; it does not carry the website's "AI generated" badge.
 - Still unexercised: New lesson generation, Explain panel and note saving, exam override, notifications.
+
+## 3 Nov 2026: emulator pass 3
+
+- New lesson generation (Mechanics) ran through the stream with stage text, saved lesson 83 (review passed), stored the Android Idempotency-Key as completed, and opened. This lesson was left in place (a second Mechanics lesson today; delete it if unwanted).
+- Explain and Save to notes verified on the emulator; the test note was deleted afterwards.
+- Found and fixed: lesson 83 showed `[S1, learner_answers]` in the reading text. Android `withoutSourceMarkers` and the website `readable()` now strip `[uuid|S#, snake_case_tag]`. Only lesson 83 had this tag among the 22 saved lessons. Compile-time check added; not executed.
+- Not done: exam override (it would write to your saved exams), notifications (need an emulator reboot or timezone change, which I am not allowed to do without asking), plus the items in the earlier note.

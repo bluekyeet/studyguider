@@ -82,6 +82,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Read saved topic notes in Android.
 - [x] Implement note deletion with confirmation; runtime checks still outstanding.
 - [ ] Verify live Explain focus, follow-up context, streaming completion and note saving together.
+  - [x] Android emulator: Explain returned a reply for the section, the panel said follow-up context is the last exchange only, and Save to notes created a note on the right topic (removed afterwards). Unsupported-example grounding still unchecked.
   - [x] Actual server routes plus real gateway: section/source payload, previous-turn
     context, two normal stream completions and exact note save; synthetic records rolled back.
   - [ ] Android interaction and unsupported-example handling (live reply added an
@@ -95,7 +96,7 @@ does not mean its end-to-end acceptance checks have passed.
     lesson sent only in the final event after review. Draft text is never sent
     (tested). Android Lessons home shows the stage; the old endpoints are unchanged.
     Server tests pass; API rebuilt and APK installed on the emulator.
-    A full streamed generation has not been exercised yet.
+    Exercised on the emulator (3 Nov 2026): New lesson > Mechanics showed the stage text ("Independent review (attempt 1 of 3)"), saved lesson 83 (review passed) and opened it; its `lesson_requests` row recorded the Android key as completed. Replaying the same key against the live server was not tried (covered by unit tests).
 - [ ] Evaluate validated structured lesson objects instead of relying on Markdown/model structure.
   - [x] Evaluated minimal alternative: deterministic Markdown practice-heading
     checker with 17 cases; no schema migration needed for heading/count validation.

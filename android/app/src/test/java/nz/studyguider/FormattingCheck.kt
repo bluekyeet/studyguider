@@ -19,4 +19,6 @@ fun main() {
     val hostile = KaTeX.toHtml("${'$'}x\" onmouseover=\"alert(1)${'$'}")
     check("onmouseover=\"" !in hostile && hostile.count { it == '"' } == 4) { hostile }
     check("&quot;" in hostile)
+    check(withoutSourceMarkers("review [5d374a3f-74f2-412a-8f6a-b582963eb2e0, learner_answers].") == "review.")
+    check(withoutSourceMarkers("review [S1, learner_answers].") == "review.")
 }

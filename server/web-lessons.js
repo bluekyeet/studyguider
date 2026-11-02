@@ -12,6 +12,7 @@ const message = error => error?.message || String(error);
 // Presentation only: source snapshots and saved questions keep their citations.
 function readable(text) {
   return String(text || '')
+    .replace(/[ \t]*[\[(](?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|S\d+)\s*[,;]\s*[a-z]+(?:_[a-z]+)+\s*[\])]/gi, '')
     .replace(/\[?\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b\]?/gi, '')
     .replace(/\[S\d+(?:\s*[,;]\s*S?\d+)*\]/g, '')
     .replace(/\bS\d+\b/g, '')
