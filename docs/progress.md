@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Android exam now offers Load saved feedback when local answer matches saved
+  answer; uses current-answer/scan-filtered GET instead of re-marking. Restores
+  first mark plus separate saved override; no gateway call. Corrected misleading
+  Feedback is not saved footer (server already persisted marks). Debug/test APK
+  builds passed before final text-only footer change; new JSON reconstruction
+  test compiled, not run. Emulator off, no install/deploy, runtime read/reload open.
+
 - Fixed stored-feedback GET returning all historical marks as if current. Now
   returns latest per marker only when saved answer text and confirmed scan revision
   match; otherwise 404 without deleting history. 173 tests passed, six warnings/

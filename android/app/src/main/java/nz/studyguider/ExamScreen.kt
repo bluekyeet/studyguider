@@ -381,6 +381,20 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                         FeedbackCard(result)
                         ExamOverride(base, token, examId, id, result.optJSONObject("override"))
                     }
+                    if (feedback[id] == null) {
+                        TextButton(enabled = !busy && answers[id] == saved[id], onClick = {
+                            scope.launch {
+                                busy = true; error = ""
+                                try {
+                                    val stored = JSONObject(examRequest(base, token, "/exams/$examId/answers/$id/feedback"))
+                                    val restored = savedExamFeedback(stored)
+                                    feedback[id] = restored
+                                } catch (e: CancellationException) { throw e }
+                                catch (e: Exception) { error = e.message ?: "No saved feedback for this answer" }
+                                finally { busy = false }
+                            }
+                        }) { Text("Load saved feedback") }
+                    }
                 }
             }
             if (page == questions.length() && answerMode == "handwritten") StudyCard(tone = CardTone.Container) {
@@ -412,6 +426,16 @@ private fun InlineExamDiagrams(base: String, token: String, resource: String, pa
         AuthorisedImage(base, token, "/resources/$resource/pages/$page/diagram-image?$query")
     }
     if (error.isNotEmpty()) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+}
+
+internal fun savedExamFeedback(stored: JSONObject): JSONObject {
+    val marks = stored.getJSONArray("marks")
+    val first = (0 until marks.length()).map { marks.getJSONObject(it) }.firstOrNull { it.optString("kind") == "first" }
+        ?: throw IllegalStateException("No saved first mark for this answer")
+    return JSONObject(first.toString()).apply {
+        put("disclaimer", "Saved AI study feedback, not an official or verified grade. Check the original schedule.")
+        if (!stored.isNull("override")) put("override", stored.getJSONObject("override"))
+    }
 }
 
 @Composable
@@ -500,6 +524,6 @@ private fun FeedbackCard(result: JSONObject) {
             MathText("“${item.optString("quote")}”")
             Text(item.optString("explanation"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text("Feedback is not saved. Check the original schedule using the reference above.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("AI feedback is stored for this saved answer. Changes to the answer or scan require a new mark. Check the original schedule.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

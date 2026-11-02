@@ -151,6 +151,8 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Added Android Your judgement / override control with outcome dropdown,
     required reason, retained draft on failure and explicit separation from AI marks.
   - [ ] Runtime save/reload and source comparison checks; UI test compiled only.
+    - Added Load saved feedback (read-only, no re-mark/model call) for unchanged
+      answers after reopening; reconstructs first mark and separate saved override.
     - Saved override GET endpoint added; Android loads existing value before enabling
       editor. Server save/read regression passed; Android runtime reload still open.
 - [x] Connect incorrect exam answers to the daily review queue (reuses question/rubric; skips uncertain, disputed, overridden or stale answers).
