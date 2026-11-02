@@ -65,6 +65,11 @@ def page_lines(page, ocr=False):
         for line in block.get("lines", []):
             text = "".join(span["text"] for span in line["spans"]).strip()
             box = line["bbox"]
+            # NZQA's patterned no-writing gutters contain hundreds of tiny text
+            # fragments, not one removable phrase. Exclude only outer-gutter lines;
+            # retain question labels/body beginning just inside the content edge.
+            if box[2] <= 40 or box[0] >= page.rect.width - 40:
+                continue
             if not text or box[1] < 30 or box[3] > page.rect.height - 28:
                 continue
             if text in {"USE ONLY", "ASSESSOR'S", "ASSESSOR’S", "DO NOT WRITE IN THIS AREA"}:

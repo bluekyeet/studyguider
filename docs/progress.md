@@ -8,6 +8,17 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- User's 91170/2023 exam screenshot exposed fragmented no-writing gutter text in
+  extracted questions. Confirmed original PDF tiny fragments lie in outer 40pt
+  gutters; parser now excludes lines wholly inside those gutters, retaining body
+  starting at x=42.5. Synthetic regression; 198 tests passed, six warnings/six
+  subtests. API rebuilt/deployed. Reparsed only pdf-layout 91170/2023 questions
+  105–107 without parser warnings; updated question_text/parts (4711→851,
+  5283→1423,15764→3149 chars). Prior values saved privately at uploads/
+  parser-repair-backups/91170-2023-before-gutter-repair.json, never committed.
+  Answers/marks/rubrics/verification flags untouched. App refresh needed; visual
+  verification and other already-imported papers remain outstanding.
+
 - Atomic scheduling worker integrated: private non-JSON run identity, locked running
   claim, lesson insert and run completion in same final transaction. Pre-call claim
   remains committed; failure updates cannot downgrade completed run. Legacy callback
