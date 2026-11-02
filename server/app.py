@@ -22,6 +22,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from reviews import create_review_tables, review_router
 from lessons import create_lesson_tables, lesson_router
@@ -110,6 +111,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="StudyGuider", lifespan=lifespan)
+app.mount('/assets/katex', StaticFiles(directory=os.environ.get('KATEX_ASSET_DIR', str(Path(__file__).parent.parent / 'android/app/src/main/assets/katex'))), name='katex-assets')
 hasher = PasswordHasher()
 
 
@@ -371,6 +373,18 @@ def unlink_standard(topic_id: int, number: int):
 @app.get("/manage", include_in_schema=False)
 def manage():
     return FileResponse(Path(__file__).with_name("manage.html"), media_type="text/html")
+
+
+@app.get('/', include_in_schema=False)
+def study_website():
+    return FileResponse(Path(__file__).with_name('web.html'), media_type='text/html')
+
+
+@app.get('/{module_name}.js', include_in_schema=False)
+def study_module(module_name: str):
+    if module_name not in {'web', 'web-common', 'web-lessons', 'web-reviews', 'web-exams'}:
+        raise HTTPException(404, 'Module not found')
+    return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript')
 
 
 @app.post("/login")

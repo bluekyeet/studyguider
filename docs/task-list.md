@@ -23,7 +23,8 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Never fabricate human review, source evidence or verification.
 - [x] Keep uploaded resources, real papers, credentials and database dumps out of Git.
 - [x] Keep normal emulator GPU settings unchanged; do not restart the emulator unless asked.
-- [x] Website parity is deferred, not cancelled.
+- [x] Website study port resumed by explicit user request; / is study site, /manage
+  remains resource/settings manager. Full parity requires acceptance checks below.
 
 ## Recommended next tasks — edit or reorder
 

@@ -1,0 +1,14 @@
+from fastapi.testclient import TestClient
+from app import app
+
+
+def test_study_site_is_at_root_and_management_remains_separate():
+    client = TestClient(app)
+    response = client.get('/')
+    assert response.status_code == 200
+    assert 'StudyGuider' in response.text and '/web.js' in response.text
+    assert 'href="/manage"' in response.text
+    assert client.get('/manage').status_code == 200
+    assert client.get('/web-common.js').status_code == 200
+    assert client.get('/not-a-module.js').status_code == 404
+    assert client.get('/assets/katex/katex.min.js').status_code == 200

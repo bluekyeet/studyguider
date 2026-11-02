@@ -8,6 +8,18 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- User resumed website study port: new full-width responsive site at / with cookie
+  login, Lessons/Review/Exams navigation and Library/settings link to /manage.
+  Parallel modules provide lesson feed/section reader/revision saves/follow-up/
+  notes/completion; due review/confidence/marking; topic/year original/mixed/AI exam
+  creation, saved exams/delete, typed part answers/revision saves/mark feedback and
+  schedule excerpts. Bundled KaTeX/mhchem served locally, safe DOM text rendering.
+  Navigation guards unsaved study drafts/in-flight review/exam requests; lesson
+  module cleanup integrated. 207 tests passed, six warnings/six subtests; JS syntax
+  checks passed; API rebuilt/deployed, / and web-lessons.js HTTP200. Browser full
+  workflows/visual design unverified. Web exam scan uploads/drawing/timer/aggregate
+  grade still missing; full Android parity NOT claimed. No Android/device tests.
+
 - Added Topics you're learning to web Global settings, grouped by subject level/name.
   Checkboxes use same /courses active-course records as Android, saving immediately;
   failed changes restore checkbox and expose error. No new backend/no deleted
