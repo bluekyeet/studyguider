@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Explorer toolbar consistency: New subject/topic actions moved out of faux folder
+  tiles into top-right header, same placement/shape as Upload. Sidebar now exposes
+  current subject topics and topic section/category shortcuts, including Settings
+  children. Removed redundant auto-classification sentence. Empty-folder row spans
+  file list instead of wrapping inside checkbox-width column. Upload control kept
+  alive across header rerenders. Node route/syntax and image-auth checks passed;
+  API rebuilt/deployed. Browser visual/navigation interaction still unverified.
+
 - Unified web manager navigation as topic folder hierarchy: Subjects -> Subject ->
   Topic -> Resources/Notes/Lessons/Reviews/Exams/Settings; Resources contains automatic
   category folders, Settings contains Learning settings/Tools. Removed dashboard

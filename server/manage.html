@@ -94,6 +94,12 @@
     .file-toolbar { display:flex; align-items:center; gap:12px; margin:12px 0 20px; }
     .file-toolbar input { flex:1; max-width:34rem; border-radius:24px; padding-left:18px; }
     .file-toolbar button { margin:0 0 0 auto; white-space:nowrap; border-radius:22px; }
+    .explorer-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; }
+    .explorer-toolbar h3 { margin:0; }
+    .explorer-toolbar button { margin:0; border-radius:22px; }
+    #resources > li.folder-empty { display:block; padding:40px 16px; text-align:center; opacity:.65; border:0; }
+    .sidebar-section { padding:12px 16px 4px; font-size:.75rem; opacity:.6; }
+    #library-explorer { margin-bottom:16px; }
     #upload-panel { border:1px dashed #7f8ca9; border-radius:12px; padding:20px; margin-bottom:16px; }
     #upload-panel .hint:last-child { margin:12px 0 0; }
     #file-selection { border-bottom:1px solid #8290aa55; }
@@ -462,6 +468,9 @@
       showWorkspace(route.page, true);
     }
     async function renderExplorer() {
+      // Keep the one upload control alive when replacing the folder header.
+      const uploadButton = $('toggle-upload');
+      if (uploadButton) document.querySelector('.file-toolbar').append(uploadButton);
       explorer.replaceChildren();
       const subject = $('subjects').value, topic = $('topics').value;
       const breadcrumb = document.createElement('nav'); breadcrumb.setAttribute('aria-label', 'Library location');
@@ -487,9 +496,14 @@
       }
       if (folder) breadcrumb.append(' / ' + (folderNames[folder] || 'Unknown folder'));
       explorer.append(breadcrumb);
-      const heading = document.createElement('h3'); heading.textContent = topic ? (folderNames[folder] || sectionNames[section] || 'Topic folders') : subject ? 'Topics' : 'Subjects'; explorer.append(heading);
+      const toolbar = document.createElement('div'); toolbar.className = 'explorer-toolbar';
+      const heading = document.createElement('h3'); heading.textContent = topic ? (folderNames[folder] || sectionNames[section] || 'Topic folders') : subject ? 'Topics' : 'Subjects'; toolbar.append(heading); explorer.append(toolbar);
+      if (!topic) {
+        const add = document.createElement('button'); add.type = 'button'; add.textContent = subject ? '＋ New topic' : '＋ New subject';
+        add.onclick = () => openCreate(subject ? 'topic' : 'subject'); toolbar.append(add);
+      } else if (section === 'resources' && folder) toolbar.append(uploadButton);
+      renderSidebar(subject, topic, section, folder);
       if (topic && (folder || (section && !['resources','settings'].includes(section)))) {
-        if (folder) { const hint = document.createElement('p'); hint.textContent = 'Files are classified automatically within this topic.'; explorer.append(hint); }
         return;
       }
       const list = document.createElement('ul'); list.className = 'folder-list';
@@ -503,9 +517,29 @@
         link.style.display = 'block'; link.style.padding = '12px'; item.append(link); list.append(item);
       }
       explorer.append(list);
-      if (!topic) {
-        const item = document.createElement('li'); const add = document.createElement('button'); add.type = 'button'; add.textContent = subject ? '＋ New topic' : '＋ New subject';
-        add.onclick = () => openCreate(subject ? 'topic' : 'subject'); item.append(add); list.append(item);
+    }
+    function renderSidebar(subject, topic, section, folder) {
+      nav.replaceChildren();
+      function link(label, href, active = false) {
+        const a = document.createElement('a'); a.textContent = label; a.href = href;
+        if (active) a.setAttribute('aria-current','page'); nav.append(a);
+      }
+      link('Subjects', libraryUrl(), !subject);
+      if (subject) {
+        const label = document.createElement('p'); label.className = 'sidebar-section'; label.textContent = $('subjects').selectedOptions[0]?.textContent || 'Subject'; nav.append(label);
+        link('Topics', libraryUrl(subject), !topic);
+        for (const option of $('topics').options) if (option.value) link(option.textContent, libraryUrl(subject,option.value), topic === option.value && !section);
+      }
+      if (topic) {
+        const label = document.createElement('p'); label.className = 'sidebar-section'; label.textContent = 'Topic folders'; nav.append(label);
+        for (const [key,name] of Object.entries({resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',settings:'Settings'})) {
+          link(name,libraryUrl(subject,topic,'',key),section === key && !folder);
+          if (key === 'resources' && section === key) for (const [type,title] of Object.entries({exams:'Exams',slides:'Slides',extra:'Extra resources',pending:'Classifying'})) link('　'+title,libraryUrl(subject,topic,type,key),folder === type);
+          if (key === 'settings' && ['settings','learning','tools'].includes(section)) {
+            link('　Learning settings',libraryUrl(subject,topic,'','learning'),section === 'learning');
+            link('　Tools',libraryUrl(subject,topic,'','tools'),section === 'tools');
+          }
+        }
       }
     }
     function message(text) { $('message').textContent = text; }
@@ -696,7 +730,7 @@
         list.append(li);
       }
       updateFileSelection();
-      if (!list.children.length) { const empty = document.createElement('li'); empty.textContent = 'This folder is empty.'; list.append(empty); }
+      if (!list.children.length) { const empty = document.createElement('li'); empty.className = 'folder-empty'; empty.textContent = 'This folder is empty.'; list.append(empty); }
     }
     $('login').onsubmit = run(async () => {
       const result = await api('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('password').value }) });
