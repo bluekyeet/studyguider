@@ -49,6 +49,11 @@ try:
     reviews = db.execute("SELECT id,expected_answer,source FROM review_questions WHERE topic_id=%s", (topic,)).fetchall()
     assert len(reviews) == 1 and reviews[0][1] == rubric
     assert reviews[0][2][0]['rubric_type'] == 'unofficial AI practice rubric'
+    strength_question = db.execute("""INSERT INTO review_questions(topic_id,question,due_date,concept)
+        VALUES (%s,'State the unit of frequency.',CURRENT_DATE,'Frequency units') RETURNING id""", (topic,)).fetchone()[0]
+    for _ in range(3):
+        db.execute("""INSERT INTO review_answers(question_id,answer,confidence,correct)
+            VALUES (%s,'Hz',4,true)""", (strength_question,))
 
     def model(name, messages, task):
         if task == 'review-mark':
@@ -57,6 +62,7 @@ try:
             payload = json.loads(messages[-1]['content'])
             assert any(item['concept'] == 'Frequency' for item in payload['review_focus'])
             assert payload['evidence']['sources'][0]['resource_id'] == str(resource)
+            assert payload['learner_strengths'] == [{'concept': 'Frequency units', 'correct_answers': 3}]
             return 'Frequency is waves divided by time. Review the previous frequency mistake.'
         if task == 'lesson-review':
             return '{"pass":true,"issues":[]}'
@@ -71,7 +77,7 @@ try:
         lambda *args: [{"number": 91170, "title": 'Waves', "description": 'Synthetic check'}])
     generated = endpoint(router, '/topics/{topic_id}/lessons')(topic, LessonGeneration(query='Frequency'))
     assert generated['review_status'] == 'passed'
-    assert generated['review_focus'][0]['concept'] == 'Frequency'
+    assert any(item['concept'] == 'Frequency' for item in generated['review_focus'])
     print('PASS: exam mistake deduplicated -> wrong review scheduled for one day -> next lesson receives weakness and isolated evidence')
     # A second subject must not inherit the Physics review or learner answers.
     db.execute("UPDATE lessons SET completed_at=now() WHERE id=%s", (generated['id'],))
@@ -104,7 +110,31 @@ try:
     assert chemistry['review_status'] == 'passed'
     assert chemistry['topic_id'] == chemistry_topic
     assert chemistry['review_focus'][0]['concept'] == 'Collision frequency'
-    assert db.execute('SELECT review_focus FROM lessons WHERE id=%s', (generated['id'],)).fetchone()[0][0]['concept'] == 'Frequency'
+    # Identical concept labels in a different topic must not suppress Physics strength.
+    other_concept = db.execute("""INSERT INTO review_questions(topic_id,question,due_date,concept)
+        VALUES (%s,'Synthetic other-topic check.',CURRENT_DATE,'Frequency units') RETURNING id""", (chemistry_topic,)).fetchone()[0]
+    db.execute("INSERT INTO review_answers(question_id,answer,confidence,correct) VALUES (%s,'Wrong',4,false)", (other_concept,))
+    physics_again = endpoint(router, '/topics/{topic_id}/lessons')(topic, LessonGeneration(query='Frequency'))
+    assert physics_again['review_status'] == 'passed'
+
+    db.execute("INSERT INTO review_answers(question_id,answer,confidence,correct) VALUES (%s,'Metres',4,false)", (strength_question,))
+    strength_checked = []
+
+    def recently_wrong_model(name, messages, task):
+        if task == 'lesson-generate':
+            payload = json.loads(messages[-1]['content'])
+            assert payload['learner_strengths'] == []
+            strength_checked.append(True)
+            return 'Review frequency units: frequency is measured in Hz.'
+        return '{"pass":true,"issues":[]}'
+
+    exclusion_router = lesson_router(transaction_connection, lambda: None, recently_wrong_model,
+        lambda *args: [{"resource_id": str(resource), "filename": 'synthetic.txt', "page": 1, "content": rubric}],
+        lambda *args: [{"number": 91170, "title": 'Waves', "description": 'Synthetic check'}])
+    endpoint(exclusion_router, '/topics/{topic_id}/lessons')(topic, LessonGeneration(query='Frequency'))
+    assert strength_checked == [True]
+    print('PASS: three correct answers create a strength, other-topic mistakes do not suppress it, recent same-topic mistake excludes it')
+    assert any(item['concept'] == 'Frequency' for item in db.execute('SELECT review_focus FROM lessons WHERE id=%s', (generated['id'],)).fetchone()[0])
     print('PASS: Physics/Chemistry lesson prompts and saved review focus remain isolated, including standards, evidence and learner-answer history')
     # Shadow scheduling tables for this connection only. Never disable or claim
     # existing users' schedules, even transiently inside the rollback transaction.

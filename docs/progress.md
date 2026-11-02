@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Strength selection verified in rollback-only PostgreSQL lesson-route check:
+  three correct reviews include Frequency units; a Chemistry mistake with same
+  concept label does not suppress Physics strength; recent Physics mistake does.
+  Initial run exposed order-dependent assertion in fixture (review_focus[0]);
+  changed to membership assertion, full six-check script rerun PASS. Production
+  code unchanged, all synthetic rows rolled back; sequence gaps possible. No
+  model calls, deployment or emulator/GPU changes. Live pedagogical use still open.
+
 - Lesson generation now receives topic-scoped learner_strengths: >=3 correct AI-
   marked reviews and no incorrect answer for that concept/topic in last 30 days.
   Prompt uses counts only to reduce needless repetition, not as mastery proof or

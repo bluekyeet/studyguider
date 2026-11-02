@@ -98,6 +98,8 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Lesson prompts receive topic-scoped strengths (three correct reviews and
     no wrong answer for that concept in 30 days), alongside existing weaknesses,
     answer history and explicit app-wide teaching preference. No inferred preferences.
+    - [x] PostgreSQL prompt check: three correct reviews include strength; recent
+      same-topic mistake excludes it; same label's other-topic mistake does not.
   - [ ] Validate that live lessons use the context appropriately; persistent narrative
     summaries/preference learning remain deferred pending evidence of need.
 - [ ] Evaluate durable queued AI jobs and safe crash recovery; do not retry potentially completed jobs blindly.
