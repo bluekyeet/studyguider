@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added/executed concurrent_exam_check.py in unique disposable schema: two actual
+  answer-route calls on independent connections -> one 200/revision1, one 409;
+  winner stored intact. Simulated lost response by discarding winning result and
+  retrying revision0 -> 409/no second write; reload revision1 -> success/revision2.
+  PASS, disposable tables/schema cleaned; CI step added, hosted run unverified.
+  Not real socket-drop or Android recovery test. No user exams changed, no
+  production/deploy/emulator/GPU changes or model calls.
+
 - Added/executed concurrent_note_check.py: actual edit_note calls in two threads,
   independent PostgreSQL connections synchronised before competing updates. Uses
   unique isolated schema/table, no public user-note writes. PASS: one 200, one 409,

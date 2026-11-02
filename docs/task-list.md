@@ -162,6 +162,10 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Sequential stale-client route checks with PostgreSQL: old answer revision and
     replaced scan rejected with 409; newer data preserved; checked replacement confirms.
   - [ ] Concurrent independent clients, lost HTTP response and Android draft recovery.
+    - [x] Actual answer-route calls with independent connections: one concurrent
+      save wins, stale save 409; discarding winning response then retrying revision 0
+      returns 409 without another write, reload/revision 1 saves successfully.
+    - [ ] Real HTTP connection loss and Android draft/reload interaction.
 - [x] Add an optional timer (Android implementation; does not lock or submit answers).
 
 ## Diagrams and maths
