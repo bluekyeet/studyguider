@@ -1,4 +1,4 @@
-import { mathText } from './web-common.js';
+import { mathText, mathInput } from './web-common.js';
 
 const el = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -9,6 +9,12 @@ const el = (tag, text = '', className = '') => {
 const field = (title, input) => {
   const label = el('label', title);
   label.append(input);
+  return label;
+};
+// Answer boxes get the maths toolbar and a live preview.
+const mathField = (title, textarea) => {
+  const label = el('label', title);
+  label.append(mathInput(textarea));
   return label;
 };
 const option = (select, value, label) => {
@@ -189,7 +195,7 @@ export async function renderExams(container, api) {
           card.append(schedule);
         }
         const raw = el('textarea'); raw.rows = 7; raw.maxLength = 100000; raw.value = q.answer || '';
-        const rawField = field('Answer text / JSON (preserved exactly unless edited)', raw);
+        const rawField = mathField('Answer text / JSON (preserved exactly unless edited)', raw);
         const partsBox = el('div', '', 'stack');
         let parsed;
         try { parsed = JSON.parse(raw.value); } catch { /* Plain text stays plain text. */ }
@@ -215,7 +221,8 @@ export async function renderExams(container, api) {
           const image = el('img', '', 'exam-figure'); image.loading = 'lazy'; image.alt = `Figure from page ${d.page} of the original paper`;
           const query = ['x0', 'y0', 'x1', 'y1'].map((name, i) => `${name}=${d.bbox[i]}`).join('&');
           image.src = `/resources/${encodeURIComponent(q.paper_resource_id)}/pages/${d.page}/diagram-image?${query}`;
-          return image;
+          const open = el('a'); open.href = image.src; open.target = '_blank'; open.rel = 'noopener'; open.title = 'Open full size';
+          open.append(image); return open;
         });
         const addPart = (label, wording, extras = [], input = null, heading = '') => {
           const part = el('div', '', 'exam-part'); const body = el('div', '', 'stack');
@@ -223,7 +230,7 @@ export async function renderExams(container, api) {
           if (heading) body.append(el('h4', heading));
           if (wording) body.append(mathText(reflow(wording)));
           body.append(...extras);
-          if (input) body.append(field(`Your answer ${label}`.trim(), input));
+          if (input) body.append(mathField(`Your answer ${label}`.trim(), input));
           partsBox.append(part);
         };
         if (definitions.length) {

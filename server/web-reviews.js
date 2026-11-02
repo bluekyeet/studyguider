@@ -1,4 +1,4 @@
-import { mathText } from './web-common.js';
+import { mathText, mathInput } from './web-common.js';
 
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -146,7 +146,7 @@ export async function renderReviews(container, api) {
     const draft = drafts.get(question.id) || { answer: '', confidence: '' };
     answer.value = draft.answer;
     answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); answer.setCustomValidity(''); });
-    answerLabel.append(answer);
+    answerLabel.append(mathInput(answer));
     const scale = element('fieldset', undefined, 'scale');
     scale.append(element('legend', 'How confident are you?'));
     const row = element('div', undefined, 'segmented');

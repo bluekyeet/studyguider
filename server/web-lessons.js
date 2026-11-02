@@ -1,4 +1,4 @@
-import { mathText } from './web-common.js';
+import { mathText, mathInput } from './web-common.js';
 
 const element = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -15,7 +15,9 @@ function readable(text) {
     .replace(/\[?\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b\]?/gi, '')
     .replace(/\[S\d+(?:\s*[,;]\s*S?\d+)*\]/g, '')
     .replace(/\bS\d+\b/g, '')
-    .replace(/\(\s*\)|\[\s*\]/g, '');
+    .replace(/\(\s*\)|\[\s*\]/g, '')
+    // Removing a citation can leave a gap before the full stop or comma that followed it.
+    .replace(/[ \t]+([.,;:!?])/g, '$1').replace(/[ \t]{2,}/g, ' ');
 }
 
 function sections(markdown) {
@@ -208,7 +210,7 @@ export async function renderLessons(container, api) {
     input.rows = 6; input.maxLength = 50000; input.value = draft.answer;
     const status = element('p', '', 'muted');
     input.oninput = () => { draft.answer = input.value; status.textContent = 'Unsaved answer'; };
-    label.append(input);
+    label.append(mathInput(input));
     const feedback = element('div');
     if (draft.feedback) feedback.append(rendered(draft.feedback));
     const save = button('Save answer and feedback', async () => {
@@ -241,13 +243,17 @@ export async function renderLessons(container, api) {
   }
 
   function explainPanel(lesson, chunk, target) {
-    const panel = element('section', '', 'card stack');
-    panel.append(element('h2', 'Explain this section'), element('p', 'Follow-ups include the last three exchanges. Replies are unverified.', 'muted'));
+    // Collapsed until needed so the reading column keeps the page.
+    const panel = element('details', '', 'card');
+    panel.open = Boolean(lesson.replies.length || lesson.questionDraft.trim() || lesson.explainBusy);
+    const inner = element('div', '', 'stack');
+    panel.append(element('summary', 'Ask about this section'), inner);
+    inner.append(element('p', 'Follow-ups include the last three exchanges. Replies are unverified.', 'muted'));
     const label = element('label', 'Your question', 'stack');
     const input = element('textarea');
     input.maxLength = 2000; input.rows = 3; input.value = lesson.questionDraft;
     input.oninput = () => { lesson.questionDraft = input.value; };
-    label.append(input); panel.append(label);
+    label.append(mathInput(input)); inner.append(label);
     const replies = element('div', '', 'stack');
     const appendReply = reply => {
       const entry = element('article', '', 'stack');
@@ -281,7 +287,7 @@ export async function renderLessons(container, api) {
       } finally { lesson.explainBusy = false; }
     }, 'primary');
     ask.disabled = Boolean(lesson.explainBusy);
-    panel.append(ask, replies); target.append(panel);
+    inner.append(ask, replies); target.append(panel);
   }
 
   try { await feed(); }

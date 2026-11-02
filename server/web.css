@@ -130,7 +130,7 @@ pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:
 /* lesson reader: outline | reading column | tools */
 .reader{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
 .reader-outline,.reader-side{min-width:0}
-.reader-main{min-width:0;max-width:780px;width:100%;margin-inline:auto}
+.reader-main,.reader-side{min-width:0;max-width:780px;width:100%;margin-inline:auto}
 .reader-outline ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .reader-outline button{width:100%;text-align:left;border:0;border-radius:var(--radius-sm);background:transparent;min-height:36px;padding:6px 10px;display:flex;gap:10px;font-weight:400}
 .reader-outline button[aria-current=step]{background:var(--brand-soft);color:var(--brand-soft-text);font-weight:600}
@@ -144,6 +144,7 @@ pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:
 @media(min-width:1500px){
   .reader{grid-template-columns:240px minmax(0,780px) minmax(320px,1fr);justify-content:start}
   .reader-main{margin-inline:0}
+  .reader-side{max-width:none;margin-inline:0}
   .reader-side{grid-column:3;grid-row:1;position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto}
 }
 
@@ -157,13 +158,35 @@ pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:
 .exam-part-label{font-weight:700;color:var(--brand);padding-top:2px}
 .exam-part:has(.exam-part-label:empty){grid-template-columns:minmax(0,1fr)}
 .exam-part-label:empty{display:none}
-.exam-figure{max-width:100%;height:auto;border-radius:var(--radius-sm);background:#fff}
+.exam-figure{display:block;width:auto;max-width:100%;max-height:300px;height:auto;border-radius:var(--radius-sm);background:#fff;border:1px solid var(--line)}
 .qnav{display:flex;gap:6px;flex-wrap:wrap}
 .qnav button{min-width:44px;padding:4px 12px}
 .qnav button[aria-current=step]{background:var(--brand);color:var(--brand-text);border-color:transparent}
 .qnav button.done{border-color:var(--ok);color:var(--ok)}
 .qnav button[aria-current=step].done{color:var(--brand-text)}
 .timer{font-variant-numeric:tabular-nums;font-size:1.4rem;font-weight:700}
+
+/* rendered Markdown */
+.math-content>*:first-child{margin-top:0}.math-content>*:last-child{margin-bottom:0}
+.math-content h2,.math-content h3,.math-content h4,.math-content h5,.math-content h6{margin:1.2em 0 .4em}
+.math-content ul,.math-content ol{margin:.4em 0 .9em;padding-left:1.5em}
+.math-content li{margin:.25em 0}.math-content li>ul,.math-content li>ol{margin:.25em 0}
+.math-content hr{border:0;border-top:1px solid var(--line);margin:1.4em 0}
+.math-content blockquote{margin:.8em 0;padding:.2em 1em;border-left:4px solid var(--brand);background:var(--surface-2);border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+.math-content code{background:var(--surface-2);padding:.1em .35em;border-radius:6px;font-size:.92em}
+.math-content pre code{background:none;padding:0}
+.math-content .math-display{display:block;margin:.8em 0;overflow-x:auto;overflow-y:hidden}
+.table-scroll{overflow-x:auto;margin:.8em 0}
+.math-content table{border-collapse:collapse;min-width:50%}
+.math-content th,.math-content td{border:1px solid var(--line-strong);padding:6px 12px;text-align:left}
+.math-content th{background:var(--surface-2)}
+
+/* maths input */
+.math-input{display:flex;flex-direction:column;gap:6px;font-weight:400}
+.math-toolbar{display:flex;flex-wrap:wrap;gap:2px}
+.math-toolbar button{min-height:32px;padding:2px 9px;border-radius:8px;font-weight:500}
+.math-preview{border:1px dashed var(--line-strong);border-radius:var(--radius-sm);padding:8px 12px;background:var(--surface-2)}
+.math-input>p{margin:0}
 
 /* sign-in */
 #login{max-width:420px;margin:12vh auto;padding:28px}

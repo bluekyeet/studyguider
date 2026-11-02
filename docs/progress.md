@@ -1581,3 +1581,16 @@ Changes made in this round, and exactly what was and was not verified.
   lines rejoined into sentences, marks shown only when recorded. Verified in Edge
   with mock data shaped like the reported paper; not yet with the real exam, and
   figure images were not loaded (mock has no image route).
+
+- Website text and input fix: lesson text was shown with raw Markdown (`**bold**`, `*` bullets,
+  `---`). `web-common.js` now renders headings, bold/italic/code/links, nested bullet and
+  numbered lists, tables, quotes, rules and fenced code, with KaTeX maths cut out first. New
+  `mathInput`: a symbol toolbar (fractions, powers, subscripts, roots, Greek, arrows,
+  equilibrium arrow, units, \ce{}) that inserts LaTeX at the cursor, plus a live preview,
+  on lesson answers, the Explain question, review answers and exam answers. Explain and
+  sources are now collapsed panels aligned with the text column. Exam figures are capped at
+  300 px tall and open full size on click. Citation removal no longer leaves a gap before
+  full stops.
+- Verified in Edge with mock data: Markdown, nested lists, maths inside bullets, toolbar
+  insertion and preview, column alignment. Not verified: a real lesson, real exam figures
+  (the test image was small, so the height cap itself was not exercised), light mode.
