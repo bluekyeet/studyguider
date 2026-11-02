@@ -59,6 +59,25 @@ def test_safe_svg_is_kept_verbatim():
     assert _sanitise(SAFE) == SAFE
 
 
+def test_delete_diagram_removes_only_its_image_and_row(monkeypatch, tmp_path):
+    monkeypatch.setenv('UPLOAD_DIR', str(tmp_path))
+    (tmp_path / 'diagrams').mkdir()
+    image = tmp_path / 'diagrams' / 'test.png'
+    image.write_bytes(b'synthetic PNG')
+    deleted = []
+    class Database:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params):
+            if 'DELETE FROM diagrams' in sql: deleted.append(params)
+            return self
+        def fetchone(self): return ('diagrams/test.png',)
+    app = FastAPI()
+    app.include_router(diagram_router(Database, lambda: None, None, None))
+    assert TestClient(app).delete('/diagrams/8').status_code == 200
+    assert not image.exists() and deleted == [(8,)]
+
+
 @pytest.mark.parametrize('label', [r'Energy ($E_a$)', r'\frac{1}{2}', r'\text{energy}'])
 def test_raw_latex_labels_are_rejected_before_rendering(label):
     with pytest.raises(ValueError, match='cannot render LaTeX'):

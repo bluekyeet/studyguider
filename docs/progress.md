@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Topic Resources now has Diagrams gallery folder, matching top-right New diagram
+  action, hidden creation form, thumbnails, selection/select-all, confirmed single/
+  multi-delete and readable collapsible review issues. Authenticated DELETE locks
+  diagram row, restricts stored path to uploads/diagrams, removes image then row;
+  file failure retains row for retry. No actual user diagram deleted. Generation
+  requests fewer/shorter labels, right-edge anchors and exact wave relationships;
+  existing defective images not regenerated or approved. 205 tests passed, six
+  warnings/six subtests; manager route/syntax check passed; API rebuilt/deployed.
+  Browser gallery/deletion workflow and generated scientific quality unverified.
+
 - Reported diagram defects: pre-render SVG text validation now rejects raw dollar/
   common TeX labels; generator explicitly uses plain/SVG labels, focused concept,
   1000x750 viewBox, readable text and outer padding. Reviewer asks to reject clipping,

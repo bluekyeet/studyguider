@@ -103,6 +103,12 @@
     #diagrams > li { display:flex; flex-direction:column; gap:12px; }
     #diagrams img { display:block; align-self:center; width:100%; max-width:1000px; height:auto; object-fit:contain; }
     #diagrams p { margin:0; }
+    #diagrams { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr)); gap:16px; }
+    #diagrams > li { margin:0; min-width:0; padding:14px; border-radius:12px; }
+    #diagrams img { height:220px; object-fit:contain; background:#fff; border-radius:6px; }
+    .diagram-header { display:flex; align-items:start; gap:10px; }
+    .diagram-header input { width:20px; height:20px; min-height:20px; flex-shrink:0; }
+    #diagrams details p { white-space:pre-wrap; font-size:.85rem; margin-top:10px; }
     #upload-panel { border:1px dashed #7f8ca9; border-radius:12px; padding:20px; margin-bottom:16px; }
     #upload-panel .hint:last-child { margin:12px 0 0; }
     #file-selection { border-bottom:1px solid #8290aa55; }
@@ -358,12 +364,13 @@
         </section>
         <section class="card" aria-labelledby="diagram-heading">
           <div class="section-heading"><span class="section-number">15</span><h2 id="diagram-heading">Diagrams</h2></div>
-          <p class="hint">The teacher model writes SVG, the server renders it, and the reviewer checks the image. A passed review is advisory; a failed diagram is flagged for you.</p>
-          <form id="generate-diagram">
+           <button id="new-diagram" type="button" aria-expanded="false" aria-controls="generate-diagram">＋ New diagram</button>
+           <form id="generate-diagram" hidden>
             <label for="diagram-description">What should the diagram show?</label><textarea id="diagram-description" rows="3" maxlength="2000" required></textarea>
             <button id="diagram-button">Generate diagram</button>
           </form>
-          <p id="diagram-status" role="status" aria-live="polite"></p>
+           <p id="diagram-status" role="status" aria-live="polite"></p>
+           <div class="file-toolbar"><label><input id="select-all-diagrams" type="checkbox"> Select all</label><button id="delete-selected-diagrams" type="button" disabled>Delete selected</button></div>
           <ul id="diagrams"></ul>
         </section>
         <section class="card" aria-labelledby="usage-heading">
@@ -426,7 +433,7 @@
       const params = new URLSearchParams();
       if (subject) params.set('subject', subject);
       if (subject && topic) params.set('topic', topic);
-      if (subject && topic && ['exams','slides','extra','pending'].includes(folder)) params.set('folder', folder);
+      if (subject && topic && ['exams','slides','extra','pending','diagrams'].includes(folder)) params.set('folder', folder);
       if (subject && topic && section) params.set('section', section);
       else if (subject && topic && folder) params.set('section', 'resources');
       return '#Library' + (params.size ? '?' + params : '');
@@ -443,7 +450,7 @@
       cards.forEach(card => {
         const topic = $('topics').value, folder = currentRoute().params.get('folder');
         let allowed = sections[section] || [];
-        if (section === 'resources') allowed = folder ? ['resources-heading'] : ['search-heading'];
+        if (section === 'resources') allowed = folder === 'diagrams' ? ['diagram-heading'] : folder ? ['resources-heading'] : ['search-heading'];
         card.hidden = !topic || !allowed.some(id => card.contains($(id)));
       });
       scope.hidden = true;
@@ -474,6 +481,8 @@
       // Keep the one upload control alive when replacing the folder header.
       const uploadButton = $('toggle-upload');
       if (uploadButton) document.querySelector('.file-toolbar').append(uploadButton);
+      const newDiagram = $('new-diagram');
+      if (newDiagram) $('diagram-heading').closest('section').prepend(newDiagram);
       explorer.replaceChildren();
       const subject = $('subjects').value, topic = $('topics').value;
       const breadcrumb = document.createElement('nav'); breadcrumb.setAttribute('aria-label', 'Library location');
@@ -489,7 +498,7 @@
       const folder = currentRoute().params.get('folder');
       const section = currentRoute().params.get('section') || '';
       const sectionNames = {resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',settings:'Settings',learning:'Learning settings',tools:'Tools'};
-      const folderNames = {exams:'Exams',slides:'Slides',extra:'Extra resources',pending:'Classifying'};
+      const folderNames = {exams:'Exams',slides:'Slides',extra:'Extra resources',diagrams:'Diagrams',pending:'Classifying'};
       if (section) {
         breadcrumb.append(' / ');
         if (['learning','tools'].includes(section)) {
@@ -504,7 +513,7 @@
       if (!topic) {
         const add = document.createElement('button'); add.type = 'button'; add.textContent = subject ? '＋ New topic' : '＋ New subject';
         add.onclick = () => openCreate(subject ? 'topic' : 'subject'); toolbar.append(add);
-      } else if (section === 'resources' && folder) toolbar.append(uploadButton);
+      } else if (section === 'resources' && folder) toolbar.append(folder === 'diagrams' ? newDiagram : uploadButton);
       renderSidebar(subject, topic, section, folder);
       if (topic && (folder || (section && !['resources','settings'].includes(section)))) {
         return;
@@ -537,7 +546,7 @@
         const label = document.createElement('p'); label.className = 'sidebar-section'; label.textContent = 'Topic folders'; nav.append(label);
         for (const [key,name] of Object.entries({resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',settings:'Settings'})) {
           link(name,libraryUrl(subject,topic,'',key),section === key && !folder);
-          if (key === 'resources' && section === key) for (const [type,title] of Object.entries({exams:'Exams',slides:'Slides',extra:'Extra resources',pending:'Classifying'})) link('　'+title,libraryUrl(subject,topic,type,key),folder === type);
+          if (key === 'resources' && section === key) for (const [type,title] of Object.entries({exams:'Exams',slides:'Slides',extra:'Extra resources',diagrams:'Diagrams',pending:'Classifying'})) link('　'+title,libraryUrl(subject,topic,type,key),folder === type);
           if (key === 'settings' && ['settings','learning','tools'].includes(section)) {
             link('　Learning settings',libraryUrl(subject,topic,'','learning'),section === 'learning');
             link('　Tools',libraryUrl(subject,topic,'','tools'),section === 'tools');
@@ -1185,14 +1194,34 @@
         `\n${data.disclaimer}`;
     });
 
+    const selectedDiagrams = new Set();
+    $('new-diagram').onclick = () => { $('generate-diagram').hidden = !$('generate-diagram').hidden; $('new-diagram').setAttribute('aria-expanded', String(!$('generate-diagram').hidden)); };
+    function updateDiagramSelection() { $('delete-selected-diagrams').disabled = !selectedDiagrams.size; }
+    $('select-all-diagrams').onchange = () => {
+      const checked = $('select-all-diagrams').checked;
+      $('diagrams').querySelectorAll('input[type=checkbox]').forEach(box => { box.checked = checked; box.onchange(); });
+    };
+    async function deleteDiagrams(ids) {
+      if (!ids.length || !confirm(`Permanently delete ${ids.length} diagram(s), including images? Lessons and source resources are kept.`)) return;
+      const failures = []; let deleted = 0;
+      for (const id of ids) {
+        try { await api(`/diagrams/${id}`, {method:'DELETE'}); deleted++; }
+        catch (error) { failures.push(`Diagram ${id}: ${error.message}`); }
+      }
+      await loadDiagrams(); message(`Deleted ${deleted} diagram(s). ${failures.join('\n')}`);
+    }
+    $('delete-selected-diagrams').onclick = () => deleteDiagrams([...selectedDiagrams]).catch(error => message(error.message));
     async function loadDiagrams() {
       const topic = $('topics').value;
       const list = $('diagrams'); list.replaceChildren();
+      selectedDiagrams.clear(); $('select-all-diagrams').checked = false; updateDiagramSelection();
       if (!topic) return;
       for (const diagram of await api(`/topics/${topic}/diagrams`)) {
         const item = document.createElement('li');
+        const check = document.createElement('input'); check.type = 'checkbox'; check.setAttribute('aria-label', `Select diagram ${diagram.id}`);
+        check.onchange = () => { if (check.checked) selectedDiagrams.add(diagram.id); else selectedDiagrams.delete(diagram.id); updateDiagramSelection(); };
         const title = document.createElement('strong'); title.textContent = `${diagram.description} — ${diagram.status}`;
-        item.append(title);
+        const header = document.createElement('div'); header.className = 'diagram-header'; header.append(check,title); item.append(header);
         if (diagram.image_path) {
           const image = document.createElement('img');
           image.alt = diagram.description;
@@ -1200,7 +1229,14 @@
           authorisedImage(image, `/diagrams/${diagram.id}/image`);
           item.append(image);
         }
-        if (diagram.review) { const review = document.createElement('p'); review.textContent = diagram.review; item.append(review); }
+        if (diagram.review) {
+          const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = 'Review details';
+          const review = document.createElement('p');
+          try { const verdict = JSON.parse(diagram.review); review.textContent = verdict.issues.join('\n') || 'AI review passed; not verification.'; } catch { review.textContent = diagram.review; }
+          details.append(summary,review); item.append(details);
+        }
+        const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Delete';
+        remove.onclick = () => deleteDiagrams([diagram.id]).catch(error => message(error.message)); item.append(remove);
         if (diagram.status === 'flagged' && diagram.image_path) {
           const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Retry visual review';
           retry.onclick = async () => {
@@ -1216,6 +1252,7 @@
         }
         list.append(item);
       }
+      if (!list.children.length) { const empty = document.createElement('p'); empty.textContent = 'No diagrams yet.'; list.append(empty); }
     }
     $('generate-diagram').onsubmit = run(async () => {
       const topic = $('topics').value;
