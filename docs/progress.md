@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added one bounded visual-review output retry on same image for malformed JSON/
+  invalid schema in generation and saved-image re-review. Gateway exceptions not
+  retried; strict boolean pass + empty string issue list still required. 169 tests
+  passed, six warnings/six subtests; API rebuilt/deployed. Live probe recovered
+  parseable reviews but exhausted three drawing attempts with actual faults:
+  wavelength arrow not crest-to-crest and curve discontinuity. Remained flagged,
+  acceptance exit 1, temporary files/rows cleaned. Up to nine gateway calls in this
+  probe (three drawings, two reviews each); no unlimited retries. Successful
+  visual correctness task remains open. No Android/emulator/GPU changes.
+
 - Aligned SVG generation prompt with sanitizer: explicit simple element set,
   direct presentation attributes, no style blocks/classes/links, white background
   and bounded labels. Sanitizer unchanged. 168 tests passed, six warnings/six

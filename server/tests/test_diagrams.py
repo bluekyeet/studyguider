@@ -20,7 +20,7 @@ SAFE = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
         '<text x="5" y="40">Force</text></svg>')
 
 
-@pytest.mark.parametrize("verdict,status", [('{"pass":true,"issues":[]}', 200), ('invalid', 502)])
+@pytest.mark.parametrize("verdict,status", [('{"pass":true,"issues":[]}', 200), ('invalid', 502), ('recover', 200)])
 def test_retry_reviews_saved_image_without_generation(monkeypatch, tmp_path, verdict, status):
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
     (tmp_path / "saved.png").write_bytes(b"unchanged PNG")
@@ -36,8 +36,12 @@ def test_retry_reviews_saved_image_without_generation(monkeypatch, tmp_path, ver
         def fetchone(self):
             return (8,) if "UPDATE diagrams" in self.sql else ("Force", "saved.png", "flagged", None, None, None)
 
+    calls = []
     def vision(model, prompt, image, task):
         assert image == b"unchanged PNG"
+        calls.append(prompt)
+        if verdict == 'recover':
+            return 'invalid' if len(calls) == 1 else '{"pass":true,"issues":[]}'
         return verdict
 
     app = FastAPI()
@@ -47,6 +51,7 @@ def test_retry_reviews_saved_image_without_generation(monkeypatch, tmp_path, ver
     if status == 502:
         assert "malformed JSON" in response.json()["detail"]
     assert bool(updates) == (status == 200)
+    assert len(calls) == (1 if verdict.startswith('{') else 2)
     assert (tmp_path / "saved.png").read_bytes() == b"unchanged PNG"
 
 

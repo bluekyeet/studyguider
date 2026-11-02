@@ -135,6 +135,8 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Retry review of existing images after reviewer outages.
 - [ ] Automatically select/generate diagrams where useful during lesson creation, not on every section.
 - [ ] Verify a successful live diagram correction/review cycle and scientific visual correctness.
+  - Malformed-output retry now recovers valid verdicts; latest bounded live loop
+    still rejected crest-to-crest arrow/curve faults. Correct rejection is not a pass.
   - Latest prompt correction renders first attempt; visual reviewer returned
     malformed JSON. Failure remains flagged; successful AI review still open.
   - Latest live synthetic wave probe: SVG generation needed two attempts, PNG
@@ -177,7 +179,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 168 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 169 passed, six warnings, six subtests passed.
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.
