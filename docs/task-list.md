@@ -149,7 +149,7 @@ does not mean its end-to-end acceptance checks have passed.
     topic attempt and keeps it until a lesson arrives (installed on the emulator, not tapped).
   - [ ] Commit-acknowledgement loss is not simulated; leases and fenced writes for online
     reclamation are not built. The website has no lesson-generate button, so sends no key.
-- [ ] Run Android nightly-status UI checks after the emulator is available.
+- [x] Android nightly-status UI checked on the emulator (3 Nov 2026): Waves shows three runs, each "completed" with a separate AI review line (passed / flagged, "not factual verification") and the lesson id.
 
 ## Exams and marking
 

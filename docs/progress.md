@@ -1659,4 +1659,12 @@ From the pasted source review (not a penetration test):
 - Fixed (3) batch uploads: the size middleware covers `/resources/batch` (200 MiB), and the handler caps 50 files, 200 MiB read and 500 MiB expanded across the whole request. Test added.
 - Fixed (4) PDF rendering: `pages.safe_dpi` caps rasterisation at 25 megapixels and refuses pages over 200 inches; used for page images, diagram clips and OCR. Test added. Page-count and render-time limits and process isolation are not added.
 - Not changed: (2) login lockout is global by design for one user; the API is bound to 127.0.0.1 only. (5) Debug builds allow cleartext for the emulator; a release build with HTTPS is not set up. (6) Cookie `Secure` depends on the proxy; not inspected.
-- Seen on the emulator: the Explain button overlaps "Next section" on practice sections.
+- Correction: the Explain button only appears to overlap "Next section" at scroll top; scrolling clears it, so it is not a defect.
+
+## 3 Nov 2026: emulator pass 2 (manual taps, no test runner)
+
+- Verified on emulator-5554 with the live server: typing in a Your Turn box autosaves ("Saved to server"; `lesson_answers` for lesson 77 changed); "Check my answer" returned Tutor feedback in the app and the feedback (223 chars) reached the server row, so a website open on that lesson would see both. Maths (λ) still renders after the WebView lockdown. Nightly status dialog for Waves lists three runs with the completed/review-status split.
+- adb `input text` dropped characters, so the saved answer was "A_wave_tra"; the feedback correctly said the answer was cut off.
+- Test data cleanup: that answer and feedback were blanked and lesson 77's reading position reset to section 0 afterwards (revisions advanced; no row deleted).
+- Android feedback is labelled "Tutor feedback"; it does not carry the website's "AI generated" badge.
+- Still unexercised: New lesson generation, Explain panel and note saving, exam override, notifications.
