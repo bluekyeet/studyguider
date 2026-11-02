@@ -1572,3 +1572,12 @@ Changes made in this round, and exactly what was and was not verified.
   Review and Exams.
 - Not verified: answering, saving and marking against the real server, the timer
   while running, and light mode. Lesson text is mock data, not a real generated lesson.
+
+- Exam page formatting fix: the full question text was shown and then every part repeated;
+  labels doubled ("(a) (a)"); parent parts such as (b) had answer boxes; PDF line
+  breaks split sentences; zero marks showed as "0 marks". Now ported from the Android
+  rules: parts shown once with the label beside the wording, answer boxes only on the
+  lowest-level parts, "QUESTION ONE: TITLE" shown as a heading, per-part figures,
+  lines rejoined into sentences, marks shown only when recorded. Verified in Edge
+  with mock data shaped like the reported paper; not yet with the real exam, and
+  figure images were not loaded (mock has no image route).

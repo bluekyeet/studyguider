@@ -153,6 +153,11 @@ pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:
 @media(min-width:1100px){.exam-layout{grid-template-columns:340px minmax(0,1fr)}.exam-rail{position:sticky;top:20px}}
 .exam-rail label>select,.exam-rail label>input:not([type=checkbox]):not([type=radio]){display:block;width:100%;margin-top:6px}
 .exam-rail .fields{grid-template-columns:1fr}
+.exam-part{display:grid;grid-template-columns:3.2rem minmax(0,1fr);gap:12px;align-items:start}
+.exam-part-label{font-weight:700;color:var(--brand);padding-top:2px}
+.exam-part:has(.exam-part-label:empty){grid-template-columns:minmax(0,1fr)}
+.exam-part-label:empty{display:none}
+.exam-figure{max-width:100%;height:auto;border-radius:var(--radius-sm);background:#fff}
 .qnav{display:flex;gap:6px;flex-wrap:wrap}
 .qnav button{min-width:44px;padding:4px 12px}
 .qnav button[aria-current=step]{background:var(--brand);color:var(--brand-text);border-color:transparent}

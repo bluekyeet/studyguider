@@ -17,6 +17,13 @@ const option = (select, value, label) => {
   select.append(node);
 };
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
+// Paper text keeps the PDF's line breaks. Join them back into sentences, but keep
+// blank lines and lines that start a new source credit or sub-part.
+const reflow = text => String(text || '').replace(/[ \t]*\n(?!\s*\n)(?!\s*(?:Source|\([a-hivx]+\)))/gi, ' ').trim();
+// A part's wording often begins with its own label, which is already shown beside it.
+const withoutLabel = text => String(text || '').replace(/^\s*\([a-hivx]+\)\s*/i, '');
+const displayLabel = label => !label || label === 'context' ? ''
+  : label.startsWith('(') ? label : `(${label.replaceAll('(', ')(')}${label.endsWith(')') ? '' : ')'}`;
 
 export async function renderExams(container, api) {
   const root = el('section', '', 'stack');
@@ -128,7 +135,7 @@ export async function renderExams(container, api) {
       if (!alive() || request !== openRequest) return;
       drafts = []; detail.replaceChildren();
       const heading = el('div', '', 'card stack');
-      heading.append(el('h2', info.title || `Exam ${id}`), el('p', `${exam.kind.replaceAll('_', ' ')} · ${exam.total_marks} registered marks · ${info.answer_mode} answer mode`, 'muted'), link('Download text-only practice PDF (original diagrams not included)', `/exams/${id}/print`));
+      heading.append(el('h2', info.title || `Exam ${id}`), el('p', `${exam.kind.replaceAll('_', ' ')} · ${exam.total_marks > 0 ? `${exam.total_marks} registered marks` : 'marks not recorded'} · ${info.answer_mode} answer mode`, 'muted'), link('Download text-only practice PDF (original diagrams not included)', `/exams/${id}/print`));
       if (info.answer_mode === 'handwritten') heading.append(el('p', 'This initial web version edits saved answer text only. Upload and handwriting recognition remain in the existing app.', 'muted'));
       detail.append(heading);
       const cards = [], navButtons = [];
@@ -166,7 +173,11 @@ export async function renderExams(container, api) {
         navButton.onclick = () => showQuestion(questionIndex);
         navButtons.push(navButton); nav.append(navButton);
         const card = el('article', '', 'card stack');
-        card.append(el('h3', `Question ${q.position} · ${q.question_number} · AS ${q.standard_number} · ${q.year} · ${q.marks} marks`), mathText(q.question_text || 'Question text unavailable. Open the original paper for the full wording and diagrams.'));
+        const title = el('div', '', 'toolbar');
+        title.append(el('h3', `Question ${q.position}`), el('span', `AS ${q.standard_number}`, 'chip'), el('span', String(q.year), 'chip'));
+        if (q.marks > 0) title.append(el('span', `${q.marks} mark${q.marks === 1 ? '' : 's'}`, 'chip'));
+        if (String(q.question_number) !== String(q.position)) title.append(el('span', `Paper question ${q.question_number}`, 'chip'));
+        card.append(title);
         const sources = el('div', '', 'toolbar');
         if (q.paper_resource_id) sources.append(link(`Original paper · page ${q.paper_page}`, `/resources/${encodeURIComponent(q.paper_resource_id)}/download#page=${q.paper_page}`));
         if (q.schedule_resource_id) sources.append(link(`Original schedule · page ${q.schedule_page}`, `/resources/${encodeURIComponent(q.schedule_resource_id)}/download#page=${q.schedule_page}`));
@@ -186,23 +197,54 @@ export async function renderExams(container, api) {
           && parsed.parts && typeof parsed.parts === 'object' && !Array.isArray(parsed.parts)
           && Object.values(parsed.parts).every(v => typeof v === 'string');
         const definitions = (q.parts || [])
-          .filter(p => typeof p.label === 'string' && p.label && p.label !== 'context' && typeof p.text === 'string')
-          .map(p => ({ ...p, label: p.label.startsWith('(') ? p.label : `(${p.label.replaceAll('(', ')(')}${p.label.endsWith(')') ? '' : ')'}` }));
-        const partMode = !!structured || (!raw.value && definitions.length > 0);
+          .filter(p => p && typeof p.label === 'string' && typeof p.text === 'string')
+          .map(p => ({ ...p, label: displayLabel(p.label) }))
+          // A bare "QUESTION ONE" line is only a heading; "QUESTION ONE: TITLE" keeps its title.
+          .map(p => {
+            if (p.label) return { ...p, text: withoutLabel(p.text) };
+            const head = /^\s*QUESTION\s+(?:ONE|TWO|THREE|\d+)\s*:?\s*([^\n]*)\n?([\s\S]*)$/i.exec(p.text);
+            return head ? { ...p, heading: head[1].trim(), text: head[2] } : p;
+          })
+          .filter(p => p.text.trim() || p.heading);
+        const partMode = !!structured || (!raw.value && definitions.some(p => p.label));
         const documentAnswer = structured ? parsed : { parts: {} };
         const partInputs = new Map();
-        if (partMode) {
-          const labels = [...new Set([...definitions.map(p => p.label), ...Object.keys(documentAnswer.parts)])];
-          for (const label of labels) {
-            const definition = definitions.find(p => p.label === label);
-            if (definition) partsBox.append(mathText(`${label} ${definition.text}`));
-            const input = el('textarea'); input.rows = 4; input.maxLength = 100000;
-            input.value = documentAnswer.parts[label] || '';
-            partInputs.set(label, input); partsBox.append(field(`Answer ${label}`, input));
+        // Only the lowest-level parts take an answer; a parent such as (b) just introduces (b)(i) and (b)(ii).
+        const answerable = p => p.label && !definitions.some(other => other.label.startsWith(p.label + '('));
+        const diagrams = p => (p.diagrams || []).filter(d => q.paper_resource_id && Array.isArray(d.bbox) && d.bbox.length === 4).map(d => {
+          const image = el('img', '', 'exam-figure'); image.loading = 'lazy'; image.alt = `Figure from page ${d.page} of the original paper`;
+          const query = ['x0', 'y0', 'x1', 'y1'].map((name, i) => `${name}=${d.bbox[i]}`).join('&');
+          image.src = `/resources/${encodeURIComponent(q.paper_resource_id)}/pages/${d.page}/diagram-image?${query}`;
+          return image;
+        });
+        const addPart = (label, wording, extras = [], input = null, heading = '') => {
+          const part = el('div', '', 'exam-part'); const body = el('div', '', 'stack');
+          part.append(el('div', label, 'exam-part-label'), body);
+          if (heading) body.append(el('h4', heading));
+          if (wording) body.append(mathText(reflow(wording)));
+          body.append(...extras);
+          if (input) body.append(field(`Your answer ${label}`.trim(), input));
+          partsBox.append(part);
+        };
+        if (definitions.length) {
+          for (const p of definitions) {
+            let input = null;
+            if (partMode && answerable(p)) {
+              input = el('textarea'); input.rows = 4; input.maxLength = 100000;
+              input.value = documentAnswer.parts[p.label] || ''; partInputs.set(p.label, input);
+            }
+            addPart(p.label, p.text, diagrams(p), input, p.heading);
+          }
+          // Keep saved answers whose part no longer exists in the question.
+          for (const [label, value] of Object.entries(partMode ? documentAnswer.parts : {})) {
+            if (partInputs.has(label)) continue;
+            const input = el('textarea'); input.rows = 4; input.value = value; partInputs.set(label, input);
+            addPart(label, '', [], input);
           }
         } else {
-          for (const p of definitions) card.append(mathText(`${p.label} ${p.text}`));
+          partsBox.append(mathText(reflow(q.question_text || 'Question text unavailable. Open the original paper for the full wording and diagrams.')));
         }
+        card.append(partsBox);
         const controls = el('div', '', 'toolbar');
         const save = el('button', 'Save answer');
         const mark = el('button', 'Save & mark', 'primary');
@@ -225,7 +267,7 @@ export async function renderExams(container, api) {
             if (!window.confirm('Switch to raw editing? Your current text / JSON will be retained.')) return;
             partsBox.hidden = true; rawField.hidden = false; toggle.remove();
           });
-          card.append(partsBox, toggle);
+          card.append(toggle);
         }
         const run = async (action) => {
           if (busy) return;
