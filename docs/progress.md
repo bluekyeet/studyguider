@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Diagram diagnostics now distinguish gateway HTTP status, malformed JSON,
+  invalid verdict fields and connection failures rather than collapsing them into
+  unavailable review. Existing retry error test asserts malformed-JSON wording.
+  168 tests passed, six warnings/six subtests; API rebuilt/deployed. Live probe
+  rerun failed before vision: three generation attempts, final sanitiser error
+  Unsupported SVG element: style, no PNG persisted. Fontconfig warning repeated.
+  Temporary files/rows cleaned. Sanitiser not loosened; successful live diagram
+  review remains blocked. Emulator/GPU unchanged.
+
 - Added opt-in live_diagram_check.py using rollback-only synthetic wave evidence
   and a temporary image directory. Real run FAILED acceptance (exit 1): two SVG
   generation attempts, one vision review attempt, PNG signature valid/26,055 bytes,

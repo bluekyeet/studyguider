@@ -44,6 +44,8 @@ def test_retry_reviews_saved_image_without_generation(monkeypatch, tmp_path, ver
     app.include_router(diagram_router(Database, lambda: None, None, vision))
     response = TestClient(app).post("/diagrams/8/review")
     assert response.status_code == status
+    if status == 502:
+        assert "malformed JSON" in response.json()["detail"]
     assert bool(updates) == (status == 200)
     assert (tmp_path / "saved.png").read_bytes() == b"unchanged PNG"
 

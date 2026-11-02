@@ -118,8 +118,14 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
                     or not isinstance(verdict.get("issues"), list)
                     or any(not isinstance(issue, str) for issue in verdict["issues"])):
                 raise ValueError("Invalid verdict")
-        except Exception:
-            raise HTTPException(502, "Visual review unavailable or invalid; existing diagram remains flagged") from None
+        except HTTPException as exc:
+            raise HTTPException(502, f"Visual review gateway failed (HTTP {exc.status_code}); existing diagram remains flagged") from None
+        except json.JSONDecodeError:
+            raise HTTPException(502, "Visual reviewer returned malformed JSON; existing diagram remains flagged") from None
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(502, "Visual reviewer returned invalid verdict fields; existing diagram remains flagged") from None
+        except OSError:
+            raise HTTPException(502, "Visual review connection or image read failed; existing diagram remains flagged") from None
         status = "passed" if verdict["pass"] and not verdict["issues"] else "flagged"
         with connect() as db:
             updated = db.execute("""UPDATE diagrams SET status=%s, review=%s, updated_at=now()
@@ -187,8 +193,18 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
                 else:
                     review = "Reviewer returned an invalid verdict."
                     last_error = review
-            except Exception:
-                review = "Visual review was unavailable; the diagram is flagged for you to check."
+            except HTTPException as exc:
+                review = f"Visual review gateway failed (HTTP {exc.status_code}); the diagram remains flagged."
+                break
+            except json.JSONDecodeError:
+                review = "Visual reviewer returned malformed JSON; the diagram remains flagged."
+                last_error = review
+                break
+            except (ValueError, TypeError, AttributeError):
+                review = "Visual reviewer returned invalid verdict fields; the diagram remains flagged."
+                break
+            except OSError:
+                review = "Visual review connection failed; the diagram remains flagged."
                 # Provider outages are not evidence of a drawing fault; preserve
                 # this draft rather than spend two more generation calls.
                 break

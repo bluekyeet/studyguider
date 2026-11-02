@@ -32,7 +32,16 @@ def teacher(model, messages, task):
 
 def reviewer(model, prompt, image, task):
     calls.append(task)
-    return model_reply_vision(model, prompt, image, task="acceptance-" + task)
+    try:
+        reply = model_reply_vision(model, prompt, image, task="acceptance-" + task)
+    except Exception as exc:
+        print("VISION_FAILURE_TYPE", type(exc).__name__, "HTTP_STATUS", getattr(exc, 'status_code', None), flush=True)
+        raise
+    try:
+        json.loads(reply.strip().removeprefix('```json').removesuffix('```').strip())
+    except (ValueError, AttributeError):
+        print("VISION_OUTPUT_NOT_PURE_JSON", flush=True)
+    return reply
 
 
 original_upload_dir = os.environ.get("UPLOAD_DIR")
