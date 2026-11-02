@@ -86,43 +86,34 @@ export async function renderLessons(container, api) {
       const lessons = await api('/lessons');
       if (disposed) return;
       active = null; drafts.clear(); content.replaceChildren();
+      // Lessons belong to the day they were prepared, in New Zealand time.
+      const day = value => new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date(value));
+      const today = day(new Date());
+      const todays = lessons.filter(lesson => lesson.created_at && day(lesson.created_at) === today);
       const head = element('div', '', 'page-head'); const title = element('div');
-      title.append(element('h1', 'Lessons'), element('p', 'A new lesson is prepared overnight for each topic you are learning.', 'muted'));
+      title.append(element('h1', 'Today’s lessons'),
+        element('p', new Intl.DateTimeFormat('en-NZ', { timeZone: 'Pacific/Auckland', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()), 'muted'));
       head.append(title); content.append(head);
-      if (!lessons.length) {
-        content.append(element('p', 'No lessons yet. Choose the topics you are learning in Settings and your first lesson will be ready tomorrow.', 'empty'));
+      if (!todays.length) {
+        const empty = element('div', '', 'empty');
+        empty.append(element('p', lessons.length
+          ? 'No lessons were prepared for today. A new one is made overnight for each topic you are learning.'
+          : 'No lessons yet. Choose the topics you are learning in Settings and your first lesson will be ready tomorrow.'));
+        const settings = element('a', 'Choose topics in Settings'); settings.href = '#settings'; empty.append(settings);
+        content.append(empty);
         return;
       }
-      const todo = lessons.filter(l => !l.completed_at);
-      const total = lessons.length, done = total - todo.length;
-      if (todo.length) {
-        const next = todo[0];
-        const hero = element('section', '', 'card stack hero');
-        hero.append(element('span', 'Up next', 'chip'), element('h2', readable(next.query)),
-          element('p', `${next.subject} · ${next.topic}`, 'muted'), button('Start lesson', () => open(next), 'primary'));
-        const bar = element('div', '', 'progress'); const fill = element('i'); fill.style.width = `${Math.round(done / total * 100)}%`; bar.append(fill);
-        hero.append(bar, element('p', `${done} of ${total} lessons completed`, 'muted'));
-        content.append(hero);
-      }
-      const groups = new Map();
-      for (const lesson of lessons) {
-        const key = `${lesson.subject} · ${lesson.topic}`;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(lesson);
-      }
+      const left = todays.filter(lesson => !lesson.completed_at).length;
+      content.append(element('p', left ? `${todays.length - left} of ${todays.length} done` : 'All of today’s lessons are done. Well done.', 'muted'));
       const grid = element('div', '', 'card-grid wide');
-      for (const [name, items] of groups) {
-        const card = element('section', '', 'card stack');
-        card.append(element('h2', name));
-        const list = element('ul', '', 'list');
-        for (const lesson of items) {
-          const li = element('li'); const text = element('div', '', 'grow');
-          text.append(element('strong', readable(lesson.query)));
-          li.append(text, element('span', lesson.completed_at ? 'Completed' : 'To do', `chip ${lesson.completed_at ? 'ok' : ''}`),
-            button(lesson.completed_at ? 'Review' : 'Open', () => open(lesson), 'small'));
-          list.append(li);
-        }
-        card.append(list); grid.append(card);
+      for (const lesson of todays) {
+        const card = element('article', '', 'card stack lesson-card');
+        const done = Boolean(lesson.completed_at);
+        const tags = element('div', '', 'toolbar');
+        tags.append(element('span', `${lesson.subject} · ${lesson.topic}`, 'chip'), element('span', done ? 'Completed' : 'To do', `chip ${done ? 'ok' : 'warn'}`));
+        card.append(tags, element('h2', readable(lesson.query)),
+          button(done ? 'Review lesson' : 'Start lesson', () => open(lesson), done ? '' : 'primary'));
+        grid.append(card);
       }
       content.append(grid);
     } finally { loading = false; }

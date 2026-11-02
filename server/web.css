@@ -112,6 +112,8 @@ pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:
 /* buttons and chips keep their natural size inside stacked cards */
 .stack>button,.stack>.chip,.stack>a.button{align-self:flex-start}
 .hero{max-width:720px}
+.lesson-card{justify-content:space-between;min-height:190px}
+.lesson-card h2{font-size:1.35rem;flex:1}
 
 /* reading and practice widths: comfortable line length on large screens */
 .narrow{width:100%;max-width:780px;margin-inline:auto}
