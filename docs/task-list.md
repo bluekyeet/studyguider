@@ -64,6 +64,10 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Read saved topic notes in Android.
 - [x] Implement note deletion with confirmation; runtime checks still outstanding.
 - [ ] Verify live Explain focus, follow-up context, streaming completion and note saving together.
+  - [x] Actual server routes plus real gateway: section/source payload, previous-turn
+    context, two normal stream completions and exact note save; synthetic records rolled back.
+  - [ ] Android interaction and unsupported-example handling (live reply added an
+    unprovided magnesium/acid example; transport success is not grounding verification).
 - [x] Make source inspection convenient without restoring inline citation clutter (reader Sources panel; saved filename/page/excerpts, runtime check pending).
 - [ ] Stream lesson generation safely without presenting unreviewed content as ready.
 - [ ] Evaluate validated structured lesson objects instead of relying on Markdown/model structure.

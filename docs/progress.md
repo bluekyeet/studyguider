@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Live Explain/follow-up acceptance probe passed server workflow: actual Explain
+  route supplies synthetic section/source evidence, previous reply reaches second
+  prompt, two real gateway streams finish with done, and actual create_note route
+  stores exact second reply plus advisory notice. Synthetic lesson/topic/subject/
+  note rolled back; two real usage entries retained, identity sequence gaps possible.
+  Responses correctly distinguish concentration/collision frequency from speed at
+  fixed temperature, but first reply introduced magnesium/acid example absent from
+  saved evidence. Grounding compliance and Android workflow remain unverified.
+  Added opt-in live_explain_check.py; no production changes/deploy/emulator startup.
+
 - Actual scheduler PostgreSQL check added to rollback-only acceptance script.
   Temporary schedule/run/course tables shadow public ones for this connection,
   so no real jobs are claimed/disabled. At 01:00 Auckland no callback; at 02:00
