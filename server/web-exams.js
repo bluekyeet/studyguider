@@ -14,7 +14,7 @@ const field = (title, input) => {
 // Answer boxes get the maths toolbar and a live preview.
 const mathField = (title, textarea) => {
   const label = el('label', title);
-  label.append(mathInput(textarea));
+  label.append(mathInput(textarea, { collapsed: true }));
   return label;
 };
 const option = (select, value, label) => {
@@ -180,7 +180,7 @@ export async function renderExams(container, api) {
         navButtons.push(navButton); nav.append(navButton);
         const card = el('article', '', 'card stack');
         const title = el('div', '', 'toolbar');
-        title.append(el('h3', `Question ${q.position}`), el('span', `AS ${q.standard_number}`, 'chip'), el('span', String(q.year), 'chip'));
+        title.append(el('h3', `Question ${q.position}`), el('span', `AS ${q.standard_number} · ${q.year}`, 'chip'));
         if (q.marks > 0) title.append(el('span', `${q.marks} mark${q.marks === 1 ? '' : 's'}`, 'chip'));
         if (String(q.question_number) !== String(q.position)) title.append(el('span', `Paper question ${q.question_number}`, 'chip'));
         card.append(title);
@@ -191,7 +191,11 @@ export async function renderExams(container, api) {
         card.append(sources);
         if (q.schedule_text) {
           const schedule = el('details');
-          schedule.append(el('summary', q.schedule_resource_id ? 'Compare with schedule excerpt' : 'Compare with AI practice rubric (unofficial)'), mathText(q.schedule_text));
+          schedule.append(el('summary', q.schedule_resource_id ? 'Compare with schedule excerpt' : 'Compare with AI practice rubric (unofficial)'));
+          if (q.schedule_resource_id) {
+            // PDF tables lose their columns when extracted, so show the text as-is and point to the original.
+            schedule.append(el('p', 'Extracted text; table layout is lost. Use the original schedule page above to compare.', 'muted'), el('pre', q.schedule_text, 'schedule-text'));
+          } else schedule.append(mathText(q.schedule_text));
           card.append(schedule);
         }
         const raw = el('textarea'); raw.rows = 7; raw.maxLength = 100000; raw.value = q.answer || '';
@@ -217,8 +221,15 @@ export async function renderExams(container, api) {
         const partInputs = new Map();
         // Only the lowest-level parts take an answer; a parent such as (b) just introduces (b)(i) and (b)(ii).
         const answerable = p => p.label && !definitions.some(other => other.label.startsWith(p.label + '('));
-        const diagrams = p => (p.diagrams || []).filter(d => q.paper_resource_id && Array.isArray(d.bbox) && d.bbox.length === 4).map(d => {
-          const image = el('img', '', 'exam-figure'); image.loading = 'lazy'; image.alt = `Figure from page ${d.page} of the original paper`;
+        // The same figure can be listed under several parts; show each region once, under the first part that has it.
+        const shownFigures = new Set();
+        const diagrams = p => (p.diagrams || []).filter(d => {
+          if (!(q.paper_resource_id && Array.isArray(d.bbox) && d.bbox.length === 4)) return false;
+          const key = `${d.page}:${d.bbox.join(',')}`;
+          if (shownFigures.has(key)) return false;
+          shownFigures.add(key); return true;
+        }).map((d, number) => {
+          const image = el('img', '', 'exam-figure'); image.loading = 'lazy'; image.alt = `Figure ${p.label ? `for part ${p.label} ` : ''}${number + 1}, from page ${d.page} of the original paper`;
           const query = ['x0', 'y0', 'x1', 'y1'].map((name, i) => `${name}=${d.bbox[i]}`).join('&');
           image.src = `/resources/${encodeURIComponent(q.paper_resource_id)}/pages/${d.page}/diagram-image?${query}`;
           const open = el('a'); open.href = image.src; open.target = '_blank'; open.rel = 'noopener'; open.title = 'Open full size';
@@ -377,7 +388,7 @@ export async function renderExams(container, api) {
         } catch (err) { report(err); if (alive()) remove.disabled = false; }
       });
       const text = el('div', '', 'grow');
-      text.append(el('strong', `Exam ${exam.id} · ${exam.kind.replaceAll('_', ' ')}`), el('div', `${exam.question_count} questions · ${exam.total_marks} marks · ${new Date(exam.created_at).toLocaleDateString('en-NZ')}`, 'muted'));
+      text.append(el('strong', `Exam ${exam.id} · ${exam.kind.replaceAll('_', ' ')}`), el('div', `${exam.question_count} questions · ${exam.total_marks > 0 ? `${exam.total_marks} marks` : 'marks not recorded'} · ${new Date(exam.created_at).toLocaleDateString('en-NZ')}`, 'muted'));
       row.append(text, open, remove);
       list.append(row);
     }

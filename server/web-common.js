@@ -157,7 +157,7 @@ const SNIPPETS = [
   ['Chem', '\\ce{|}', 'Chemical formula or equation'],
 ];
 
-export function mathInput(textarea) {
+export function mathInput(textarea, { collapsed = false } = {}) {
   const wrap = el('div', undefined, 'math-input');
   const bar = el('div', undefined, 'math-toolbar'); bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Insert maths');
   const preview = el('div', undefined, 'math-preview'); preview.hidden = true;
@@ -190,7 +190,14 @@ export function mathInput(textarea) {
   };
   textarea.addEventListener('input', draw);
   const hint = el('p', 'Write maths between dollar signs, for example $v = f\\lambda$. Use the buttons to insert symbols.', 'muted');
-  wrap.append(bar, textarea, preview, hint);
+  if (collapsed) {
+    // Many answer boxes on one page: keep the symbol bar one tap away instead of repeating it.
+    const toggle = el('button', 'Σ Maths', 'small quiet'); toggle.type = 'button'; toggle.setAttribute('aria-expanded', 'false');
+    bar.hidden = hint.hidden = true;
+    toggle.onclick = () => { bar.hidden = hint.hidden = toggle.getAttribute('aria-expanded') === 'true'; toggle.setAttribute('aria-expanded', String(!bar.hidden)); };
+    const tools = el('div', undefined, 'math-tools'); tools.append(toggle, bar);
+    wrap.append(textarea, tools, hint, preview);
+  } else wrap.append(bar, textarea, preview, hint);
   draw();
   return wrap;
 }

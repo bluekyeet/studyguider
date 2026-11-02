@@ -122,7 +122,7 @@ Short spaced-repetition questions made from completed lessons and wrong exam ans
   text. **Only the lowest-level parts get an answer box** (a parent such as (b) just introduces
   (b)(i) and (b)(ii)). Figures from the paper appear under their part; large ones are capped in
   height and open full size on click.
-- Answers use the maths toolbar and preview. A question with no parts has one box. A raw
+- Answers use the maths toolbar and preview. In exams the symbol bar sits behind a small "Σ Maths" button under each box (one tap) so a multi-part question is not a wall of toolbars; lesson boxes keep it open. A question with no parts has one box. A raw
   text/JSON view is available for structured answers.
 - **Autosave** exactly as in lessons (Saving / Saved / conflict choices).
 - Buttons per question: Save answer, **Save & mark**, **Load saved feedback**.

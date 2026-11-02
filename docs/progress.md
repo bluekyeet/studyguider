@@ -1693,3 +1693,11 @@ From the pasted source review (not a penetration test):
 - Home is now a dense dashboard: headline strip, a Lessons to do table (rows open the lesson via `#lessons?lesson=ID`), a Topics table with mastery % and an estimated grade, then weak concepts, reviews and recent exams.
 - Estimated grade is new and deliberately rough: fixed bands over review mastery, shown only with 5+ review answers on that topic, labelled not an NZQA grade (`estimate_grade` in reviews.py, unit tested). It is not validated against real marks; the bands are my choice and can be changed. With current data most topics have too few answers, so few estimates show.
 - Checked in headless Edge against mock data (no script errors; Start opens the reader). Not yet viewed with real data in a browser. Android Home still not built.
+
+## 3 Nov 2026: exam page tidy-up (from a pasted page dump)
+
+- Saved exam list now says "marks not recorded" instead of "0 marks".
+- Standard and year are one chip ("AS 91171 · 2024").
+- The maths symbol bar and hint are collapsed behind a "Σ Maths" button in exam answer boxes (lessons unchanged). Checked in headless Edge against mock data: six boxes, one tap opens one bar.
+- The schedule excerpt of a real schedule is shown as scrollable plain text with a note that table layout is lost (the extraction scrambles columns); AI rubrics still render as Markdown. Not visible in my mock (no schedule text), so unverified in a browser.
+- Figures: each region is shown once per question and alt text is numbered. The four page-4 figures under (d) in AS 91171 2024 Q1 are four different regions, not duplicates.

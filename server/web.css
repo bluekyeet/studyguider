@@ -258,3 +258,6 @@ body.signed-out .sidebar{display:none}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:32px}
 @media (max-width:800px){.two-col{grid-template-columns:1fr;gap:0}.table td,.table th{padding-right:8px}}
 .home>h2,.home .two-col h2{margin:36px 0 8px}.home .stat-row{margin-bottom:0}.home .two-col .stack{gap:6px}.home>.toolbar{margin-top:16px}
+
+.math-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.schedule-text{max-height:320px;overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:18px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin:6px 0}
