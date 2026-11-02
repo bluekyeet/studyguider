@@ -1640,3 +1640,9 @@ Changes made in this round, and exactly what was and was not verified.
 - Added `Idempotency-Key` support to `/topics/{id}/lessons/stream` and `/lessons/automatic/stream`; Android sends a key per topic attempt. Test added; suite 215 passed. API rebuilt, APK installed on the emulator (not exercised by tapping).
 - Live reviewer control run (`server/tests/live_reviewer_control.py`, five billed calls): correct-science drafts were all rejected, only on structural grounds from thin synthetic lessons. No scientific false positive was seen, but this is not a clean-pass control.
 - Not done, needs you or hardware: device/notification/reboot checks, human review of extracted content and questions, real billing rates and budgets, live overnight and gateway-outage runs, A/M/E exemplar marking, handwritten-scan checks, policy decisions (unverified imports, embeddings, automatic diagram choice).
+
+## 3 Nov 2026: emulator pass (manual, no instrumentation tests)
+
+- Driven by adb taps and screenshots on emulator-5554 against the live server; the installed app was not touched by any test runner.
+- Verified: the new APK launches; Lessons home lists today's six cards; the Waves lesson opens, renders after about three seconds (the lesson view is blank until the WebView finishes loading), and "Next section" saved position to the server (`lesson_progress` for lesson 77: section 1, revision 1). That is the value the website resumes from; the website side has only been checked against a mock.
+- Not exercised: New lesson generation (billed model call), Explain, notes, exam override, notifications.
