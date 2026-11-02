@@ -67,13 +67,21 @@ fun SourceScreen(base: String, token: String, resourceId: String, initialPage: I
         error = ""
         try {
             val result = withContext(Dispatchers.IO) {
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(source.path, bounds)
+                if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+                    val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 1 }
+                    while (bounds.outWidth / options.inSampleSize > 4096 || bounds.outHeight / options.inSampleSize > 4096) options.inSampleSize *= 2
+                    val bitmap = android.graphics.BitmapFactory.decodeFile(source.path, options) ?: error("Image could not be decoded")
+                    return@withContext Triple(1, 1, bitmap)
+                }
                 ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
                     PdfRenderer(descriptor).use { renderer ->
                         require(renderer.pageCount > 0) { "PDF has no pages" }
                         require(page in 1..renderer.pageCount) { "Requested page $page is not present in this PDF (${renderer.pageCount} pages)" }
                         val selected = page
                         renderer.openPage(selected - 1).use { pdfPage ->
-                            // ponytail: fixed-width rendering limits memory; add zoom when detailed inspection is needed.
+                            // ponytail: bounded bitmap zoom; add tiled rendering for finer PDF detail.
                             val width = 1200
                             val height = (width.toLong() * pdfPage.height / pdfPage.width).coerceIn(1, 4096).toInt()
                             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -92,7 +100,7 @@ fun SourceScreen(base: String, token: String, resourceId: String, initialPage: I
     }
 
     Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Source PDF", style = MaterialTheme.typography.headlineMedium)
+        Text("Source document", style = MaterialTheme.typography.headlineMedium)
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
         else if (image == null) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (pageCount > 0) {
@@ -102,6 +110,6 @@ fun SourceScreen(base: String, token: String, resourceId: String, initialPage: I
                 Button(onClick = { page++ }, enabled = page < pageCount) { Text("Next page") }
             }
         }
-        image?.let { Image(it.asImageBitmap(), contentDescription = "PDF page $page", modifier = Modifier.fillMaxWidth()) }
+        image?.let { ZoomableImage(it, "Source page $page", Modifier.fillMaxWidth()) }
     }
 }

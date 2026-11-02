@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added shared tap-to-enlarge image dialog for authenticated exam/lesson images
+  and source PDF pages: pinch zoom (1–8x), bounded pan, zoom buttons, reset/close.
+  Resource viewer now recognises JPEG/PNG originals as well as PDFs, with bounded
+  bitmap decode; resource cards expose Open document / image. Uses existing
+  Compose gestures, no new dependency. Zoom is existing bitmap magnification,
+  not high-resolution PDF tile re-rendering. Debug/test APK builds passed (existing
+  WebView deprecation warnings); zoom-bound test compiled only. Normal emulator
+  install Success, no connected tests run; gesture/UI runtime check left to user.
+
 - User requested all-paper gutter audit. Added runnable dry-run/opt-in repair
   script and checked all 76 registered paper/schedule pairs, 235 questions. Dense
   patterned gutter text found in six 2023 standards; other PDFs had at most one

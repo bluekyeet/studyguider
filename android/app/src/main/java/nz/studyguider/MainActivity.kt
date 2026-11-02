@@ -1445,7 +1445,7 @@ private fun ResourceHub(
                             "pending", "extracting" -> LocalStudyColours.current.amber
                             else -> LocalStudyColours.current.outline
                         }, status)
-                        if (item.getString("filename").endsWith(".pdf", ignoreCase = true)) OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenPdf(item.getString("id")) }) { Text("Open PDF") }
+                        if (item.getString("filename").substringAfterLast('.').lowercase() in listOf("pdf", "png", "jpg", "jpeg")) OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenPdf(item.getString("id")) }) { Text("Open document / image") }
                         if (item.optString("status") == "failed") Text("Extraction failed. Retry to see the error.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         TextButton(enabled = !busy, onClick = { onExtract(item.getString("id"), item.optString("status") == "failed") }) { Text(if (item.optString("status") == "failed") "Retry extraction" else "Extract text") }
                     }
