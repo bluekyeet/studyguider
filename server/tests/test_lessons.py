@@ -86,6 +86,26 @@ class Database:
             self.result = []
         elif "FROM resources WHERE id = ANY" in sql:
             self.result = [(value,) for value in params[0]]
+        elif "INSERT INTO lesson_requests" in sql:
+            requests = self.__dict__.setdefault("requests", {})
+            key, topic = params
+            if key in requests or topic != 1:
+                self.result = None
+            else:
+                requests[key] = {"topic": topic, "status": "running", "lesson": None}
+                self.result = (key,)
+        elif "SELECT topic_id, status, lesson_id FROM lesson_requests" in sql:
+            row = self.__dict__.get("requests", {}).get(params[0])
+            self.result = (row["topic"], row["status"], row["lesson"]) if row else None
+        elif "UPDATE lesson_requests" in sql:
+            row = self.requests[params[1]]
+            row["status"], row["lesson"] = "completed", params[0]
+            self.result = None
+        elif "DELETE FROM lesson_requests" in sql:
+            row = self.requests.get(params[0])
+            if row and row["status"] == "running" and row["lesson"] is None:
+                del self.requests[params[0]]
+            self.result = None
         elif "INSERT INTO lessons" in sql:
             (topic, query, lesson, review, status, sources, standards,
              review_focus, verdict, course_id, stage) = params
@@ -271,3 +291,53 @@ def test_automatic_progress_stream_requires_an_enrolled_topic():
     app = FastAPI()
     app.include_router(lesson_router(EmptyDatabase, lambda: None, None, None, None))
     assert TestClient(app).post("/topics/42/lessons/automatic/stream").status_code == 404
+
+
+KEY = "retry-key-0001"
+
+
+def test_idempotency_key_returns_the_saved_lesson_instead_of_generating_again():
+    calls = []
+
+    def reply(model, messages, task="general"):
+        calls.append(task)
+        return SYNTHETIC_LESSON if model == "education" else json.dumps({"pass": True, "issues": []})
+
+    client, db, _ = setup(reply)
+    first = client.post("/topics/1/lessons", json={"query": "frequency"}, headers={"Idempotency-Key": KEY})
+    assert first.status_code == 201
+    used = len(calls)
+    again = client.post("/topics/1/lessons", json={"query": "frequency"}, headers={"Idempotency-Key": KEY})
+    assert again.status_code == 201 and again.json() == first.json()
+    assert len(calls) == used and len(db.rows) == 1  # no second model call or lesson
+    other = client.post("/topics/1/lessons", json={"query": "frequency"}, headers={"Idempotency-Key": "another-key-02"})
+    assert other.status_code == 201 and len(db.rows) == 2
+    # A request without a key keeps the old behaviour: every call makes a lesson.
+    assert client.post("/topics/1/lessons", json={"query": "frequency"}).status_code == 201 and len(db.rows) == 3
+
+
+def test_idempotency_key_is_released_after_a_failure_and_rejected_when_malformed():
+    attempts = []
+
+    def reply(model, messages, task="general"):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise HTTPException(502, "gateway down")
+        return SYNTHETIC_LESSON if model == "education" else json.dumps({"pass": True, "issues": []})
+
+    client, db, _ = setup(reply)
+    failed = client.post("/topics/1/lessons", json={"query": "x"}, headers={"Idempotency-Key": KEY})
+    assert failed.status_code == 502 and not db.rows and not db.requests
+    retry = client.post("/topics/1/lessons", json={"query": "x"}, headers={"Idempotency-Key": KEY})
+    assert retry.status_code == 201 and len(db.rows) == 1
+    assert client.post("/topics/1/lessons", json={"query": "x"}, headers={"Idempotency-Key": "short"}).status_code == 422
+    assert client.post("/topics/9/lessons", json={"query": "x"}, headers={"Idempotency-Key": "missing-topic-1"}).status_code == 404
+
+
+def test_idempotency_key_in_progress_or_for_another_topic_is_a_conflict():
+    client, db, _ = setup(lambda model, messages: "unused")
+    db.requests = {KEY: {"topic": 1, "status": "running", "lesson": None}}
+    running = client.post("/topics/1/lessons", json={"query": "x"}, headers={"Idempotency-Key": KEY})
+    assert running.status_code == 409 and "already running" in running.json()["detail"]
+    db.requests[KEY]["topic"] = 2
+    assert client.post("/topics/1/lessons", json={"query": "x"}, headers={"Idempotency-Key": KEY}).status_code == 409

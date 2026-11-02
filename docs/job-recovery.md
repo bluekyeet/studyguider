@@ -14,8 +14,17 @@
   provider did not finish. Do not reconcile using query/time similarity alone.
 - API shutdown waits only briefly for daemon workers. Shutdown returning is not
   proof that every instance's in-flight model/extraction work has stopped.
-- Manual lesson requests are not idempotent. After a lost response, inspect saved
-  lessons before retrying; no durable request key currently prevents duplicates.
+- Manual lesson requests are idempotent only when the client sends an `Idempotency-Key`
+  header (8-128 characters of letters, digits and `. _ : -`). The key is claimed before
+  any model call and completed in the same transaction that saves the lesson, so a retry
+  returns the saved lesson and a concurrent duplicate gets 409. A failed request releases
+  its key. A key whose request was interrupted by a crash stays claimed (409) until you
+  inspect saved lessons; use a new key. Requests without a key are not protected, and the
+  current Android and web clients do not send one yet.
+- An unlinked scheduled run whose outcome is unknown can be settled by an explicit choice with
+  `POST /topics/{id}/schedule/runs/{date}/resolve` (`link` a lesson of that topic, or
+  `abandon`). Runs younger than an hour and already-settled runs are refused. Nothing is
+  matched automatically by query or time.
 
 ## Safe extraction recovery
 
@@ -41,8 +50,11 @@ fencing; reclaiming while a prior worker runs can race its writes.
 - Test claim races, crash-after-claim, provider response loss and the persistence
   boundary against isolated PostgreSQL data. Assert ambiguous attempts do not
   automatically invoke the provider a second time.
-- Add durable idempotency keys before offering safe automatic manual-request
+- Have the clients send an `Idempotency-Key` before offering automatic manual-request
   retries. Leases plus fenced writes are required before online reclamation.
+- Checked on real PostgreSQL: overlapping ticks claim once; a killed worker's claim is
+  not retried; duplicate keyed requests make one lesson. Not checked: lost commit
+  acknowledgement.
 
 Keep the existing PostgreSQL/in-process workers until independent scaling or
 background manual jobs justify a separate queue service. A new broker alone does

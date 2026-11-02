@@ -135,8 +135,17 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Atomically persist/link newly scheduled lessons using private run identity;
     simulated insert/link failures roll back, lost-result paths preserve completed
     linkage and do not repeat provider calls. Old ambiguous runs never auto-retried.
-  - [ ] Real concurrent claims/process termination/commit-loss checks; manual
-    request idempotency and legacy unlinked-run reconciliation remain open.
+  - [x] Real PostgreSQL (`server/tests/recovery_concurrency_check.py`, disposable schema):
+    three overlapping scheduler ticks made one lesson per topic; a worker killed mid-run
+    (`os._exit`) left its claim `running` and the provider was not called again.
+  - [x] Manual requests accept an optional `Idempotency-Key`: two simultaneous requests
+    made one lesson and one provider call, a later retry returns the same lesson, a failed
+    attempt releases the key. Requests without a key behave as before.
+  - [x] Legacy/unknown-outcome runs: `POST /topics/{id}/schedule/runs/{date}/resolve` lets
+    you link a same-topic lesson or abandon the run. It refuses runs under an hour old and
+    settled runs, and never calls a model. No web or Android screen for it yet.
+  - [ ] Commit-acknowledgement loss is not simulated; leases and fenced writes for online
+    reclamation are not built. The app and web client do not send an Idempotency-Key yet.
 - [ ] Run Android nightly-status UI checks after the emulator is available.
 
 ## Exams and marking

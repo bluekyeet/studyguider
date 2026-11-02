@@ -1,10 +1,11 @@
 """Persistent AI lesson drafts. Neither generation nor review verifies accuracy."""
 import json
 import queue
+import re
 import threading
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, PrivateAttr
@@ -20,6 +21,8 @@ class LessonGeneration(BaseModel):
     # Internal only: request JSON cannot claim ownership of a scheduled run.
     _schedule_run: tuple[int, date] | None = PrivateAttr(default=None)
     _schedule_persisted: bool = PrivateAttr(default=False)
+    # Internal only: set after the route has claimed an Idempotency-Key.
+    _request_key: str | None = PrivateAttr(default=None)
 
 
 class LessonAnswer(BaseModel):
@@ -77,6 +80,13 @@ def create_lesson_tables(db):
     db.execute("""CREATE TABLE IF NOT EXISTS lesson_progress (
         lesson_id bigint PRIMARY KEY REFERENCES lessons(id) ON DELETE CASCADE,
         section integer NOT NULL, revision integer NOT NULL DEFAULT 1)""")
+    # One row per client-supplied Idempotency-Key so a retried manual request cannot save a second lesson.
+    db.execute("""CREATE TABLE IF NOT EXISTS lesson_requests (
+        request_key text PRIMARY KEY CHECK (length(request_key) BETWEEN 8 AND 128),
+        topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+        status text NOT NULL CHECK (status IN ('running', 'completed')),
+        lesson_id bigint REFERENCES lessons(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now())""")
 
 
 class LessonReviewRequest(BaseModel):
@@ -206,8 +216,37 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
         return generate_with_progress(topic_id, enrolled_query(topic_id))
 
     @router.post("/topics/{topic_id}/lessons", status_code=201)
-    def generate(topic_id: int, body: LessonGeneration):
-        return _generate(topic_id, body)
+    def generate(topic_id: int, body: LessonGeneration,
+                 idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+        # Other callers (the scheduler, automatic lessons) call this directly and send no key.
+        key = idempotency_key if isinstance(idempotency_key, str) else None
+        if key is None:
+            return _generate(topic_id, body)
+        if not re.fullmatch(r"[A-Za-z0-9._:-]{8,128}", key):
+            raise HTTPException(422, "Idempotency-Key must be 8-128 letters, digits or . _ : -")
+        with connect() as db:
+            claimed = db.execute("""INSERT INTO lesson_requests (request_key, topic_id, status)
+                SELECT %s, id, 'running' FROM topics WHERE id = %s
+                ON CONFLICT (request_key) DO NOTHING RETURNING request_key""", (key, topic_id)).fetchone()
+            existing = None if claimed else db.execute(
+                "SELECT topic_id, status, lesson_id FROM lesson_requests WHERE request_key = %s", (key,)).fetchone()
+        if not claimed:
+            if existing is None:
+                raise HTTPException(404, "Topic not found")
+            if existing[0] != topic_id:
+                raise HTTPException(409, "This Idempotency-Key was already used for a different topic")
+            if existing[1] == "completed" and existing[2] is not None:
+                return get_lesson(existing[2])  # the retry gets the lesson the first attempt saved
+            raise HTTPException(409, "This request is already running, was interrupted, or its lesson was deleted. "
+                                     "Check your saved lessons before retrying with a new key.")
+        body._request_key = key
+        try:
+            return _generate(topic_id, body)
+        except BaseException:
+            # Nothing was saved, so releasing the key lets the same request be retried safely.
+            with connect() as db:
+                db.execute("DELETE FROM lesson_requests WHERE request_key = %s AND status = 'running' AND lesson_id IS NULL", (key,))
+            raise
 
     @router.post("/topics/{topic_id}/lessons/stream")
     def generate_with_progress(topic_id: int, body: LessonGeneration):
@@ -352,6 +391,9 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
                  review_focus, reviewer_verdict, version, created_at""",
                 (topic_id, query, lesson, review, review_status, json.dumps(sources), json.dumps(standards),
                  json.dumps(review_focus), review_status, course_id, stage)).fetchone()
+            if body._request_key is not None:
+                db.execute("UPDATE lesson_requests SET status = 'completed', lesson_id = %s WHERE request_key = %s",
+                           (row[0], body._request_key))
             if body._schedule_run is not None:
                 db.execute("""UPDATE lesson_schedule_runs SET status = 'completed', lesson_id = %s,
                     error = NULL, finished_at = now() WHERE topic_id = %s AND run_date = %s""",

@@ -6,7 +6,7 @@ after a crash rather than retrying a potentially already-created lesson.
 """
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 from typing import Literal
 
@@ -23,6 +23,12 @@ class Schedule(BaseModel):
     hour_utc: int = Field(ge=0, le=23, strict=True)
     enabled: bool
     timezone: Literal["UTC", "Pacific/Auckland"] = "UTC"
+
+
+class RunResolution(BaseModel):
+    """The learner's decision about a run whose outcome is unknown."""
+    action: Literal["link", "abandon"]
+    lesson_id: int | None = Field(default=None, gt=0)
 
 
 def scheduler_router(connect, authorised):
@@ -58,6 +64,42 @@ def scheduler_router(connect, authorised):
                 l.review_status FROM lesson_schedule_runs r LEFT JOIN lessons l ON l.id = r.lesson_id
                 WHERE r.topic_id = %s ORDER BY r.run_date DESC""", (topic_id,)).fetchall()
         return [dict(zip(("run_date", "query", "status", "lesson_id", "error", "started_at", "finished_at", "review_status"), row)) for row in rows]
+
+    @router.post("/topics/{topic_id}/schedule/runs/{run_date}/resolve")
+    def resolve_run(topic_id: int, run_date: date, body: RunResolution):
+        """Settle an unlinked running/failed run by explicit choice; never retries or guesses.
+
+        link: attach a lesson of this topic that the learner has confirmed belongs to the run.
+        abandon: record that no lesson came of it. Neither calls a model.
+        """
+        with connect() as db:
+            run = db.execute("""SELECT status, lesson_id, started_at < now() - interval '1 hour'
+                FROM lesson_schedule_runs WHERE topic_id = %s AND run_date = %s FOR UPDATE""",
+                (topic_id, run_date)).fetchone()
+            if run is None:
+                raise HTTPException(404, "Run not found")
+            if run[0] == "completed" or run[1] is not None:
+                raise HTTPException(409, "This run already has a lesson")
+            if run[0] == "running" and not run[2]:
+                # A live worker may still finish; its own atomic save will fail if this changes the claim.
+                raise HTTPException(409, "This run started less than an hour ago and may still be working")
+            if body.action == "link":
+                if body.lesson_id is None:
+                    raise HTTPException(422, "lesson_id is required to link a lesson")
+                if not db.execute("SELECT 1 FROM lessons WHERE id = %s AND topic_id = %s", (body.lesson_id, topic_id)).fetchone():
+                    raise HTTPException(404, "No such lesson in this topic")
+                if db.execute("SELECT 1 FROM lesson_schedule_runs WHERE lesson_id = %s", (body.lesson_id,)).fetchone():
+                    raise HTTPException(409, "That lesson is already linked to another run")
+                db.execute("""UPDATE lesson_schedule_runs SET status = 'completed', lesson_id = %s, error = NULL,
+                    finished_at = COALESCE(finished_at, now()) WHERE topic_id = %s AND run_date = %s""",
+                    (body.lesson_id, topic_id, run_date))
+            else:
+                db.execute("""UPDATE lesson_schedule_runs SET status = 'failed',
+                    error = 'Resolved by you: no lesson was produced for this run',
+                    finished_at = COALESCE(finished_at, now()) WHERE topic_id = %s AND run_date = %s""",
+                    (topic_id, run_date))
+        return {"status": "completed" if body.action == "link" else "failed", "run_date": run_date,
+                "lesson_id": body.lesson_id if body.action == "link" else None}
 
     return router
 
