@@ -11,6 +11,8 @@ from app import connect
 from lessons import LessonGeneration, lesson_router
 from marking import queue_exam_review
 from reviews import ReviewAnswer, review_router
+from exams import exam_router
+from fastapi import HTTPException
 
 
 db = connect()
@@ -69,6 +71,26 @@ try:
     assert generated['review_status'] == 'passed'
     assert generated['review_focus'][0]['concept'] == 'Frequency'
     print('PASS: exam mistake deduplicated -> wrong review scheduled for one day -> next lesson receives weakness and isolated evidence')
+    db.execute("""INSERT INTO exam_answer_scans(exam_id,question_id,image,transcription,confirmed)
+        VALUES (%s,%s,%s,'55 Hz',true)""", (exam, question, b'synthetic image bytes'))
+    db.execute("""INSERT INTO markings(exam_id,question_id,answer_hash,kind,result,model)
+        VALUES (%s,%s,'synthetic-hash','first',%s::jsonb,'stub')""", (exam, question, json.dumps(mark)))
+    db.execute("""INSERT INTO marking_overrides(exam_id,question_id,outcome,note)
+        VALUES (%s,%s,'not_achieved','Synthetic override')""", (exam, question))
+    router = exam_router(transaction_connection, lambda: None)
+    delete = next(route.endpoint for route in router.routes if route.path == '/exams/{exam_id}' and 'DELETE' in route.methods)
+    assert delete(exam).status_code == 204
+    for table in ('exam_items', 'exam_answer_scans', 'markings', 'marking_overrides'):
+        assert db.execute(f'SELECT count(*) FROM {table} WHERE exam_id=%s', (exam,)).fetchone()[0] == 0, table
+    assert db.execute('SELECT 1 FROM exam_questions WHERE id=%s', (question,)).fetchone()
+    assert db.execute('SELECT 1 FROM resources WHERE id=%s', (resource,)).fetchone()
+    assert db.execute('SELECT 1 FROM review_questions WHERE id=%s', (reviews[0][0],)).fetchone()
+    try:
+        delete(exam)
+        raise AssertionError('Deleting a missing exam must fail')
+    except HTTPException as exc:
+        assert exc.status_code == 404
+    print('PASS: deleting attempt cascades answers/scans/marks/overrides, preserves bank/source/review snapshot, repeated delete returns 404')
 finally:
     db.rollback()
     db.close()

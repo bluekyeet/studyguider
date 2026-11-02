@@ -103,6 +103,9 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Validate historical cut-score layouts not supported by current extraction; do not guess missing boundaries.
 - [ ] Validate real handwritten answers and diagrams, including scan replacement/conflicts.
 - [ ] Run exam deletion/cascade and two-client/network-failure acceptance checks using disposable attempts.
+  - [x] Real PostgreSQL rollback-only deletion: cascades items/scans/marks/overrides,
+    preserves question/resource/review snapshot; repeated deletion returns 404.
+  - [ ] Two-client and network-failure workflows.
 - [x] Add an optional timer (Android implementation; does not lock or submit answers).
 - [ ] Acquire missing 2025 papers if the user supplies them; never commit them.
 

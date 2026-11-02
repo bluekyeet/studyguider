@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Extended existing rollback-only learning-cycle check with populated attempt
+  deletion through the actual exam route. Live PostgreSQL PASS: items, scan bytes,
+  markings and overrides cascade; bank question, resource and review snapshot
+  remain; repeated delete returns 404. Learning-cycle check still passes. Entire
+  synthetic transaction rolled back; no existing user exams touched. Identity
+  sequence gaps may remain. No production code/deployment/APK changes, emulator
+  off. Two-client/network-failure acceptance checks remain open.
+
 - Live streaming accounting acceptance passed against education: three chunks,
   226 text characters, explicit normal completion and exactly one ai_runs entry
   with outcome=ok, response_chars=226, prompt_tokens=2566, completion_tokens=45.
