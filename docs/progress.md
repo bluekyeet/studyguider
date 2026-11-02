@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Auto-category follow-up: reported 91173 2025 paper/schedule were already extracted
+  as extra and bypassed auto-only classification. Known filename inference now runs
+  at upload for auto/extra clients (including batch duplicate rows), and extraction
+  corrects known extra filenames. Explicit specific categories preserved. Corrected
+  only the two reported live extra rows: exm->exam_paper, ass->exam_answers. 201
+  tests passed, six warnings/six subtests; API rebuilt/deployed. No paper/answer
+  text or human review flags changed, no APK/device test required.
+
 - User requested automatic resource categories: new uploads default auto in web/
   Android/API; optional web classification override collapsed. Extraction resolves
   known NZQA exm/ass filenames and PPTX locally; ambiguous files use bounded
