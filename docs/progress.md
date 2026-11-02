@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Redesigned Lessons/Reviews/Exams/Standards web sections without changing form
+  endpoints: saved lessons first with compact name/date/review-badge rows, refresh
+  in header, source/reviewer details collapsed. Schedule/history collapsed below;
+  compact responsive form columns. Reviews use short focus/generate controls and
+  collapsed evidence. Exams separate collated creation, manual selection and marking
+  tools; no automatic scheduling added. Linked standards first, add/update editor
+  collapsed. Essential AI/source advisories retained. Node route/syntax/image-auth
+  checks passed; API rebuilt/deployed. No DOM/browser interaction test available;
+  layout and moved-form workflows require verification. No data mutations/device tests.
+
 - Restored topic-wide Upload at Resources root; shared upload panel stays alive
   across explorer rerenders and opens at current topic without choosing category.
   Distinct view icons for diagrams/classifying/notes/lessons/reviews/standards and

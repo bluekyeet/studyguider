@@ -108,6 +108,25 @@
     .diagram-selection input { width:20px; min-height:20px; height:20px; margin:0; }
     .diagram-selection button { margin:0; }
     #generate-diagram { max-width:44rem; margin:0 auto 20px; padding:16px; border:1px solid #8290aa55; border-radius:12px; }
+    .section-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    .section-toolbar .section-heading { margin:0; }
+    .section-toolbar button { margin:0; }
+    .compact-panel { border-top:1px solid #8290aa33; padding-top:14px; margin-top:16px; }
+    .compact-panel > summary { cursor:pointer; font-weight:600; padding:6px 0; }
+    .compact-panel[open] > summary { margin-bottom:12px; }
+    .compact-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 16px; align-items:end; }
+    .compact-fields > div { min-width:0; }
+    .compact-fields label { margin:0 0 5px; }
+    .compact-fields button { margin:0; justify-self:start; }
+    #saved-lessons > li, #topic-standards > li { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px; margin:0; border-width:0 0 1px; border-radius:0; background:transparent; }
+    #saved-lessons > li > button:first-child { flex:1; text-align:left; background:transparent; border:0; margin:0; padding:8px; }
+    #saved-lessons > li > button:last-child { margin:0; }
+    #saved-lessons .lesson-meta { display:block; font-size:.8rem; opacity:.65; font-weight:400; margin-top:3px; }
+    #saved-lessons .review-badge { font-size:.75rem; border:1px solid #8290aa66; border-radius:20px; padding:3px 9px; }
+    #topic-standards button { margin:0 0 0 auto; }
+    #schedule-runs > li { font-size:.85rem; }
+    .compact-warning { font-size:.8rem; opacity:.75; margin:8px 0 12px; }
+    @media(max-width:650px) { .compact-fields { grid-template-columns:1fr; } }
     #diagrams { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr)); gap:16px; }
     #diagrams > li { margin:0; min-width:0; padding:14px; border-radius:12px; }
     #diagrams img { height:220px; object-fit:contain; background:#fff; border-radius:6px; }
@@ -404,6 +423,65 @@
     };
     const grid = document.querySelector('.grid');
     const cards = [...grid.querySelectorAll(':scope > section')];
+    // Preserve form IDs and behaviour; organise advanced controls with native details.
+    function foldControls(headingId, label, nodes) {
+      const details = document.createElement('details'); details.className = 'compact-panel';
+      const summary = document.createElement('summary'); summary.textContent = label; details.append(summary);
+      for (const node of nodes) if (node) details.append(node);
+      $(headingId).closest('section').append(details); return details;
+    }
+    function compactForm(id) {
+      const form = $(id); form.classList.add('compact-fields');
+      for (const label of [...form.children].filter(node => node.tagName === 'LABEL' && node.htmlFor)) {
+        const field = $(label.htmlFor);
+        if (field && field.parentNode === form) { const cell = document.createElement('div'); form.insertBefore(cell,label); cell.append(label,field); }
+      }
+    }
+    function sectionToolbar(headingId, buttonId) {
+      const section = $(headingId).closest('section'), bar = document.createElement('div'); bar.className = 'section-toolbar';
+      const heading = $(headingId).closest('.section-heading'); section.insertBefore(bar,heading); bar.append(heading,$(buttonId));
+    }
+    $('saved-lessons-heading').textContent = 'Lessons'; $('refresh-lessons').textContent = 'Refresh';
+    sectionToolbar('saved-lessons-heading','refresh-lessons');
+    $('saved-lessons-heading').closest('section').querySelector('.hint').textContent = 'AI lessons are unverified. Check the original sources.';
+    const savedDetail = $('saved-lesson-detail');
+    const evidenceNodes = [...savedDetail.children].slice(2,8);
+    const evidencePanel = document.createElement('details'); evidencePanel.className = 'compact-panel';
+    const evidenceSummary = document.createElement('summary'); evidenceSummary.textContent = 'Review & sources'; evidencePanel.append(evidenceSummary,...evidenceNodes);
+    savedDetail.insertBefore(evidencePanel,$('explain-lesson'));
+    const scheduleSection = $('scheduler-heading').closest('section');
+    const scheduleNodes = [...scheduleSection.children].filter(node => !node.contains($('scheduler-heading')));
+    foldControls('scheduler-heading','Schedule & run history',scheduleNodes);
+    $('scheduler-heading').textContent = 'Daily generation';
+    grid.insertBefore($('saved-lessons-heading').closest('section'),scheduleSection);
+    $('schedule-query').previousElementSibling.textContent = 'Lesson focus';
+    $('refresh-runs').textContent = 'Refresh status';
+    $('schedule-time-help').textContent = 'Runs once per local day. Auckland time follows daylight saving.';
+    compactForm('schedule-form');
+    $('review-drafts-heading').textContent = 'Practice questions';
+    $('review-drafts-heading').closest('section').querySelector('.hint').textContent = 'AI drafts: check sources before approving. Generation sends source excerpts to your model provider.';
+    $('review-query').previousElementSibling.textContent = 'Focus'; $('generate-review-button').textContent = 'Generate questions';
+    compactForm('generate-review');
+    const reviewSourcesHeading = $('review-sources').previousElementSibling;
+    foldControls('review-drafts-heading','Source evidence',[reviewSourcesHeading,$('review-sources')]);
+    $('mastery-heading').textContent = 'Progress'; $('load-mastery').textContent = 'Refresh progress'; sectionToolbar('mastery-heading','load-mastery');
+    $('exam-heading').textContent = 'Exams';
+    $('exam-heading').closest('section').querySelector('.hint').textContent = 'Build from registered questions. Check wording and marking against original papers.';
+    foldControls('exam-heading','Choose questions manually',[$('assemble-exam')]);
+    $('monthly-help').previousElementSibling.textContent = 'Collated paper';
+    $('monthly-help').textContent = 'Verified questions across this subject, least recently used first. Creates a paper now; no automatic schedule.';
+    $('monthly-create').textContent = 'Create paper';
+    compactForm('monthly-exam'); compactForm('view-exam');
+    const markingSection = $('marking-heading').closest('section');
+    foldControls('marking-heading','Mark an answer', [...markingSection.children].filter(node => !node.contains($('marking-heading'))));
+    $('marking-heading').textContent = 'Marking tools'; compactForm('mark-answer');
+    $('standards-heading').textContent = 'NZQA standards';
+    const standardsSection = $('standards-heading').closest('section');
+    standardsSection.querySelector('.hint').textContent = 'Standards linked to this topic. Verify criteria against NZQA.';
+    const standardDivider = $('standards').closest('.divider'); standardDivider.style.borderTop = '0'; standardDivider.style.marginTop = '0';
+    $('standards').previousElementSibling.textContent = 'Link a standard';
+    const standardRows = $('topic-standards'); standardsSection.insertBefore(standardRows,standardDivider);
+    foldControls('standards-heading','Add or update standard details',[$('save-standard')]); compactForm('save-standard');
     const scope = document.createElement('details'); scope.className = 'scope'; scope.open = true;
     const summary = document.createElement('summary'); summary.textContent = 'Subject & topic'; scope.append(summary);
     const scopeContent = document.createElement('div'); scopeContent.className = 'scope-content'; scope.append(scopeContent);
@@ -953,7 +1031,9 @@
         if (version !== lessonVersion || topic !== $('topics').value || !token) return;
         for (const lesson of lessons) {
           const item = document.createElement('li'), button = document.createElement('button');
-          button.type = 'button'; button.textContent = `View lesson ${lesson.id} — ${lesson.query} — ${lesson.created_at}`;
+          button.type = 'button'; button.textContent = lesson.query;
+          const meta = document.createElement('span'); meta.className = 'lesson-meta'; meta.textContent = `Lesson ${lesson.id} · ${lesson.created_at.slice(0,10)}`; button.append(meta);
+          const badge = document.createElement('span'); badge.className = 'review-badge'; badge.textContent = `AI review: ${lesson.review_status || 'unknown'}`;
           button.onclick = run(async () => {
             const request = ++detailVersion;
             const detail = await api(`/lessons/${lesson.id}`);
@@ -974,14 +1054,14 @@
             $('explain-question').value = ''; $('explanation').textContent = '';
           });
           const remove = document.createElement('button');
-          remove.type = 'button'; remove.textContent = `Delete lesson ${lesson.id}`;
+          remove.type = 'button'; remove.textContent = 'Delete'; remove.setAttribute('aria-label', `Delete lesson ${lesson.id}`);
           remove.onclick = run(async () => {
             if (!confirm('Permanently delete this lesson, its review and saved source excerpts?')) return;
             remove.disabled = true;
             try { await api(`/lessons/${lesson.id}`, { method: 'DELETE' }); await loadLessons(); message('Lesson deleted.'); }
             finally { remove.disabled = false; }
           });
-          item.append(button, ' ', remove); $('saved-lessons').append(item);
+          item.append(button, badge, remove); $('saved-lessons').append(item);
         }
         lessonOffset += lessons.length;
         $('more-lessons').hidden = lessons.length < 50 || lessonOffset > 100000;
