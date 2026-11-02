@@ -126,6 +126,8 @@
     #topic-standards button { margin:0 0 0 auto; }
     #schedule-runs > li { font-size:.85rem; }
     .compact-warning { font-size:.8rem; opacity:.75; margin:8px 0 12px; }
+    .course-toggle { display:flex; align-items:center; gap:12px; padding:12px; margin:0; border-bottom:1px solid #8290aa33; font-weight:400; }
+    .course-toggle input { width:20px; height:20px; min-height:20px; margin:0; }
     @media(max-width:650px) { .compact-fields { grid-template-columns:1fr; } }
     #diagrams { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr)); gap:16px; }
     #diagrams > li { margin:0; min-width:0; padding:14px; border-radius:12px; }
@@ -227,6 +229,12 @@
             <button>Add subject</button>
           </form>
           <div class="divider"><label for="subjects">Select subject</label><select id="subjects"></select></div>
+        </section>
+        <section class="card" aria-labelledby="courses-heading">
+          <div class="section-toolbar"><h2 id="courses-heading">Topics you’re learning</h2><button id="refresh-courses" type="button" class="secondary">Refresh</button></div>
+          <p class="hint">Choose topics for daily lessons. Changes save immediately; removing a topic keeps its resources and history.</p>
+          <p id="courses-status" role="status" aria-live="polite"></p>
+          <div id="course-topics"></div>
         </section>
         <section class="card" aria-labelledby="style-heading">
           <div class="section-heading"><h2 id="style-heading">Teaching style</h2></div>
@@ -534,7 +542,7 @@
       cards.forEach(card => {
         const topic = $('topics').value, folder = currentRoute().params.get('folder');
         let allowed = sections[section] || [];
-        if (global) allowed = ['style-heading','usage-heading'];
+        if (global) allowed = ['courses-heading','style-heading','usage-heading'];
         if (section === 'resources') allowed = folder === 'diagrams' ? ['diagram-heading'] : folder ? ['resources-heading'] : ['search-heading'];
         card.hidden = (!global && !topic) || !allowed.some(id => card.contains($(id)));
       });
@@ -564,7 +572,7 @@
         history.replaceState(null,'',target); route = currentRoute();
       }
       if (route.page === 'Settings') {
-        await loadStyle(); renderSidebar('', '', '', '');
+        await loadStyle(); await loadCourseTopics(); renderSidebar('', '', '', '');
         showWorkspace('Settings',true); return;
       }
       if (route.page === 'Library' || route.params.has('subject')) {
@@ -696,6 +704,38 @@
       $('style-content').value = savedStyle; $('style-content').disabled = false;
       $('style-status').textContent = '';
     }
+    async function loadCourseTopics() {
+      const list = $('course-topics'); list.replaceChildren(); $('courses-status').textContent = 'Loading…';
+      try {
+        const [subjects, courses] = await Promise.all([api('/subjects'), api('/courses')]);
+        const active = new Map(courses.map(course => [String(course.topic_id),course.id]));
+        for (const subject of subjects.sort((a,b) => a.level-b.level || a.name.localeCompare(b.name))) {
+          const topics = await api(`/subjects/${subject.id}/topics`);
+          if (!topics.length) continue;
+          const heading = document.createElement('h3'); heading.textContent = `Level ${subject.level} · ${subject.name}`; list.append(heading);
+          for (const topic of topics) {
+            const label = document.createElement('label'); label.className = 'course-toggle';
+            const check = document.createElement('input'); check.type = 'checkbox'; check.checked = active.has(String(topic.id));
+            const name = document.createElement('span'); name.textContent = topic.name; label.append(check,name); list.append(label);
+            check.onchange = async () => {
+              const enabled = check.checked; check.disabled = true; $('courses-status').textContent = 'Saving…';
+              try {
+                if (enabled) {
+                  const course = await api('/courses', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic_id:topic.id})});
+                  active.set(String(topic.id),course.id);
+                } else {
+                  await api(`/courses/${active.get(String(topic.id))}`,{method:'DELETE'}); active.delete(String(topic.id));
+                }
+                $('courses-status').textContent = 'Saved';
+              } catch (error) { check.checked = !enabled; $('courses-status').textContent = error.message; }
+              finally { check.disabled = false; }
+            };
+          }
+        }
+        $('courses-status').textContent = list.children.length ? '' : 'Create a subject and topic in Library first.';
+      } catch (error) { $('courses-status').textContent = error.message; }
+    }
+    $('refresh-courses').onclick = () => loadCourseTopics();
     async function loadSubjects() {
       options($('subjects'), await api('/subjects'), item => `${item.name} (Level ${item.level})`);
       $('subjects').insertBefore(new Option('Choose a subject', ''), $('subjects').firstChild);

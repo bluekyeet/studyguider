@@ -8,6 +8,12 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added Topics you're learning to web Global settings, grouped by subject level/name.
+  Checkboxes use same /courses active-course records as Android, saving immediately;
+  failed changes restore checkbox and expose error. No new backend/no deleted
+  study history. Node route/syntax/image-auth checks passed; API rebuilt/deployed.
+  Browser toggle/synchronisation runtime check pending, no user enrolments changed.
+
 - Redesigned Lessons/Reviews/Exams/Standards web sections without changing form
   endpoints: saved lessons first with compact name/date/review-badge rows, refresh
   in header, source/reviewer details collapsed. Schedule/history collapsed below;
