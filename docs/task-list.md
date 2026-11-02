@@ -52,7 +52,7 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Two actual concurrent route calls on independent PostgreSQL connections:
     one success, one 409; winning content preserved. Disposable schema cleaned up.
 - [x] Add visible warnings when model-call failures rise (usage panel, at least ten calls and 20% errors).
-- [ ] Resume website study-workflow parity when requested.
+- [x] Resume website study-workflow parity (done: Lessons, Review, Exams, Library, Settings on `/`, dark theme, cross-device sync; see `docs/website-functions.md` for known gaps).
 - [ ] Notification reminders
 
 ## Foundation, access and resources
@@ -144,8 +144,10 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Legacy/unknown-outcome runs: `POST /topics/{id}/schedule/runs/{date}/resolve` lets
     you link a same-topic lesson or abandon the run. It refuses runs under an hour old and
     settled runs, and never calls a model. No web or Android screen for it yet.
+  - [x] Both stream endpoints accept `Idempotency-Key`; the Android Lessons home sends one per
+    topic attempt and keeps it until a lesson arrives (installed on the emulator, not tapped).
   - [ ] Commit-acknowledgement loss is not simulated; leases and fenced writes for online
-    reclamation are not built. The app and web client do not send an Idempotency-Key yet.
+    reclamation are not built. The website has no lesson-generate button, so sends no key.
 - [ ] Run Android nightly-status UI checks after the emulator is available.
 
 ## Exams and marking
@@ -233,8 +235,11 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Live reviewer rejected all five seeded drafts (frequency, concentration,
     inverted v = f/λ with wrong result, joules written as newtons, inverted n = M/m),
     citing the specific scientific error each time. Drafts also had weak Your Turn
-    sections, so rejection is not purely scientific. No correct-lesson control run,
-    so the false-positive rate is unmeasured.
+    sections, so rejection is not purely scientific.
+  - [x] Control (`server/tests/live_reviewer_control.py`): the same five lessons with correct
+    science. All five were still rejected, but only for structure (thin lesson, worked example
+    repeating the explanation, vague Your Turns); none cited a scientific error. The control is
+    confounded by those thin drafts, so a clean pass on a full-quality correct lesson is untested.
 - [x] Investigate Cairo's unwritable Fontconfig cache warning (non-root writable XDG cache; PNG render check passes without Fontconfig error).
 - [ ] Optional: diagram source editing/regeneration controls.
 - [ ] Optional: additional diagram formats only if SVG cannot meet a concrete need.
@@ -274,7 +279,7 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 207 passed, six warnings, six subtests passed (3 Nov 2026,
+- Latest recorded full server suite: 215 passed, six warnings, six subtests passed (3 Nov 2026,
   via `scripts/run-server-tests.sh`, a throwaway container; running containers untouched).
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.

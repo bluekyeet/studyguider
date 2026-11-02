@@ -212,16 +212,19 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
         return generate(topic_id, enrolled_query(topic_id))
 
     @router.post("/topics/{topic_id}/lessons/automatic/stream")
-    def automatic_lesson_with_progress(topic_id: int):
-        return generate_with_progress(topic_id, enrolled_query(topic_id))
+    def automatic_lesson_with_progress(topic_id: int,
+                                       idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+        return generate_with_progress(topic_id, enrolled_query(topic_id), idempotency_key)
 
     @router.post("/topics/{topic_id}/lessons", status_code=201)
     def generate(topic_id: int, body: LessonGeneration,
                  idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
         # Other callers (the scheduler, automatic lessons) call this directly and send no key.
-        key = idempotency_key if isinstance(idempotency_key, str) else None
+        return _generate_keyed(topic_id, body, idempotency_key if isinstance(idempotency_key, str) else None)
+
+    def _generate_keyed(topic_id, body, key, progress=None):
         if key is None:
-            return _generate(topic_id, body)
+            return _generate(topic_id, body, progress)
         if not re.fullmatch(r"[A-Za-z0-9._:-]{8,128}", key):
             raise HTTPException(422, "Idempotency-Key must be 8-128 letters, digits or . _ : -")
         with connect() as db:
@@ -241,7 +244,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
                                      "Check your saved lessons before retrying with a new key.")
         body._request_key = key
         try:
-            return _generate(topic_id, body)
+            return _generate(topic_id, body, progress)
         except BaseException:
             # Nothing was saved, so releasing the key lets the same request be retried safely.
             with connect() as db:
@@ -249,16 +252,19 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             raise
 
     @router.post("/topics/{topic_id}/lessons/stream")
-    def generate_with_progress(topic_id: int, body: LessonGeneration):
+    def generate_with_progress(topic_id: int, body: LessonGeneration,
+                               idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
         """Progress-only stream: stage names while generating, the lesson only once saved.
 
         Draft text is never sent; the final event carries the reviewed (or flagged) lesson.
+        An optional Idempotency-Key behaves exactly as on the plain endpoint.
         """
         events = queue.Queue()
+        key = idempotency_key if isinstance(idempotency_key, str) else None
 
         def work():
             try:
-                lesson = _generate(topic_id, body, lambda stage, message: events.put({"stage": stage, "message": message}))
+                lesson = _generate_keyed(topic_id, body, key, lambda stage, message: events.put({"stage": stage, "message": message}))
                 events.put({"done": True, "lesson": jsonable_encoder(lesson)})
             except HTTPException as error:
                 events.put({"error": str(error.detail), "status": error.status_code})

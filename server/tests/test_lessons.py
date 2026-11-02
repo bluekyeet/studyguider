@@ -341,3 +341,22 @@ def test_idempotency_key_in_progress_or_for_another_topic_is_a_conflict():
     assert running.status_code == 409 and "already running" in running.json()["detail"]
     db.requests[KEY]["topic"] = 2
     assert client.post("/topics/1/lessons", json={"query": "x"}, headers={"Idempotency-Key": KEY}).status_code == 409
+
+
+def test_progress_stream_with_a_key_replays_the_saved_lesson_without_generating_again():
+    calls = []
+
+    def reply(model, messages, task="general"):
+        calls.append(task)
+        return SYNTHETIC_LESSON if model == "education" else json.dumps({"pass": True, "issues": []})
+
+    client, db, _ = setup(reply)
+    headers = {"Idempotency-Key": KEY}
+    first = _events(client.post("/topics/1/lessons/stream", json={"query": "frequency"}, headers=headers))
+    assert first[-1]["done"] is True
+    used = len(calls)
+    again = _events(client.post("/topics/1/lessons/stream", json={"query": "frequency"}, headers=headers))
+    assert again[-1]["done"] is True and again[-1]["lesson"] == first[-1]["lesson"]
+    assert len(calls) == used and len(db.rows) == 1
+    bad = _events(client.post("/topics/1/lessons/stream", json={"query": "x"}, headers={"Idempotency-Key": "short"}))
+    assert bad[-1]["status"] == 422

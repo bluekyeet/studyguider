@@ -36,13 +36,15 @@ private suspend fun api(base: String, token: String, path: String, post: Boolean
 }
 
 /** Reads stage names only; the lesson arrives in the final event, after review. */
-private suspend fun generateLesson(base: String, token: String, topicId: Long, onStage: (String) -> Unit): JSONObject = withContext(Dispatchers.IO) {
+private suspend fun generateLesson(base: String, token: String, topicId: Long, requestKey: String, onStage: (String) -> Unit): JSONObject = withContext(Dispatchers.IO) {
     val connection = URL(base.trimEnd('/') + "/topics/$topicId/lessons/automatic/stream").openConnection() as HttpURLConnection
     try {
         connection.connectTimeout = 10000
         connection.readTimeout = 60000 // the server sends a keepalive every 15 seconds
         connection.requestMethod = "POST"
         connection.setRequestProperty("Authorization", "Bearer $token")
+        // Retrying the same attempt returns the lesson already saved instead of making a second one.
+        connection.setRequestProperty("Idempotency-Key", requestKey)
         val status = connection.responseCode
         if (status !in 200..299) {
             val text = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -71,6 +73,7 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
     var generating by remember { mutableStateOf(false) }
     var stage by remember { mutableStateOf("") }
     var picker by remember { mutableStateOf(false) }
+    val attemptKeys = remember { mutableMapOf<Long, String>() }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -116,7 +119,9 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
                     scope.launch {
                         generating = true; error = ""; stage = ""
                         try {
-                            val lesson = generateLesson(base, token, id) { stage = it }
+                            val key = attemptKeys.getOrPut(id) { "android-" + java.util.UUID.randomUUID() }
+                            val lesson = generateLesson(base, token, id, key) { stage = it }
+                            attemptKeys.remove(id)
                             onOpenLesson(id, course.optString("topic"), lesson.getLong("id"))
                         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not generate lesson" }
                         finally { generating = false }

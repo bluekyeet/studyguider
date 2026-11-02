@@ -1634,3 +1634,9 @@ Changes made in this round, and exactly what was and was not verified.
 - Verified in Edge against mock data (lessons, reader, practice, review, exam, library, settings at 1440 px
   and 390 px). Not verified: light-coloured contrast measurement, a real lesson or exam, the Stitch layouts'
   extra side panels.
+
+## 3 Nov 2026: task-list pass
+
+- Added `Idempotency-Key` support to `/topics/{id}/lessons/stream` and `/lessons/automatic/stream`; Android sends a key per topic attempt. Test added; suite 215 passed. API rebuilt, APK installed on the emulator (not exercised by tapping).
+- Live reviewer control run (`server/tests/live_reviewer_control.py`, five billed calls): correct-science drafts were all rejected, only on structural grounds from thin synthetic lessons. No scientific false positive was seen, but this is not a clean-pass control.
+- Not done, needs you or hardware: device/notification/reboot checks, human review of extracted content and questions, real billing rates and budgets, live overnight and gateway-outage runs, A/M/E exemplar marking, handwritten-scan checks, policy decisions (unverified imports, embeddings, automatic diagram choice).
