@@ -22,7 +22,7 @@ export async function renderExams(container, api) {
   const root = el('section', '', 'stack');
   container.replaceChildren(root);
   const alive = () => root.isConnected;
-  const error = el('p');
+  const error = el('p', '', 'error');
   error.setAttribute('role', 'alert');
   const report = (err) => { if (alive()) error.textContent = err.message || String(err); };
   const builder = el('form', '', 'card stack');
@@ -45,9 +45,15 @@ export async function renderExams(container, api) {
   builder.append(el('h2', 'Start an exam'), fields, modeNotice, start);
   const saved = el('section', '', 'card stack');
   const detail = el('section', '', 'stack');
-  root.append(el('h1', 'Exams'), el('p', 'AI marking is study feedback, not an official or verified NZQA grade. Compare questions, diagrams and schedules with the originals.', 'muted'), error, builder, saved, detail);
+  detail.append(el('p', 'Start a new exam on the left, or open a saved one, to see the paper here.', 'empty'));
+  const head = el('div', '', 'page-head'); const title = el('div');
+  title.append(el('h1', 'Exams'), el('p', 'AI marking is study feedback, not an official or verified NZQA grade. Compare questions, diagrams and schedules with the originals.', 'muted'));
+  head.append(title);
+  const rail = el('div', '', 'exam-rail stack'); rail.append(builder, saved);
+  const layout = el('div', '', 'exam-layout'); layout.append(rail, detail);
+  root.append(head, error, layout);
   let papers = [], subjectRequest = 0, topicRequest = 0, openRequest = 0;
-  let drafts = [], busy = false;
+  let drafts = [], busy = false, stopClock = () => {};
   const dirty = () => drafts.some(d => d.value() !== d.saved);
   const canLeave = () => !busy && (!dirty() || window.confirm('Discard unsaved exam answers?'));
   const updateMode = () => {
@@ -122,10 +128,43 @@ export async function renderExams(container, api) {
       if (!alive() || request !== openRequest) return;
       drafts = []; detail.replaceChildren();
       const heading = el('div', '', 'card stack');
-      heading.append(el('h2', info.title || `Exam ${id}`), el('p', `${exam.kind} · ${exam.total_marks} registered marks · ${info.answer_mode} answer mode`, 'muted'), link('Download text-only practice PDF (original diagrams not included)', `/exams/${id}/print`));
+      heading.append(el('h2', info.title || `Exam ${id}`), el('p', `${exam.kind.replaceAll('_', ' ')} · ${exam.total_marks} registered marks · ${info.answer_mode} answer mode`, 'muted'), link('Download text-only practice PDF (original diagrams not included)', `/exams/${id}/print`));
       if (info.answer_mode === 'handwritten') heading.append(el('p', 'This initial web version edits saved answer text only. Upload and handwriting recognition remain in the existing app.', 'muted'));
       detail.append(heading);
-      for (const q of exam.questions) {
+      const cards = [], navButtons = [];
+      let shownQuestion = 0;
+      const showQuestion = index => {
+        shownQuestion = index;
+        cards.forEach((c, i) => { c.hidden = i !== index; });
+        navButtons.forEach((b, i) => { if (i === index) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
+        pager.hidden = cards.length < 2;
+        prevQuestion.disabled = index === 0; nextQuestion.disabled = index === cards.length - 1;
+      };
+      // Optional timer: runs in this browser only; it never locks or submits answers.
+      const timerBox = el('div', '', 'toolbar'); const clock = el('span', '0:00:00', 'timer');
+      const startTimer = el('button', 'Start timer', 'small'); const resetTimer = el('button', 'Reset', 'small quiet');
+      let elapsed = 0, ticking = null;
+      stopClock(); stopClock = () => clearInterval(ticking);
+      const drawClock = () => { const t = elapsed, h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60; clock.textContent = `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`; };
+      startTimer.onclick = () => {
+        if (ticking) { clearInterval(ticking); ticking = null; startTimer.textContent = 'Resume timer'; return; }
+        ticking = setInterval(() => { if (!alive()) { clearInterval(ticking); return; } elapsed++; drawClock(); }, 1000);
+        startTimer.textContent = 'Pause timer';
+      };
+      resetTimer.onclick = () => { clearInterval(ticking); ticking = null; elapsed = 0; drawClock(); startTimer.textContent = 'Start timer'; };
+      timerBox.append(clock, startTimer, resetTimer);
+      const nav = el('div', '', 'qnav'); nav.setAttribute('role', 'group'); nav.setAttribute('aria-label', 'Questions');
+      heading.append(timerBox, nav);
+      const pager = el('div', '', 'toolbar');
+      const prevQuestion = el('button', '← Previous question'); const nextQuestion = el('button', 'Next question →', 'primary');
+      prevQuestion.onclick = () => { showQuestion(shownQuestion - 1); heading.scrollIntoView({ block: 'start' }); };
+      nextQuestion.onclick = () => { showQuestion(shownQuestion + 1); heading.scrollIntoView({ block: 'start' }); };
+      pager.append(prevQuestion, nextQuestion);
+      for (const [questionIndex, q] of exam.questions.entries()) {
+        const navButton = el('button', `Q${q.position}`, 'small'); navButton.type = 'button';
+        navButton.setAttribute('aria-label', `Question ${q.position}`);
+        navButton.onclick = () => showQuestion(questionIndex);
+        navButtons.push(navButton); nav.append(navButton);
         const card = el('article', '', 'card stack');
         card.append(el('h3', `Question ${q.position} · ${q.question_number} · AS ${q.standard_number} · ${q.year} · ${q.marks} marks`), mathText(q.question_text || 'Question text unavailable. Open the original paper for the full wording and diagrams.'));
         const sources = el('div', '', 'toolbar');
@@ -206,7 +245,7 @@ export async function renderExams(container, api) {
               q.answer_revision = result.revision; draft.saved = answer;
               container.dataset.dirty = String(dirty());
               if (!alive()) return;
-              feedback.replaceChildren(); status.textContent = 'Saved';
+              feedback.replaceChildren(); status.textContent = 'Saved'; navButton.classList.add('done');
             }
             if (action === 'mark' || action === 'feedback') {
               status.textContent = action === 'mark' ? 'Saved. Marking…' : 'Loading saved feedback…';
@@ -229,8 +268,10 @@ export async function renderExams(container, api) {
         mark.addEventListener('click', () => run('mark'));
         previous.addEventListener('click', () => run('feedback'));
         controls.append(save, mark, previous);
-        card.append(rawField, controls, status, feedback); detail.append(card);
+        card.append(rawField, controls, status, feedback); detail.append(card); cards.push(card);
+        if (q.answer) navButton.classList.add('done');
       }
+      detail.append(pager); showQuestion(0);
       detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) { if (request === openRequest) report(err); }
   };
@@ -239,11 +280,14 @@ export async function renderExams(container, api) {
     const rows = await api('/exams');
     if (!alive()) return;
     saved.replaceChildren(el('h2', 'Saved exams'));
-    if (!rows.length) saved.append(el('p', 'No saved exams yet.', 'muted'));
+    const list = el('ul', '', 'list'); saved.append(list);
+    if (!rows.length) list.append(el('li', 'No saved exams yet.', 'empty'));
     for (const exam of rows) {
-      const row = el('div', '', 'toolbar');
-      const open = el('button', `Open exam ${exam.id}`);
-      const remove = el('button', `Delete exam ${exam.id}`);
+      const row = el('li');
+      const open = el('button', 'Open', 'small primary');
+      open.setAttribute('aria-label', `Open exam ${exam.id}`);
+      const remove = el('button', 'Delete', 'small danger');
+      remove.setAttribute('aria-label', `Delete exam ${exam.id}`);
       open.addEventListener('click', () => openExam(exam.id));
       remove.addEventListener('click', async () => {
         if (!canLeave() || !window.confirm(`Delete exam ${exam.id}, its answers, scans and marks? Bank questions will remain.`)) return;
@@ -251,12 +295,14 @@ export async function renderExams(container, api) {
         try {
           await api(`/exams/${exam.id}`, { method: 'DELETE' });
           if (!alive()) return;
-          ++openRequest; detail.replaceChildren(); drafts = [];
+          ++openRequest; detail.replaceChildren(el('p', 'Exam deleted.', 'empty')); drafts = [];
           await loadSaved();
         } catch (err) { report(err); if (alive()) remove.disabled = false; }
       });
-      row.append(el('span', `${exam.kind} · ${exam.question_count} questions · ${exam.total_marks} marks · ${new Date(exam.created_at).toLocaleDateString()}`), open, remove);
-      saved.append(row);
+      const text = el('div', '', 'grow');
+      text.append(el('strong', `Exam ${exam.id} · ${exam.kind.replaceAll('_', ' ')}`), el('div', `${exam.question_count} questions · ${exam.total_marks} marks · ${new Date(exam.created_at).toLocaleDateString('en-NZ')}`, 'muted'));
+      row.append(text, open, remove);
+      list.append(row);
     }
   };
   builder.addEventListener('submit', async (event) => {
@@ -293,4 +339,5 @@ export async function renderExams(container, api) {
       } catch (err) { report(err); }
     })(),
   ]);
+  return () => stopClock();
 }

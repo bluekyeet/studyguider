@@ -67,6 +67,7 @@ main{min-width:0;padding:32px clamp(16px,3.5vw,48px) 72px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-bottom:18px;min-width:0;box-shadow:var(--shadow)}
 .card>:last-child{margin-bottom:0}
 .card h2{display:flex;align-items:center;gap:10px}
+.card-grid.wide{grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr))}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;margin-bottom:18px}
 .tile{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;text-decoration:none;color:inherit;box-shadow:var(--shadow);min-height:104px}
 .tile:hover{border-color:var(--link)}
@@ -107,6 +108,55 @@ details{margin:12px 0}summary{cursor:pointer;padding:8px 0;font-weight:500}
 .math-content p{white-space:pre-wrap}
 .katex-display{overflow-x:auto;overflow-y:hidden}
 pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:var(--radius-sm);overflow-wrap:anywhere}
+
+/* buttons and chips keep their natural size inside stacked cards */
+.stack>button,.stack>.chip,.stack>a.button{align-self:flex-start}
+.hero{max-width:720px}
+
+/* reading and practice widths: comfortable line length on large screens */
+.narrow{width:100%;max-width:780px;margin-inline:auto}
+.scale{border:0;padding:0;margin:0}
+.scale legend{font-weight:500;padding:0 0 6px}
+.pill{display:inline-flex;font-weight:400}
+.pill input{position:absolute;opacity:0;width:1px;height:1px}
+.pill span{border:1px solid var(--line-strong);border-radius:999px;padding:8px 14px;cursor:pointer;background:var(--surface);min-height:42px;display:inline-flex;align-items:center}
+.pill input:checked+span{background:var(--brand);color:var(--brand-text);border-color:transparent}
+.pill input:focus-visible+span{outline:3px solid #6f93ff;outline-offset:2px}
+.progress{height:8px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.progress>i{display:block;height:100%;background:var(--brand)}
+
+/* lesson reader: outline | reading column | tools */
+.reader{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
+.reader-outline,.reader-side{min-width:0}
+.reader-main{min-width:0;max-width:780px;width:100%;margin-inline:auto}
+.reader-outline ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.reader-outline button{width:100%;text-align:left;border:0;border-radius:var(--radius-sm);background:transparent;min-height:36px;padding:6px 10px;display:flex;gap:10px;font-weight:400}
+.reader-outline button[aria-current=step]{background:var(--brand-soft);color:var(--brand-soft-text);font-weight:600}
+.reader-outline .num{color:var(--muted);min-width:1.4em}
+.reader-main .math-content{font-size:1.06rem;line-height:1.7;max-width:none}
+@media(min-width:1100px){
+  .reader{grid-template-columns:230px minmax(0,1fr)}
+  .reader-outline{position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto}
+  .reader-side{grid-column:2}
+}
+@media(min-width:1500px){
+  .reader{grid-template-columns:240px minmax(0,780px) minmax(320px,1fr);justify-content:start}
+  .reader-main{margin-inline:0}
+  .reader-side{grid-column:3;grid-row:1;position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto}
+}
+
+/* exams: set-up column beside the paper */
+.exam-layout{display:grid;gap:24px;grid-template-columns:minmax(0,1fr);align-items:start}
+.exam-rail{position:static;min-width:0}
+@media(min-width:1100px){.exam-layout{grid-template-columns:340px minmax(0,1fr)}.exam-rail{position:sticky;top:20px}}
+.exam-rail label>select,.exam-rail label>input:not([type=checkbox]):not([type=radio]){display:block;width:100%;margin-top:6px}
+.exam-rail .fields{grid-template-columns:1fr}
+.qnav{display:flex;gap:6px;flex-wrap:wrap}
+.qnav button{min-width:44px;padding:4px 12px}
+.qnav button[aria-current=step]{background:var(--brand);color:var(--brand-text);border-color:transparent}
+.qnav button.done{border-color:var(--ok);color:var(--ok)}
+.qnav button[aria-current=step].done{color:var(--brand-text)}
+.timer{font-variant-numeric:tabular-nums;font-size:1.4rem;font-weight:700}
 
 /* sign-in */
 #login{max-width:420px;margin:12vh auto;padding:28px}

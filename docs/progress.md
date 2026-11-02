@@ -1554,3 +1554,21 @@ Changes made in this round, and exactly what was and was not verified.
 - Not verified: against real data, uploads, edits and deletes (mock API only),
   light mode, and the redesigned Lessons, Review and Exams pages beyond their
   empty states.
+
+## Lessons, Review and Exams redesign (3 November 2026)
+
+- Lessons: "Up next" card with progress and lessons grouped by topic. The reader
+  has a section outline, a reading column limited to about 780 px, and a tools panel
+  (Explain, sources) that sits beside the text on screens 1500 px or wider.
+- Review: it used to load only questions due today. New `GET /review-questions`
+  (optional `topic_id`, `limit`, `offset`) lists every saved question. The page now has
+  Due now and All questions, with topic/status/text filters, and any question can be
+  practised early. Confidence is a row of buttons.
+- Exams: set-up and saved exams are a column beside the paper; one question at a
+  time with Q1..Qn navigation and Previous/Next; optional browser-only timer
+  (start, pause, reset; never locks or submits).
+- Verified: server suite 211 passed; Edge run against a mock API at 1920, 1440,
+  1280 and 390 px with no script errors; screenshots inspected for Lessons, reader,
+  Review and Exams.
+- Not verified: answering, saving and marking against the real server, the timer
+  while running, and light mode. Lesson text is mock data, not a real generated lesson.

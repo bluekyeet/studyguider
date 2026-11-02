@@ -147,9 +147,36 @@ class ReviewTests(unittest.TestCase):
             pass
 
         router = review_router(None, authorised, lambda *args: "")
-        self.assertEqual(len(router.routes), 4)
+        self.assertEqual(len(router.routes), 5)
         self.assertTrue(all(route.dependencies[0].dependency is authorised for route in router.routes))
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_all_questions_lists_due_and_future_questions_with_optional_topic_filter():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class ListDatabase:
+        calls = []
+
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params=()):
+            assert "review_questions q" in sql
+            self.calls.append(params)
+            return Result([(1, 2, "Now?", date(2026, 11, 3), "force", None, 0.5, 1, 2, None),
+                           (2, 2, "Later?", date(2026, 12, 1), "", 91171, 0.0, 0, 0, None)])
+
+    app = FastAPI()
+    app.include_router(review_router(ListDatabase, lambda: None, None))
+    client = TestClient(app)
+    rows = client.get("/review-questions?topic_id=2").json()
+    assert [r["question"] for r in rows] == ["Now?", "Later?"]
+    assert rows[1]["due_date"] == "2026-12-01" and rows[0]["answer_count"] == 2
+    assert ListDatabase.calls[-1] == (2, 2, 200, 0)
+    client.get("/review-questions")
+    assert ListDatabase.calls[-1] == (None, None, 200, 0)
+    assert client.get("/review-questions?limit=501").status_code == 422

@@ -6,7 +6,7 @@ records the concept so the next lesson can revisit it.
 import json
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 
@@ -123,6 +123,20 @@ def review_router(connect, authorised, model_reply):
                 FROM review_questions WHERE due_date <= %s ORDER BY due_date, id""", (as_of,)).fetchall()
         return [{"id": row[0], "topic_id": row[1], "question": row[2], "due_date": row[3],
                  "concept": row[4], "standard_number": row[5], "mastery": row[6]} for row in rows]
+
+    @router.get("/review-questions")
+    def all_questions(topic_id: int | None = None, limit: int = Query(default=200, ge=1, le=500), offset: int = Query(default=0, ge=0, le=100000)):
+        """Every saved question, due or not, so learners can practise ahead or revisit."""
+        with connect() as db:
+            rows = db.execute("""SELECT q.id, q.topic_id, q.question, q.due_date, q.concept, q.standard_number,
+                    q.mastery, q.interval_days,
+                    (SELECT count(*) FROM review_answers a WHERE a.question_id = q.id),
+                    (SELECT max(a.answered_at) FROM review_answers a WHERE a.question_id = q.id)
+                FROM review_questions q WHERE (%s::bigint IS NULL OR q.topic_id = %s)
+                ORDER BY q.due_date, q.id LIMIT %s OFFSET %s""", (topic_id, topic_id, limit, offset)).fetchall()
+        keys = ("id", "topic_id", "question", "due_date", "concept", "standard_number", "mastery",
+                "interval_days", "answer_count", "last_answered_at")
+        return [dict(zip(keys, row)) for row in rows]
 
     @router.post("/review-questions/{question_id}/answers", status_code=201)
     def answer_question(question_id: int, body: ReviewAnswer):

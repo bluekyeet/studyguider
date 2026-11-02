@@ -85,15 +85,46 @@ export async function renderLessons(container, api) {
     try {
       const lessons = await api('/lessons');
       if (disposed) return;
-      active = null; drafts.clear(); content.replaceChildren(element('h1', 'Lessons'));
-      if (!lessons.length) content.append(element('p', 'No lessons yet. Choose study topics in Settings.', 'muted'));
-      for (const lesson of lessons) {
-        const card = element('article', '', 'card stack');
-        card.append(element('h2', readable(lesson.query)),
-          element('p', `${lesson.subject} · ${lesson.topic}${lesson.completed_at ? ' · Completed' : ''}`, 'muted'),
-          button('Open lesson', () => open(lesson), 'primary'));
-        content.append(card);
+      active = null; drafts.clear(); content.replaceChildren();
+      const head = element('div', '', 'page-head'); const title = element('div');
+      title.append(element('h1', 'Lessons'), element('p', 'A new lesson is prepared overnight for each topic you are learning.', 'muted'));
+      head.append(title); content.append(head);
+      if (!lessons.length) {
+        content.append(element('p', 'No lessons yet. Choose the topics you are learning in Settings and your first lesson will be ready tomorrow.', 'empty'));
+        return;
       }
+      const todo = lessons.filter(l => !l.completed_at);
+      const total = lessons.length, done = total - todo.length;
+      if (todo.length) {
+        const next = todo[0];
+        const hero = element('section', '', 'card stack hero');
+        hero.append(element('span', 'Up next', 'chip'), element('h2', readable(next.query)),
+          element('p', `${next.subject} · ${next.topic}`, 'muted'), button('Start lesson', () => open(next), 'primary'));
+        const bar = element('div', '', 'progress'); const fill = element('i'); fill.style.width = `${Math.round(done / total * 100)}%`; bar.append(fill);
+        hero.append(bar, element('p', `${done} of ${total} lessons completed`, 'muted'));
+        content.append(hero);
+      }
+      const groups = new Map();
+      for (const lesson of lessons) {
+        const key = `${lesson.subject} · ${lesson.topic}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(lesson);
+      }
+      const grid = element('div', '', 'card-grid wide');
+      for (const [name, items] of groups) {
+        const card = element('section', '', 'card stack');
+        card.append(element('h2', name));
+        const list = element('ul', '', 'list');
+        for (const lesson of items) {
+          const li = element('li'); const text = element('div', '', 'grow');
+          text.append(element('strong', readable(lesson.query)));
+          li.append(text, element('span', lesson.completed_at ? 'Completed' : 'To do', `chip ${lesson.completed_at ? 'ok' : ''}`),
+            button(lesson.completed_at ? 'Review' : 'Open', () => open(lesson), 'small'));
+          list.append(li);
+        }
+        card.append(list); grid.append(card);
+      }
+      content.append(grid);
     } finally { loading = false; }
   }
 
@@ -128,26 +159,44 @@ export async function renderLessons(container, api) {
   function showLesson() {
     const lesson = active, chunk = lesson.chunks[current];
     content.replaceChildren();
-    const toolbar = element('div', '', 'toolbar');
-    toolbar.append(button('All lessons', feed), element('span', `Section ${current + 1} of ${lesson.chunks.length}`, 'muted'));
-    const select = element('select');
-    select.setAttribute('aria-label', 'Current lesson section');
+    const layout = element('div', '', 'reader');
+
+    const outline = element('nav', '', 'reader-outline card');
+    outline.setAttribute('aria-label', 'Lesson sections');
+    outline.append(button('← All lessons', feed, 'small'));
+    const items = element('ol');
     lesson.chunks.forEach((section, index) => {
-      const option = element('option', `${index + 1}. ${readable(section.title)}`);
-      option.value = index; select.append(option);
+      const li = element('li'); const go = element('button'); go.type = 'button';
+      go.append(element('span', String(index + 1), 'num'), element('span', readable(section.title)));
+      if (index === current) go.setAttribute('aria-current', 'step');
+      go.onclick = () => { current = index; showLesson(); window.scrollTo({ top: 0 }); };
+      li.append(go); items.append(li);
     });
-    select.value = current;
-    select.onchange = () => { current = Number(select.value); showLesson(); };
-    toolbar.append(select);
-    if (current > 0) toolbar.append(button('Previous', () => { current--; showLesson(); }));
-    if (current + 1 < lesson.chunks.length) toolbar.append(button('Next', () => { current++; showLesson(); }));
+    outline.append(element('p', `Section ${current + 1} of ${lesson.chunks.length}`, 'muted'), items);
+
+    const main = element('div', '', 'reader-main stack');
     const card = element('article', '', 'card stack');
     card.append(element('h2', readable(chunk.title)), rendered(chunk.body));
-    content.append(toolbar, element('h1', readable(lesson.query)),
+    main.append(element('h1', readable(lesson.query)),
       element('p', lesson.warning || 'AI-generated lesson: check against the original sources.', 'muted'), card);
     const draft = drafts.get(current);
     if (draft) practice(card, draft, lesson);
-    explainPanel(lesson, chunk);
+    const pager = element('div', '', 'toolbar');
+    if (current > 0) pager.append(button('← Previous', () => { current--; showLesson(); window.scrollTo({ top: 0 }); }));
+    if (current + 1 < lesson.chunks.length) pager.append(button('Next →', () => { current++; showLesson(); window.scrollTo({ top: 0 }); }, 'primary'));
+    else {
+      const complete = button(lesson.completed_at ? 'Lesson completed' : 'Complete lesson', async () => {
+        if (pending()) throw new Error('Save your answers and finish or clear your explanation question before completing this lesson.');
+        const result = await api(`/lessons/${lesson.id}/complete`, { method: 'POST' });
+        lesson.completed_at = result.completed_at;
+        if (!disposed && active === lesson) showLesson();
+      }, 'primary');
+      complete.disabled = Boolean(lesson.completed_at); pager.append(complete);
+    }
+    main.append(pager);
+
+    const side = element('aside', '', 'reader-side stack');
+    explainPanel(lesson, chunk, side);
     const sources = element('details', '', 'card');
     sources.append(element('summary', 'Inspect original sources and citations'));
     for (const source of lesson.sources || []) {
@@ -158,14 +207,8 @@ export async function renderLessons(container, api) {
     }
     const original = element('details');
     original.append(element('summary', 'Original lesson text'), element('pre', lesson.lesson));
-    sources.append(original); content.append(sources);
-    const complete = button(lesson.completed_at ? 'Lesson completed' : 'Complete lesson', async () => {
-      if (pending()) throw new Error('Save your answers and finish or clear your explanation question before completing this lesson.');
-      const result = await api(`/lessons/${lesson.id}/complete`, { method: 'POST' });
-      lesson.completed_at = result.completed_at;
-      if (!disposed && active === lesson) showLesson();
-    }, 'primary');
-    complete.disabled = Boolean(lesson.completed_at); content.append(complete);
+    sources.append(original); side.append(sources);
+    layout.append(outline, main, side); content.append(layout);
   }
 
   function practice(card, draft, lesson) {
@@ -206,7 +249,7 @@ export async function renderLessons(container, api) {
     label.nextSibling.append(mark, save);
   }
 
-  function explainPanel(lesson, chunk) {
+  function explainPanel(lesson, chunk, target) {
     const panel = element('section', '', 'card stack');
     panel.append(element('h2', 'Explain this section'), element('p', 'Follow-ups include the last three exchanges. Replies are unverified.', 'muted'));
     const label = element('label', 'Your question', 'stack');
@@ -247,7 +290,7 @@ export async function renderLessons(container, api) {
       } finally { lesson.explainBusy = false; }
     }, 'primary');
     ask.disabled = Boolean(lesson.explainBusy);
-    panel.append(ask, replies); content.append(panel);
+    panel.append(ask, replies); target.append(panel);
   }
 
   try { await feed(); }

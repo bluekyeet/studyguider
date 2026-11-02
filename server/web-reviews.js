@@ -1,95 +1,170 @@
 import { mathText } from './web-common.js';
 
+const element = (tag, text, className) => {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+};
+const button = (text, className) => {
+  const node = element('button', text, className);
+  node.type = 'button';
+  return node;
+};
+const CONFIDENCE = ['Not confident', 'Slightly', 'Somewhat', 'Confident', 'Very confident'];
+
 export async function renderReviews(container, api) {
-  const element = (tag, text, className) => {
-    const node = document.createElement(tag);
-    if (text !== undefined) node.textContent = text;
-    if (className) node.className = className;
-    return node;
+  const auckland = () => {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const part = type => parts.find(item => item.type === type).value;
+    return `${part('year')}-${part('month')}-${part('day')}`;
   };
-  const button = (text, className) => {
-    const node = element('button', text, className);
-    node.type = 'button';
-    return node;
-  };
-  const heading = element('h1', 'Daily review');
-  const toolbar = element('div', undefined, 'toolbar');
-  const count = element('p', '', 'muted');
-  const refresh = button('Refresh');
-  const status = element('p');
+  let today = auckland();
+  let all = [];            // every saved question, due or not
+  let queue = [];          // what the practice view is working through
+  let mode = 'due';        // 'due' | 'all' | 'practice'
+  let returnTo = 'due';
+  let loading = false, submitting = false;
+  const labels = new Map();
+  const drafts = new Map();
+  const filters = { topic: '', status: 'all', text: '' };
+
+  const head = element('div', undefined, 'page-head');
+  const title = element('div');
+  title.append(element('h1', 'Review'), element('p', 'Short questions on what you have learned, scheduled to come back just before you forget.', 'muted'));
+  const refresh = button('Refresh', 'small');
+  head.append(title, refresh);
+  const stats = element('div', undefined, 'stat-row');
+  const tabs = element('div', undefined, 'tabs');
+  const status = element('p', undefined, 'muted');
   status.setAttribute('role', 'status');
   const content = element('div', undefined, 'stack');
-  toolbar.append(count, refresh);
-  container.replaceChildren(heading, toolbar, status, content);
-  let questions = [];
-  let loading = false;
-  let submitting = false;
-  const drafts = new Map();
-  const labels = new Map();
-  let labelsLoaded = false;
+  container.replaceChildren(head, stats, tabs, status, content);
+
+  const isDue = question => question.due_date <= today;
+  const dueQuestions = () => all.filter(isDue);
 
   async function loadLabels() {
-    if (labelsLoaded) return;
     const subjects = await api('/subjects');
     await Promise.all(subjects.map(async subject => {
-      const topics = await api(`/subjects/${subject.id}/topics`);
-      for (const topic of topics) labels.set(topic.id, `${subject.name} / ${topic.name}`);
+      for (const topic of await api(`/subjects/${subject.id}/topics`)) labels.set(topic.id, { subject: subject.name, topic: topic.name, level: subject.level });
     }));
-    labelsLoaded = true;
+  }
+  const labelOf = id => labels.has(id) ? `${labels.get(id).subject} · ${labels.get(id).topic}` : `Topic ${id}`;
+
+  function drawChrome() {
+    const due = dueQuestions().length;
+    stats.replaceChildren();
+    for (const [value, name] of [[due, 'Due now'], [all.length - due, 'Coming up'], [all.length, 'Total questions']]) {
+      const stat = element('div', undefined, 'stat'); stat.append(element('b', String(value)), element('span', name)); stats.append(stat);
+    }
+    tabs.replaceChildren();
+    for (const [key, label] of [['due', `Due now (${due})`], ['all', `All questions (${all.length})`]]) {
+      const tab = element('a', label); tab.href = '#reviews'; tab.setAttribute('role', 'button');
+      if ((mode === 'practice' ? returnTo : mode) === key) tab.setAttribute('aria-current', 'page');
+      tab.onclick = event => { event.preventDefault(); if (submitting) return; mode = key; show(); };
+      tabs.append(tab);
+    }
   }
 
-  function showQuestion(focus = false) {
+  function show(focus = false) {
     content.replaceChildren();
-    count.textContent = `${questions.length} question${questions.length === 1 ? '' : 's'} remaining`;
+    drawChrome();
+    if (mode === 'due') { queue = dueQuestions(); return practice(queue, focus, 'due'); }
+    if (mode === 'practice') return practice(queue, focus, returnTo);
+    return browse();
+  }
+
+  // ---- all questions ---------------------------------------------------
+  function browse() {
+    const bar = element('div', undefined, 'toolbar');
+    const topic = element('select'); topic.setAttribute('aria-label', 'Topic');
+    topic.add(new Option('All topics', ''));
+    for (const id of [...new Set(all.map(q => q.topic_id))].sort((a, b) => labelOf(a).localeCompare(labelOf(b)))) topic.add(new Option(labelOf(id), id));
+    topic.value = filters.topic;
+    const state = element('select'); state.setAttribute('aria-label', 'Status');
+    for (const [value, label] of [['all', 'Any status'], ['due', 'Due now'], ['upcoming', 'Coming up'], ['new', 'Never answered']]) state.add(new Option(label, value));
+    state.value = filters.status;
+    const text = element('input', undefined, 'grow'); text.type = 'search'; text.placeholder = 'Search questions'; text.value = filters.text; text.setAttribute('aria-label', 'Search questions');
+    bar.append(topic, state, text);
+    const list = element('ul', undefined, 'list card');
+    content.append(bar, list);
+    const draw = () => {
+      filters.topic = topic.value; filters.status = state.value; filters.text = text.value.trim().toLowerCase();
+      list.replaceChildren();
+      const rows = all.filter(q => (!filters.topic || String(q.topic_id) === filters.topic)
+        && (filters.status === 'all' || (filters.status === 'due' && isDue(q)) || (filters.status === 'upcoming' && !isDue(q)) || (filters.status === 'new' && !q.answer_count))
+        && (!filters.text || `${q.question} ${q.concept}`.toLowerCase().includes(filters.text)));
+      if (!rows.length) { list.append(element('li', all.length ? 'No questions match these filters.' : 'No review questions yet. They are created when you complete a lesson or get an exam answer wrong.', 'empty')); return; }
+      for (const q of rows) {
+        const li = element('li');
+        const text = element('div', undefined, 'grow');
+        const snippet = q.question.replace(/\s+/g, ' ').replace(/\$/g, '');
+        text.append(element('strong', q.concept || snippet.slice(0, 80)));
+        text.append(element('div', q.concept ? (snippet.length > 140 ? snippet.slice(0, 140) + '…' : snippet) : '', 'muted'));
+        const meta = element('div', undefined, 'muted');
+        meta.append(element('span', isDue(q) ? 'Due now' : `Due ${q.due_date}`, `chip ${isDue(q) ? 'warn' : ''}`),
+          ` ${labelOf(q.topic_id)} · ${q.answer_count ? `answered ${q.answer_count}×` : 'not answered yet'} · mastery ${Math.round((q.mastery || 0) * 100)}%`);
+        text.append(meta);
+        const go = button(isDue(q) ? 'Answer' : 'Practise now', 'small'); if (isDue(q)) go.classList.add('primary');
+        go.onclick = () => { queue = [q]; mode = 'practice'; returnTo = 'all'; show(true); };
+        li.append(text, go); list.append(li);
+      }
+    };
+    topic.onchange = state.onchange = draw; text.oninput = draw;
+    draw();
+  }
+
+  // ---- answering ---------------------------------------------------------
+  function practice(questions, focus, back) {
     if (!questions.length) {
-      content.append(element('p', 'No questions are due. Come back later or refresh.', 'card'));
+      const empty = element('div', undefined, 'empty');
+      empty.append(element('p', back === 'due' ? 'Nothing is due. You are all caught up.' : 'No more questions.'));
+      if (back === 'due' && all.length) {
+        const more = button('Browse all questions', 'primary'); more.onclick = () => { mode = 'all'; show(); };
+        empty.append(more);
+      } else if (back === 'all') {
+        const list = button('Back to all questions', 'primary'); list.onclick = () => { mode = 'all'; show(); };
+        empty.append(list);
+      }
+      content.append(empty);
       return;
     }
     const question = questions[0];
-    const card = element('section', undefined, 'card stack');
-    const label = labels.get(question.topic_id) || `Topic ${question.topic_id}`;
-    card.append(element('p', `${label} · Due ${question.due_date}`, 'muted'));
-    if (question.concept) card.append(element('p', question.concept, 'muted'));
-    const prompt = element('div');
-    mathText(prompt, question.question);
-    card.append(prompt);
+    const card = element('section', undefined, 'card stack narrow');
+    const meta = element('div', undefined, 'toolbar');
+    meta.append(element('span', labelOf(question.topic_id), 'chip'), element('span', isDue(question) ? `Due ${question.due_date}` : `Not due until ${question.due_date}`, `chip ${isDue(question) ? 'warn' : ''}`));
+    if (back === 'due') meta.append(element('span', `${questions.length} left`, 'muted'));
+    card.append(meta);
+    if (question.concept) card.append(element('h2', question.concept));
+    const prompt = element('div'); mathText(prompt, question.question); card.append(prompt);
+
     const form = element('form', undefined, 'stack');
     const answerLabel = element('label', 'Your answer', 'stack');
     const answer = element('textarea');
-    answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); });
-    answer.required = true;
-    answer.maxLength = 50000;
-    answer.rows = 6;
+    answer.required = true; answer.maxLength = 50000; answer.rows = 6;
     const draft = drafts.get(question.id) || { answer: '', confidence: '' };
     answer.value = draft.answer;
+    answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); answer.setCustomValidity(''); });
     answerLabel.append(answer);
-    const confidence = element('fieldset', undefined, 'fields');
-    confidence.append(element('legend', 'How confident are you?'));
-    const descriptions = ['Not confident', 'Slightly confident', 'Somewhat confident', 'Confident', 'Very confident'];
+    const scale = element('fieldset', undefined, 'scale');
+    scale.append(element('legend', 'How confident are you?'));
+    const row = element('div', undefined, 'segmented');
     for (let value = 1; value <= 5; value++) {
-      const label = element('label');
-      const input = element('input');
-      input.type = 'radio';
-      input.name = 'confidence';
-      input.value = String(value);
-      input.required = true;
+      const label = element('label', undefined, 'pill');
+      const input = element('input'); input.type = 'radio'; input.name = 'confidence'; input.value = String(value); input.required = true;
       input.checked = draft.confidence === input.value;
-      label.append(input, document.createTextNode(` ${value} — ${descriptions[value - 1]}`));
-      confidence.append(label);
+      label.append(input, element('span', `${value} · ${CONFIDENCE[value - 1]}`));
+      row.append(label);
     }
-    const saveDraft = () => {
-      drafts.set(question.id, {
-        answer: answer.value,
-        confidence: form.querySelector('input[name="confidence"]:checked')?.value || '',
-      });
-    };
-    form.addEventListener('input', saveDraft);
-    form.addEventListener('change', saveDraft);
-    const submit = button('Submit answer', 'primary');
-    submit.type = 'submit';
-    const feedback = element('div', undefined, 'stack');
-    feedback.setAttribute('role', 'status');
-    form.append(answerLabel, confidence, submit);
+    scale.append(row);
+    const saveDraft = () => drafts.set(question.id, { answer: answer.value, confidence: form.querySelector('input[name="confidence"]:checked')?.value || '' });
+    form.addEventListener('input', saveDraft); form.addEventListener('change', saveDraft);
+    const submit = button('Submit answer', 'primary'); submit.type = 'submit';
+    const toolbar = element('div', undefined, 'toolbar'); toolbar.append(submit);
+    if (back === 'all') { const cancel = button('Back to list'); cancel.onclick = () => { mode = 'all'; show(); }; toolbar.append(cancel); }
+    const feedback = element('div', undefined, 'stack'); feedback.setAttribute('role', 'status');
+    form.append(answerLabel, scale, toolbar);
     card.append(form, feedback);
     content.append(card);
     if (focus) answer.focus();
@@ -102,83 +177,59 @@ export async function renderReviews(container, api) {
       saveDraft();
       const selected = Number(drafts.get(question.id).confidence);
       if (!Number.isInteger(selected) || selected < 1 || selected > 5) return;
-      submitting = true;
-      container.dataset.busy = 'true';
-      submit.disabled = true;
-      refresh.disabled = true;
-      answer.disabled = true;
-      confidence.disabled = true;
+      submitting = true; container.dataset.busy = 'true';
+      for (const node of [submit, refresh, answer, scale]) node.disabled = true;
       status.textContent = 'Saving and checking your answer…';
       try {
         const result = await api(`/review-questions/${question.id}/answers`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ answer: answer.value, confidence: selected }),
         });
-        drafts.delete(question.id);
-        container.dataset.dirty = 'false';
-        const judgement = result.outcome === 'correct' ? 'AI judgement: correct (advisory).'
-          : result.outcome === 'incorrect' ? 'AI judgement: incorrect (advisory).'
-            : 'Not independently marked. Scheduled using your confidence.';
-        feedback.append(element('p', judgement));
-        if (result.feedback) {
-          const explanation = element('div');
-          mathText(explanation, result.feedback);
-          feedback.append(explanation);
-        }
-        feedback.append(element('p', `Next due: ${result.next_due || 'not provided'}`));
-        const mastery = typeof result.mastery === 'number' && Number.isFinite(result.mastery)
-          ? `${Math.round(result.mastery * 100)}%` : 'not provided';
-        feedback.append(element('p', `Topic mastery estimate: ${mastery}. This is a scheduling estimate, not proof of mastery.`, 'muted'));
-        const next = button(questions.length > 1 ? 'Next question' : 'Finish review', 'primary');
-        next.addEventListener('click', () => {
-          questions.shift();
+        drafts.delete(question.id); container.dataset.dirty = 'false';
+        const stored = all.find(q => q.id === question.id);
+        if (stored) { stored.due_date = result.next_due; stored.answer_count = (stored.answer_count || 0) + 1; stored.mastery = Math.min(1, (stored.mastery || 0) * 0.75 + (result.correct ? 0.25 : 0)); }
+        const outcome = result.outcome === 'correct' ? ['Correct', 'ok'] : result.outcome === 'incorrect' ? ['Not quite', 'bad'] : ['Not independently marked', 'warn'];
+        const verdict = element('p'); verdict.append(element('span', outcome[0], `chip ${outcome[1]}`), element('span', ' AI judgement, advisory only.', 'muted'));
+        feedback.append(verdict);
+        if (result.outcome === 'confidence-based') feedback.append(element('p', 'Scheduled using your confidence.', 'muted'));
+        if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(explanation); }
+        const mastery = typeof result.mastery === 'number' && Number.isFinite(result.mastery) ? `${Math.round(result.mastery * 100)}%` : 'not provided';
+        feedback.append(element('p', `Next due ${result.next_due || 'not provided'} · topic mastery estimate ${mastery}, a scheduling estimate and not proof of mastery.`, 'muted'));
+        const finished = back === 'due' ? questions.length <= 1 : true;
+        const next = button(back === 'due' ? (finished ? 'Finish review' : 'Next question') : 'Back to all questions', 'primary');
+        next.onclick = () => {
           status.textContent = '';
-          showQuestion(true);
-        });
+          if (back === 'due') show(true);
+          else { mode = 'all'; show(); }
+        };
         feedback.append(next);
+        drawChrome();
         status.textContent = 'Answer saved.';
         next.focus();
       } catch (error) {
         status.textContent = `${error.message || 'Could not save your answer.'} Your draft is preserved. If the connection failed, the answer may already have been saved; refreshing checks the due list before you retry.`;
-        submit.disabled = false;
-        answer.disabled = false;
-        confidence.disabled = false;
+        submit.disabled = false; answer.disabled = false; scale.disabled = false;
       } finally {
-        submitting = false;
-        container.dataset.busy = 'false';
-        refresh.disabled = false;
+        submitting = false; container.dataset.busy = 'false'; refresh.disabled = false;
       }
     });
-    answer.addEventListener('input', () => answer.setCustomValidity(''));
   }
 
   async function load() {
     if (loading || submitting) return;
-    loading = true;
-    refresh.disabled = true;
-    status.textContent = 'Loading due questions…';
-    // ponytail: drafts live for this mounted view; persist only if cross-navigation recovery is needed.
-    const date = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Pacific/Auckland', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).formatToParts(new Date());
-    const part = type => date.find(item => item.type === type).value;
-    const asOf = `${part('year')}-${part('month')}-${part('day')}`;
+    loading = true; refresh.disabled = true; status.textContent = 'Loading questions…';
+    today = auckland();
     try {
-      const [due, names] = await Promise.allSettled([
-        api(`/review-questions/due?as_of=${asOf}`), loadLabels(),
-      ]);
-      if (due.status === 'rejected') throw due.reason;
-      if (!Array.isArray(due.value)) throw new Error('Invalid due-question response.');
-      questions = due.value;
-      showQuestion();
-      status.textContent = names.status === 'rejected' ? 'Some topic names could not be loaded. Questions are still available.' : '';
+      // The due call also writes review questions for lessons completed since the last visit.
+      const [due] = await Promise.all([api(`/review-questions/due?as_of=${today}`), loadLabels().catch(() => { labels.clear(); status.dataset.names = 'failed'; })]);
+      if (!Array.isArray(due)) throw new Error('Invalid due-question response.');
+      all = await api('/review-questions?limit=500');
+      if (!Array.isArray(all)) throw new Error('Invalid question list.');
+      show();
+      status.textContent = status.dataset.names === 'failed' ? 'Some topic names could not be loaded. Questions are still available.' : '';
     } catch (error) {
       status.textContent = `${error.message || 'Could not load reviews.'} Any current draft is unchanged. Use Refresh to retry.`;
-    } finally {
-      loading = false;
-      refresh.disabled = false;
-    }
+    } finally { loading = false; refresh.disabled = false; }
   }
   refresh.addEventListener('click', load);
   await load();
