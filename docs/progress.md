@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added second-subject isolation to rollback-only PostgreSQL acceptance check.
+  Physics completed lesson/answer/mistake remains excluded from Chemistry prompt;
+  Chemistry receives only its source, standard 91166 and Collision frequency
+  weakness, while Physics stored Frequency focus remains intact. First execution
+  failed because synthetic lesson answer omitted required question_key; transaction
+  rolled back, fixture corrected, full rerun PASS (learning cycle, subject isolation,
+  stale writes, deletion). No user records changed. Real overnight scheduler/model
+  isolation remains unverified, task left open. Emulator/GPU unchanged.
+
 - Live bounded lesson correction check passed on synthetic frequency lesson:
   initial inverse-definition/metre-unit errors rejected; teacher revised twice;
   third independent review passed with no issues. Final draft correctly gives

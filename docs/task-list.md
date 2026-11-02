@@ -78,6 +78,9 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Display nightly job status, errors and generated lesson review status separately.
 - [ ] Run the complete live wrong-answer → tomorrow's lesson acceptance check.
 - [ ] Verify multi-subject overnight generation keeps histories and evidence separate.
+  - [x] Rollback-only PostgreSQL lesson-route probe: Chemistry excludes Physics
+    completed lessons/answers/weak concepts and receives Chemistry evidence/standard.
+  - [ ] Actual multi-subject scheduled overnight execution and live model output.
 - [ ] Improve learner-summary memory: preferred explanations and useful per-subject summaries fed into teaching.
 - [ ] Evaluate durable queued AI jobs and safe crash recovery; do not retry potentially completed jobs blindly.
 - [ ] Run Android nightly-status UI checks after the emulator is available.

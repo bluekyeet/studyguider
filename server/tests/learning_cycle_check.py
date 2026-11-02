@@ -71,6 +71,38 @@ try:
     assert generated['review_status'] == 'passed'
     assert generated['review_focus'][0]['concept'] == 'Frequency'
     print('PASS: exam mistake deduplicated -> wrong review scheduled for one day -> next lesson receives weakness and isolated evidence')
+    # A second subject must not inherit the Physics review or learner answers.
+    db.execute("UPDATE lessons SET completed_at=now() WHERE id=%s", (generated['id'],))
+    db.execute("INSERT INTO lesson_answers(lesson_id,question_key,question,answer,feedback) VALUES (%s,'synthetic-key','Physics-only question','Physics-only answer','Physics-only feedback')", (generated['id'],))
+    chemistry_subject = db.execute("INSERT INTO subjects(name,level) VALUES ('Disposable Chemistry check',2) RETURNING id").fetchone()[0]
+    chemistry_topic = db.execute("INSERT INTO topics(subject_id,name) VALUES (%s,'Synthetic concentration') RETURNING id", (chemistry_subject,)).fetchone()[0]
+    chemistry_resource = uuid.uuid4()
+    db.execute("INSERT INTO resources(id,topic_id,filename,size,status) VALUES (%s,%s,'synthetic-chemistry.txt',40,'extracted')", (chemistry_resource, chemistry_topic))
+    db.execute("""INSERT INTO review_questions(topic_id,question,due_date,concept)
+        VALUES (%s,'Explain concentration and collisions.',CURRENT_DATE,'Collision frequency')""", (chemistry_topic,))
+
+    def chemistry_model(name, messages, task):
+        payload = json.loads(messages[-1]['content'])
+        if task == 'lesson-generate':
+            assert [item['concept'] for item in payload['review_focus']] == ['Collision frequency']
+            assert payload['learner_answers'] == [] and payload['completed_lessons'] == []
+            assert payload['evidence']['sources'][0]['resource_id'] == str(chemistry_resource)
+            assert [item['number'] for item in payload['evidence']['standards']] == [91166]
+            return 'At fixed temperature, concentration changes collision frequency, not average kinetic energy.'
+        assert task == 'lesson-review'
+        assert payload['evidence']['sources'][0]['resource_id'] == str(chemistry_resource)
+        return '{"pass":true,"issues":[]}'
+
+    chemistry_router = lesson_router(transaction_connection, lambda: None, chemistry_model,
+        lambda *args: [{"resource_id": str(chemistry_resource), "filename": 'synthetic-chemistry.txt', "page": 1,
+                       "content": 'At fixed temperature concentration affects collision frequency.'}],
+        lambda *args: [{"number": 91166, "title": 'Reactivity', "description": 'Synthetic chemistry check'}])
+    chemistry = endpoint(chemistry_router, '/topics/{topic_id}/lessons')(chemistry_topic, LessonGeneration(query='Concentration'))
+    assert chemistry['review_status'] == 'passed'
+    assert chemistry['topic_id'] == chemistry_topic
+    assert chemistry['review_focus'][0]['concept'] == 'Collision frequency'
+    assert db.execute('SELECT review_focus FROM lessons WHERE id=%s', (generated['id'],)).fetchone()[0][0]['concept'] == 'Frequency'
+    print('PASS: Physics/Chemistry lesson prompts and saved review focus remain isolated, including standards, evidence and learner-answer history')
     db.execute("""INSERT INTO exam_answer_scans(exam_id,question_id,image,transcription,confirmed)
         VALUES (%s,%s,%s,'55 Hz',true)""", (exam, question, b'synthetic image bytes'))
     db.execute("""INSERT INTO markings(exam_id,question_id,answer_hash,kind,result,model)
