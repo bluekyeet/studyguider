@@ -140,9 +140,9 @@ fun lessonChunks(lesson: String): List<LessonChunk> {
     fun flush() { if (current.isNotEmpty()) { chunks.add(LessonChunk(title, current.toList())); current.clear() } }
     lesson.lineSequence().forEach { line ->
         val trim = line.trim()
-        if (trim.startsWith("# ") || trim.startsWith("## ") || trim.startsWith("### ")) {
+        if (Regex("^#{1,6}\\s+").containsMatchIn(trim)) {
             flush()
-            title = trim.dropWhile { it == '#' }.trim().ifBlank { "Overview" }
+            title = trim.dropWhile { it == '#' }.trim().replace(Regex("\\s+#+\\s*$"), "").ifBlank { "Overview" }
         } else if (trim.isNotEmpty() && trim !in setOf("---", "***", "___")) {
             val blocks = markdownBlocks(line)
             blocks.forEach { (kind, _) ->

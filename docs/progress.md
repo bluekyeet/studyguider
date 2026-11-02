@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Reader heading fix: model-generated ####–###### headings were rendered as prose
+  inside one long section because lessonChunks recognised only levels 1–3. Now
+  all six ATX heading levels create section boundaries; closing heading hashes
+  stripped. Existing saved content unchanged. Added deterministic chunk regression;
+  debug/test APK builds passed, normal emulator install Success. No connected
+  tests run; runtime section/pagination appearance requires user verification.
+
 - User-supplied icon/wordmark moved from docs to assets/branding (originals intact).
   Generated web favicon/touch icon/cropped wordmark and Android launcher density
   PNGs. Applied website/manager header branding, favicon and README banner; Android
