@@ -215,6 +215,11 @@ does not mean its end-to-end acceptance checks have passed.
 - [ ] Check diagram attachment, loading and Explain interactions in Android.
 - [x] Add full KaTeX-compatible formula parsing to the review/rewrite loop (renderability, not mathematical correctness).
 - [ ] Validate formula/units correctness with seeded reviewer tests; parsing alone is not mathematical verification.
+  - [x] Live reviewer rejected all five seeded drafts (frequency, concentration,
+    inverted v = f/λ with wrong result, joules written as newtons, inverted n = M/m),
+    citing the specific scientific error each time. Drafts also had weak Your Turn
+    sections, so rejection is not purely scientific. No correct-lesson control run,
+    so the false-positive rate is unmeasured.
 - [x] Investigate Cairo's unwritable Fontconfig cache warning (non-root writable XDG cache; PNG render check passes without Fontconfig error).
 - [ ] Optional: diagram source editing/regeneration controls.
 - [ ] Optional: additional diagram formats only if SVG cannot meet a concrete need.
@@ -254,7 +259,8 @@ does not mean its end-to-end acceptance checks have passed.
 
 ## Acceptance and verification baseline
 
-- Latest recorded full server suite: 204 passed, six warnings, six subtests passed.
+- Latest recorded full server suite: 207 passed, six warnings, six subtests passed (3 Nov 2026,
+  via `scripts/run-server-tests.sh`, a throwaway container; running containers untouched).
 - Browser image-auth regression check passed; live diagram image cookie-auth request returned 200 with a PNG.
 - Recent Android app and instrumentation APK builds passed.
 - Some earlier emulator UI tests passed; newest note-deletion/nightly-status tests are compiled but not runtime-verified.

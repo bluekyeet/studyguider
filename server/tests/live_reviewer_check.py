@@ -18,6 +18,12 @@ cases = [
      "Frequency is time divided by waves. Eight waves in twenty seconds gives 2.5 m."),
     ("concentration", "At fixed temperature, increasing concentration increases collision frequency, not particle kinetic energy or the fraction exceeding activation energy.",
      "Increasing concentration at constant temperature makes each particle move faster and raises its kinetic energy. The fraction exceeding activation energy increases."),
+    ("wavespeed", "Wave speed v equals frequency f times wavelength lambda, v = f lambda. A 5.0 Hz wave of wavelength 0.20 m travels at 1.0 m/s.",
+     "Wave speed is v = f / lambda. A 5.0 Hz wave of wavelength 0.20 m travels at 25 m/s."),
+    ("unit", "Kinetic energy is KE = (1/2) m v^2, measured in joules. A 2.0 kg trolley at 3.0 m/s has 9.0 J of kinetic energy.",
+     "Kinetic energy is KE = (1/2) m v^2. A 2.0 kg trolley at 3.0 m/s has 9.0 N of kinetic energy."),
+    ("moles", "Amount of substance n = m / M, in mol. 18 g of water (M = 18 g/mol) is 1.0 mol.",
+     "Amount of substance n = M / m. 18 g of water (M = 18 g/mol) is 1.0 mol."),
 ]
 
 for label, source, error in cases:

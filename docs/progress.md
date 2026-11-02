@@ -1480,3 +1480,12 @@ Changes made in this round, and exactly what was and was not verified.
   `shots/lessons-home.png`, `shots/topic-picker.png`, `shots/lesson-format-1.png`
   and `shots/settings-sheet.png` were captured but **not visually inspected**;
   the assistant cannot view images in this session.
+
+## 3 November 2026 verification
+
+- `scripts/run-server-tests.sh` runs the server suite in a throwaway container
+  (the host lacks FastAPI; the API image lacks pytest and the KaTeX assets).
+  Result: 207 passed, six warnings, six subtests passed.
+- Live seeded reviewer check extended to five cases; all five drafts rejected with
+  scientifically specific issues. Each draft also had weak practice sections, and
+  no correct-lesson control was run. Not a measure of general reviewer accuracy.
