@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added opt-in live_diagram_check.py using rollback-only synthetic wave evidence
+  and a temporary image directory. Real run FAILED acceptance (exit 1): two SVG
+  generation attempts, one vision review attempt, PNG signature valid/26,055 bytes,
+  final status flagged with Visual review was unavailable. Existing handler folds
+  invalid review JSON and provider failure into that message, so precise cause is
+  unconfirmed. Fontconfig emitted No writable cache directories; PNG still rendered.
+  All temporary images removed and study rows rolled back; real call accounting
+  retained. Task stays unchecked, no human visual approval claimed. No production
+  code/deploy/Android/emulator changes.
+
 - Explain grounding follow-up: prompts now explicitly prohibit new named substances,
   experiments/measurements/givens absent from sources; omit unsupported examples,
   label everyday analogies and never cite unsupported details. Focus instruction
