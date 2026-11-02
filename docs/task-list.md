@@ -124,7 +124,6 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Implement separate learner overrides on the server.
 - [x] Recognise N0–E8 schedules and extract supported cut-score tables.
 - [x] Implement saved-exam deletion with confirmation.
-- [ ] Human-check at least one parsed paper/schedule per standard against the originals.
 - [ ] Decide how unverified machine-imported questions may be used; current paths differ from the writeup's strict pre-use human approval gate.
 - [ ] Validate realistic subject-wide paper coverage, mark totals and non-repetition/exhaustion behaviour.
   - [x] Collated topic paper now prefers unseen questions, then least recently used
@@ -144,6 +143,9 @@ does not mean its end-to-end acceptance checks have passed.
       all 1/2 with positive evidence and missing feedback; one review enqueued.
       Generic achieved label is not official NCEA descriptor assessment.
 - [ ] Verify Android answer/schedule comparison and override workflow.
+  - [x] Added expandable in-place current-answer / registered-schedule comparison,
+    rendering maths and structured part answers. AI rubrics explicitly unofficial;
+    original schedule page link retained. Build-only, runtime check pending.
   - [x] Added Android Your judgement / override control with outcome dropdown,
     required reason, retained draft on failure and explicit separation from AI marks.
   - [ ] Runtime save/reload and source comparison checks; UI test compiled only.
@@ -159,7 +161,6 @@ does not mean its end-to-end acceptance checks have passed.
     replaced scan rejected with 409; newer data preserved; checked replacement confirms.
   - [ ] Concurrent independent clients, lost HTTP response and Android draft recovery.
 - [x] Add an optional timer (Android implementation; does not lock or submit answers).
-- [ ] Acquire missing 2025 papers if the user supplies them; never commit them.
 
 ## Diagrams and maths
 

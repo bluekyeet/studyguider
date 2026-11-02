@@ -314,6 +314,22 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                             if (paperId != null) OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenSource(paperId, question.getInt("paper_page")) }) { Text("Paper p.${question.getInt("paper_page")}") }
                             if (!question.isNull("schedule_resource_id")) OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenSource(question.getString("schedule_resource_id"), question.getInt("schedule_page")) }) { Text("Schedule p.${question.getInt("schedule_page")}") }
                         }
+                        val scheduleText = question.optString("schedule_text")
+                        if (scheduleText.isNotBlank()) {
+                            var compare by remember(id) { mutableStateOf(false) }
+                            TextButton(onClick = { compare = !compare }) { Text(if (compare) "Hide answer comparison" else "Compare with schedule / rubric") }
+                            if (compare) StudyCard(tone = CardTone.Low) {
+                                Text("Your current answer", style = MaterialTheme.typography.titleSmall)
+                                val current = answers[id].orEmpty()
+                                val answerParts = if (current.startsWith("{\"parts\":")) runCatching { JSONObject(current).getJSONObject("parts") }.getOrNull() else null
+                                if (answerParts != null) {
+                                    answerParts.keys().forEach { label -> MathText("$label: ${answerParts.getString(label)}") }
+                                } else MathText(current.ifBlank { "No answer entered yet." })
+                                Text(if (question.isNull("schedule_resource_id")) "Unofficial AI practice rubric" else "Registered schedule excerpt", style = MaterialTheme.typography.titleSmall)
+                                Text(if (question.isNull("schedule_resource_id")) "AI-generated, not an official NZQA schedule." else "Extracted text may be incomplete. Check the original schedule page before changing your judgement.", style = MaterialTheme.typography.bodySmall)
+                                MathText(scheduleText)
+                            }
+                        }
                         if (answerMode == "digital" || scanReady || answers[id].orEmpty().isNotBlank()) {
                         if (answerMode == "digital" && requestsDiagram(text)) ExamDiagram(base, token, examId, id, !busy) { transcription, scanRevision ->
                             scanRevisions[id] = scanRevision.toString()

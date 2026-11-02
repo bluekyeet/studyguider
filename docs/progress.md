@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Added expandable exam answer/schedule comparison without leaving question:
+  current draft (including JSON part answers) and extracted schedule/rubric rendered
+  with MathText, explicit unofficial AI rubric label or original-check disclaimer.
+  Existing original schedule link retained, comparison collapsed by default.
+  Debug/test APK builds passed. No new non-trivial transformation helper/API;
+  runtime layout/interaction still unverified, task not marked acceptance-complete.
+  No install/server deployment/emulator/GPU changes.
+
 - Override reload follow-up: added authenticated GET override endpoint (null when
   none, 404 for missing item). Android expanded override control loads stored
   judgement before enabling edits, with retry on loading failure. No model call
