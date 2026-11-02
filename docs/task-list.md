@@ -90,6 +90,12 @@ does not mean its end-to-end acceptance checks have passed.
       experiment. Broad claim-level grounding is still not automatically verified.
 - [x] Make source inspection convenient without restoring inline citation clutter (reader Sources panel; saved filename/page/excerpts, runtime check pending).
 - [ ] Stream lesson generation safely without presenting unreviewed content as ready.
+  - [x] Progress-only stream (`POST /topics/{id}/lessons/stream` and `.../lessons/automatic/stream`):
+    stage events (sources, writing, reviewing, rewriting, saving), 15 s keepalives,
+    lesson sent only in the final event after review. Draft text is never sent
+    (tested). Android Lessons home shows the stage; the old endpoints are unchanged.
+    Server tests pass; Android compiles. Not yet deployed to the running API
+    container, and not run on a device.
 - [ ] Evaluate validated structured lesson objects instead of relying on Markdown/model structure.
   - [x] Evaluated minimal alternative: deterministic Markdown practice-heading
     checker with 17 cases; no schema migration needed for heading/count validation.

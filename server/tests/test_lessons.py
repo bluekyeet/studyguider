@@ -220,3 +220,54 @@ def test_reviewer_endpoint_is_advisory():
     assert response.status_code == 200
     assert response.json()["status"] == "reviewed"
     assert "advisory" in response.json()["warning"]
+
+
+def _events(response):
+    return [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+
+
+def test_progress_stream_reports_stages_and_sends_only_the_reviewed_lesson():
+    reviews = iter([{"pass": False, "issues": ["Fix it"]}, {"pass": True, "issues": []}])
+
+    def reply(model, messages, task="general"):
+        if model == "education-reviewer":
+            return json.dumps(next(reviews))
+        return "DRAFT-ONLY-TEXT" if task == "lesson-generate" else SYNTHETIC_LESSON
+
+    client, db, _ = setup(reply)
+    response = client.post("/topics/1/lessons/stream", json={"query": "frequency"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = _events(response)
+    assert [e["stage"] for e in events[:-1]] == ["sources", "writing", "reviewing", "rewriting", "reviewing", "saving"]
+    assert events[-1]["done"] is True and events[-1]["lesson"]["review_status"] == "passed"
+    assert events[-1]["lesson"] == client.get("/lessons/1").json()
+    assert "DRAFT-ONLY-TEXT" not in response.text
+    assert len(db.rows) == 1
+
+
+def test_progress_stream_reports_errors_without_saving():
+    client, db, _ = setup(lambda model, messages: "unused", sources=[])
+    events = _events(client.post("/topics/1/lessons/stream", json={"query": "frequency"}))
+    assert events[-1]["status"] == 422 and "No matching extracted sources" in events[-1]["error"]
+    assert not db.rows
+
+    def broken(model, messages, task="general"):
+        raise HTTPException(502, "Model returned nothing")
+
+    client, db, _ = setup(broken)
+    events = _events(client.post("/topics/1/lessons/stream", json={"query": "frequency"}))
+    assert events[-1] == {"error": "Model returned nothing", "status": 502}
+    assert not db.rows
+
+
+def test_automatic_progress_stream_requires_an_enrolled_topic():
+    class EmptyDatabase:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, *args): return self
+        def fetchone(self): return None
+
+    app = FastAPI()
+    app.include_router(lesson_router(EmptyDatabase, lambda: None, None, None, None))
+    assert TestClient(app).post("/topics/42/lessons/automatic/stream").status_code == 404

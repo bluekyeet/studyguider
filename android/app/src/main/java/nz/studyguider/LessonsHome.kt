@@ -35,6 +35,33 @@ private suspend fun api(base: String, token: String, path: String, post: Boolean
     } finally { connection.disconnect() }
 }
 
+/** Reads stage names only; the lesson arrives in the final event, after review. */
+private suspend fun generateLesson(base: String, token: String, topicId: Long, onStage: (String) -> Unit): JSONObject = withContext(Dispatchers.IO) {
+    val connection = URL(base.trimEnd('/') + "/topics/$topicId/lessons/automatic/stream").openConnection() as HttpURLConnection
+    try {
+        connection.connectTimeout = 10000
+        connection.readTimeout = 60000 // the server sends a keepalive every 15 seconds
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        val status = connection.responseCode
+        if (status !in 200..299) {
+            val text = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            throw IllegalStateException(runCatching { JSONObject(text).optString("detail") }.getOrDefault("").ifBlank { "Request failed ($status)" })
+        }
+        connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                if (!line.startsWith("data:")) continue
+                val event = JSONObject(line.substringAfter("data:").trim())
+                if (event.has("error")) throw IllegalStateException(event.getString("error"))
+                if (event.has("lesson")) return@withContext event.getJSONObject("lesson")
+                event.optString("message").takeIf { it.isNotBlank() }?.let { withContext(Dispatchers.Main) { onStage(it) } }
+            }
+        }
+        throw IllegalStateException("Lesson generation was interrupted. Check Lessons before trying again.")
+    } finally { connection.disconnect() }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit) {
@@ -42,6 +69,7 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
     var lessons by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var generating by remember { mutableStateOf(false) }
+    var stage by remember { mutableStateOf("") }
     var picker by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
@@ -64,7 +92,7 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
     val current = pending.filter { latest != null && date(it) == latest }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (loading || generating) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (generating) "Generating your lesson…" else "Loading lessons…") }
+            if (loading || generating) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (generating) stage.ifBlank { "Generating your lesson…" } else "Loading lessons…") }
             if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); OutlinedButton(onClick = { reload++ }) { Text("Try again") } }
             if (!loading && lessons.isEmpty() && error.isEmpty()) StudyCard(tone = CardTone.Low) {
                 Text("No lessons available yet.", style = MaterialTheme.typography.titleMedium)
@@ -86,9 +114,9 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
                 Button(enabled = !generating, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), onClick = {
                     picker = false
                     scope.launch {
-                        generating = true; error = ""
+                        generating = true; error = ""; stage = ""
                         try {
-                            val lesson = JSONObject(api(base, token, "/topics/$id/lessons/automatic", true))
+                            val lesson = generateLesson(base, token, id) { stage = it }
                             onOpenLesson(id, course.optString("topic"), lesson.getLong("id"))
                         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not generate lesson" }
                         finally { generating = false }

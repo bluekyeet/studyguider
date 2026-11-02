@@ -1,8 +1,12 @@
 """Persistent AI lesson drafts. Neither generation nor review verifies accuracy."""
 import json
+import queue
+import threading
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, PrivateAttr
 from styles import style_for_topic
 
@@ -185,17 +189,63 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
                 raise HTTPException(409, "This answer changed on another device. Reload it before saving; your local draft is retained.")
         return {"status": "saved", "revision": row[0]}
 
-    @router.post("/topics/{topic_id}/lessons/automatic", status_code=201)
-    def automatic_lesson(topic_id: int):
+    def enrolled_query(topic_id):
         with connect() as db:
             row = db.execute("""SELECT t.name FROM topics t JOIN courses c ON c.topic_id = t.id
                 WHERE t.id = %s AND c.active""", (topic_id,)).fetchone()
             if not row:
                 raise HTTPException(404, "Choose this topic in Settings first")
-        return generate(topic_id, LessonGeneration(query=row[0][:200]))
+        return LessonGeneration(query=row[0][:200])
+
+    @router.post("/topics/{topic_id}/lessons/automatic", status_code=201)
+    def automatic_lesson(topic_id: int):
+        return generate(topic_id, enrolled_query(topic_id))
+
+    @router.post("/topics/{topic_id}/lessons/automatic/stream")
+    def automatic_lesson_with_progress(topic_id: int):
+        return generate_with_progress(topic_id, enrolled_query(topic_id))
 
     @router.post("/topics/{topic_id}/lessons", status_code=201)
     def generate(topic_id: int, body: LessonGeneration):
+        return _generate(topic_id, body)
+
+    @router.post("/topics/{topic_id}/lessons/stream")
+    def generate_with_progress(topic_id: int, body: LessonGeneration):
+        """Progress-only stream: stage names while generating, the lesson only once saved.
+
+        Draft text is never sent; the final event carries the reviewed (or flagged) lesson.
+        """
+        events = queue.Queue()
+
+        def work():
+            try:
+                lesson = _generate(topic_id, body, lambda stage, message: events.put({"stage": stage, "message": message}))
+                events.put({"done": True, "lesson": jsonable_encoder(lesson)})
+            except HTTPException as error:
+                events.put({"error": str(error.detail), "status": error.status_code})
+            except Exception:
+                events.put({"error": "Lesson generation failed; please retry.", "status": 500})
+
+        threading.Thread(target=work, daemon=True).start()
+
+        def event_gen():
+            while True:
+                try:
+                    event = events.get(timeout=15)
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+                yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                if "done" in event or "error" in event:
+                    return
+        return StreamingResponse(event_gen(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    def _generate(topic_id: int, body: LessonGeneration, progress=None):
+        def report(stage, message):
+            if progress:
+                progress(stage, message)
+        report("sources", "Finding sources")
         query = body.query.strip()
         sources = search_resources(topic_id, query)
         if not sources:
@@ -265,6 +315,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
                   "then work towards what the external exam actually asks for, citing the standards' wording and the "
                   "exam-style questions found in the sources. State at the top what this lesson assumes the learner "
                   "already knows (previous lesson in the course) and what it unlocks next.")
+        report("writing", "Writing the lesson")
         lesson = model_reply("education", [
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps({"query": query, "evidence": evidence,
@@ -277,7 +328,8 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
         if not isinstance(lesson, str) or not lesson.strip() or len(lesson) > MAX_MODEL_TEXT:
             raise HTTPException(502, "Model returned an invalid or oversized lesson")
         from lesson_quality import review_and_revise
-        lesson, review, review_status = review_and_revise(lesson, evidence, model_reply)
+        lesson, review, review_status = review_and_revise(lesson, evidence, model_reply, report)
+        report("saving", "Saving")
         with connect() as db:
             if body._schedule_run is not None:
                 if body._schedule_run[0] != topic_id:
