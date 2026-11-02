@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Reminder subagent integrated: explicit POST_NOTIFICATIONS permission check in
+  scheduling; disabled/blocked reminders cancel alarm, token and visible reminder;
+  disabled receiver clears stale operation. Seven instrumentation checks compiled
+  for default-off, operation reuse/cancellation, simulated permission denial,
+  disabled receiver, rescheduling handlers and Auckland DST transitions. Subagent
+  reported assembleDebug/assembleDebugAndroidTest exit 0 (JDK21). No runtime tests
+  or device permission changes; emulator off, no install, normal GPU unchanged.
+  Actual AlarmManager delivery/OS broadcasts/channel blocking remain unverified.
+
 - User authorised parallel subagents. Structure worker added standalone tested
   teaching_structure_issues (3–5 sequential level-three Your Turn sections with
   nonempty bodies, fenced headings excluded). Not yet wired into promotion;

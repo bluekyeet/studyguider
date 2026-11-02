@@ -215,6 +215,11 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Account for streamed model replies and disclose missing token counts.
 - [x] Report unavailable dollar costs honestly rather than inventing prices.
 - [ ] Runtime-test notification permission, actual delivery, disable/cancel, reboot and timezone rescheduling.
+  - [x] Explicit permission-aware scheduling and disabled/blocked cleanup implemented;
+    seven instrumentation checks compiled (default-off, operation reuse/cancel,
+    simulated denied permission, disabled receiver, broadcast handlers, DST).
+  - [ ] Execute checks on device; verify real delivery, permission UI/channel
+    blocking and actual reboot/timezone broadcasts. Pending tokens alone prove none of these.
 - [x] Verify streaming usage compatibility with the real gateway (education probe: 3 chunks, 226 response characters, 2,566 input / 45 output tokens; one successful accounting row).
 - [ ] Add reliable dollar-cost reporting only when billing rates or actual gateway costs are available.
 - [ ] Add budget controls after cost/accounting semantics are reliable.

@@ -40,7 +40,8 @@ private fun reminderEnabled(context: Context) = context.getSharedPreferences("re
 
 private fun notificationsAllowed(context: Context): Boolean {
     val manager = context.getSystemService(NotificationManager::class.java)
-    return manager.areNotificationsEnabled() &&
+    return (Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
+        manager.areNotificationsEnabled() &&
         (manager.getNotificationChannel("daily-study")?.importance != NotificationManager.IMPORTANCE_NONE)
 }
 
@@ -51,6 +52,9 @@ internal fun scheduleReminder(context: Context) {
     if (reminderEnabled(context) && notificationsAllowed(context)) {
         // ponytail: inexact local-time alarm; add a time picker only if needed.
         alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextReminder(ZonedDateTime.now()).toInstant().toEpochMilli(), intent)
+    } else {
+        intent.cancel()
+        context.getSystemService(NotificationManager::class.java).cancel(1900)
     }
 }
 
@@ -60,10 +64,13 @@ class StudyReminderReceiver : BroadcastReceiver() {
             scheduleReminder(context)
             return
         }
-        if (!reminderEnabled(context)) return
+        if (!reminderEnabled(context)) {
+            scheduleReminder(context)
+            return
+        }
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("daily-study", "Daily study reminder", NotificationManager.IMPORTANCE_DEFAULT))
-        if (notificationsAllowed(context) && (Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)) {
+        if (notificationsAllowed(context)) {
             val open = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             manager.notify(1900, Notification.Builder(context, "daily-study")
                 .setSmallIcon(android.R.drawable.ic_menu_edit)
@@ -84,7 +91,6 @@ fun DailyReminderSetting() {
         enabled = value
         context.getSharedPreferences("reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", value).apply()
         scheduleReminder(context)
-        if (!value) context.getSystemService(NotificationManager::class.java).cancel(1900)
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         save(granted)
