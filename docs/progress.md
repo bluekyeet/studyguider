@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Extended rollback-only acceptance check with actual note-edit route + PostgreSQL:
+  first client updates content, stale original returns 409 and newer text remains,
+  editing after deletion returns 404. Restores injected connection in finally;
+  no existing notes touched. Full seven-check script PASS and synthetic transaction
+  rolled back (sequence gaps possible). No app/server behaviour change or deploy;
+  no model call/emulator use. Android draft retention still requires UI testing.
+
 - Added/executed opt-in live_mark_consistency_check.py: actual marking route,
   synthetic 1-mark frequency rubric, three fresh requests after deleting only
   disposable attempt's cached marks. All uncached results 1/1, cited evidence,

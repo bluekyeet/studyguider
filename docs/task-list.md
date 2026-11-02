@@ -36,6 +36,9 @@ does not mean its end-to-end acceptance checks have passed.
     benchmark remains open; non-empty results do not prove evidence quality.
 - [x] Add an optional exam timer (local-device start/pause/reset; runtime checks pending).
 - [x] Add editing of saved topic notes with safe conflict handling (conditional original-content update; HTTP 409 retains draft).
+  - [x] Real PostgreSQL note-route check: first update succeeds, stale original
+    returns 409 without overwriting, deleted note returns 404. Android editor
+    conflict/recovery interaction remains untested.
 - [x] Add visible warnings when model-call failures rise (usage panel, at least ten calls and 20% errors).
 - [ ] Resume website study-workflow parity when requested.
 - [ ] Notification reminders

@@ -5,6 +5,7 @@ existing study rows. This validates plumbing, not model teaching/marking quality
 """
 import json
 import uuid
+import app as application
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
@@ -33,6 +34,27 @@ def endpoint(router, path):
 try:
     subject = db.execute("INSERT INTO subjects(name,level) VALUES ('Disposable cycle check',2) RETURNING id").fetchone()[0]
     topic = db.execute("INSERT INTO topics(subject_id,name) VALUES (%s,'Synthetic frequency') RETURNING id", (subject,)).fetchone()[0]
+    note = db.execute("INSERT INTO notes(topic_id,content) VALUES (%s,'Original synthetic note') RETURNING id", (topic,)).fetchone()[0]
+    original_connect = application.connect
+    application.connect = transaction_connection
+    try:
+        first = application.edit_note(topic, note, application.NoteEdit(content='Client A saved note', original_content='Original synthetic note'))
+        assert first['content'] == 'Client A saved note'
+        try:
+            application.edit_note(topic, note, application.NoteEdit(content='Client B stale note', original_content='Original synthetic note'))
+            raise AssertionError('Stale note update must fail')
+        except HTTPException as exc:
+            assert exc.status_code == 409
+        assert db.execute('SELECT content FROM notes WHERE id=%s', (note,)).fetchone()[0] == 'Client A saved note'
+        db.execute('DELETE FROM notes WHERE id=%s', (note,))
+        try:
+            application.edit_note(topic, note, application.NoteEdit(content='Client B retry', original_content='Client A saved note'))
+            raise AssertionError('Deleted note update must fail')
+        except HTTPException as exc:
+            assert exc.status_code == 404
+    finally:
+        application.connect = original_connect
+    print('PASS: real note edit rejects stale content with 409, preserves newer content and reports deleted note as 404')
     resource = uuid.uuid4()
     db.execute("INSERT INTO resources(id,topic_id,filename,size,status) VALUES (%s,%s,'synthetic.txt',40,'extracted')", (resource, topic))
     exam = db.execute("INSERT INTO exams(subject_id) VALUES (%s) RETURNING id", (subject,)).fetchone()[0]
