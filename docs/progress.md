@@ -1646,3 +1646,8 @@ Changes made in this round, and exactly what was and was not verified.
 - Driven by adb taps and screenshots on emulator-5554 against the live server; the installed app was not touched by any test runner.
 - Verified: the new APK launches; Lessons home lists today's six cards; the Waves lesson opens, renders after about three seconds (the lesson view is blank until the WebView finishes loading), and "Next section" saved position to the server (`lesson_progress` for lesson 77: section 1, revision 1). That is the value the website resumes from; the website side has only been checked against a mock.
 - Not exercised: New lesson generation (billed model call), Explain, notes, exam override, notifications.
+
+## 3 Nov 2026: real-schedule marking probe
+
+- User noted real schedules are in the datasets, that dollar costs/budgets can be dropped, and that overnight lessons appear every morning.
+- `live_schedule_mark_check.py` (rollback-only): non-answers 0/15 on 4 of 4; schedule text as answer 15/15 on 2, 0/15 on 2 (marker reported no answer, inconclusive). Real student A/M/E exemplars are not in the data, so exemplar agreement remains unmeasured.

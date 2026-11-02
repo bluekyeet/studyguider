@@ -113,6 +113,7 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Display nightly job status, errors and generated lesson review status separately.
 - [ ] Run the complete live wrong-answer → tomorrow's lesson acceptance check.
 - [ ] Verify multi-subject overnight generation keeps histories and evidence separate.
+  - User reports (3 Nov 2026) that new lessons appear every morning, so overnight runs work in daily use; this is the user's observation, and the history/evidence separation is still only checked by the probes below.
   - [x] Rollback-only PostgreSQL lesson-route probe: Chemistry excludes Physics
     completed lessons/answers/weak concepts and receives Chemistry evidence/standard.
   - [ ] Actual multi-subject scheduled overnight execution and live model output.
@@ -170,6 +171,12 @@ does not mean its end-to-end acceptance checks have passed.
     saved-exam questions; PostgreSQL four-question test selects [1,2], [3,4], [1,2].
     Deleted attempts no longer contribute usage history. Subject-wide realism still open.
 - [ ] Validate A/M/E exemplar marking against schedules.
+  - [x] Real schedules are in the dataset (241 of 247 questions carry schedule text). Probe
+    `server/tests/live_schedule_mark_check.py` (rollback-only, real questions): a non-answer scored
+    0 on all 4 questions; the schedule's own text as the answer scored 15/15 on 2 (AS91165 2024 Q1,
+    AS91170 2017 Q1) and 0 on 2 (AS91164, AS91173 2017) where the marker said no answer was given,
+    so those two are inconclusive. Not agreement with human markers; needs real student exemplars
+    at each of A/M/E, which the dataset does not contain.
 - [ ] Test fresh-model marking consistency separately from cache consistency.
   - [x] Three actual marking-route requests with disposable app cache cleared each
     time agreed on 1/1 for synthetic 0.4 Hz answer and cited rubric. Generic
@@ -258,8 +265,7 @@ does not mean its end-to-end acceptance checks have passed.
   - [ ] Execute checks on device; verify real delivery, permission UI/channel
     blocking and actual reboot/timezone broadcasts. Pending tokens alone prove none of these.
 - [x] Verify streaming usage compatibility with the real gateway (education probe: 3 chunks, 226 response characters, 2,566 input / 45 output tokens; one successful accounting row).
-- [ ] Add reliable dollar-cost reporting only when billing rates or actual gateway costs are available.
-- [ ] Add budget controls after cost/accounting semantics are reliable.
+- [x] Dollar-cost reporting and budget controls: not needed (user decision, 3 Nov 2026); token counts stay as shown.
 - [x] Add a model-failure warning threshold based on recorded outcomes.
 - [ ] Check recent settings, exam dropdown/mode-row, notes and Explain layouts visually.
 - [ ] Optional: reminder time picker.
