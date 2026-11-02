@@ -103,6 +103,11 @@
     #diagrams > li { display:flex; flex-direction:column; gap:12px; }
     #diagrams img { display:block; align-self:center; width:100%; max-width:1000px; height:auto; object-fit:contain; }
     #diagrams p { margin:0; }
+    .diagram-selection { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:16px 0; }
+    .diagram-selection label { display:flex; align-items:center; gap:8px; margin:0; }
+    .diagram-selection input { width:20px; min-height:20px; height:20px; margin:0; }
+    .diagram-selection button { margin:0; }
+    #generate-diagram { max-width:44rem; margin:0 auto 20px; padding:16px; border:1px solid #8290aa55; border-radius:12px; }
     #diagrams { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr)); gap:16px; }
     #diagrams > li { margin:0; min-width:0; padding:14px; border-radius:12px; }
     #diagrams img { height:220px; object-fit:contain; background:#fff; border-radius:6px; }
@@ -370,7 +375,7 @@
             <button id="diagram-button">Generate diagram</button>
           </form>
            <p id="diagram-status" role="status" aria-live="polite"></p>
-           <div class="file-toolbar"><label><input id="select-all-diagrams" type="checkbox"> Select all</label><button id="delete-selected-diagrams" type="button" disabled>Delete selected</button></div>
+           <div class="diagram-selection"><label><input id="select-all-diagrams" type="checkbox"> Select all</label><button id="delete-selected-diagrams" type="button" disabled>Delete selected</button></div>
           <ul id="diagrams"></ul>
         </section>
         <section class="card" aria-labelledby="usage-heading">
@@ -446,16 +451,18 @@
     const nav = document.querySelector('.manager-nav div'); nav.replaceChildren();
     function showWorkspace(name, focus = false) {
       const section = currentRoute().params.get('section') || '';
-      const sections = {notes:['notes-heading'],lessons:['saved-lessons-heading','scheduler-heading'],reviews:['review-drafts-heading','mastery-heading'],exams:['exam-heading','marking-heading'],learning:['style-heading','standards-heading'],tools:['diagram-heading','usage-heading']};
+      const global = name === 'Settings';
+      const sections = {notes:['notes-heading'],lessons:['saved-lessons-heading','scheduler-heading'],reviews:['review-drafts-heading','mastery-heading'],exams:['exam-heading','marking-heading'],standards:['standards-heading']};
       cards.forEach(card => {
         const topic = $('topics').value, folder = currentRoute().params.get('folder');
         let allowed = sections[section] || [];
+        if (global) allowed = ['style-heading','usage-heading'];
         if (section === 'resources') allowed = folder === 'diagrams' ? ['diagram-heading'] : folder ? ['resources-heading'] : ['search-heading'];
-        card.hidden = !topic || !allowed.some(id => card.contains($(id)));
+        card.hidden = (!global && !topic) || !allowed.some(id => card.contains($(id)));
       });
       scope.hidden = true;
-      explorer.hidden = false;
-      workspaceTitle.textContent = 'Library';
+      explorer.hidden = global;
+      workspaceTitle.textContent = global ? 'Global settings' : 'Library';
       nav.querySelectorAll('a').forEach(a => {
         if (a.textContent === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
       });
@@ -469,7 +476,19 @@
     window.addEventListener('hashchange', () => { if (token) loadLibraryRoute().catch(error => message(error.message)); else showWorkspace(currentRoute().page); });
     showWorkspace(currentRoute().page);
     async function loadLibraryRoute() {
-      const route = currentRoute();
+      let route = currentRoute();
+      // Old bookmarks must not expose duplicate tools/settings inside a topic.
+      if (['tools','learning','settings'].includes(route.params.get('section'))) {
+        const target = route.params.get('section') === 'tools'
+          ? libraryUrl(route.params.get('subject'),route.params.get('topic'),'diagrams','resources')
+          : route.params.get('section') === 'learning'
+            ? libraryUrl(route.params.get('subject'),route.params.get('topic'),'','standards') : '#Settings';
+        history.replaceState(null,'',target); route = currentRoute();
+      }
+      if (route.page === 'Settings') {
+        await loadStyle(); renderSidebar('', '', '', '');
+        showWorkspace('Settings',true); return;
+      }
       if (route.page === 'Library' || route.params.has('subject')) {
         $('subjects').value = route.params.get('subject') || '';
         await loadTopics(route.params.get('topic') || '');
@@ -497,13 +516,10 @@
       }
       const folder = currentRoute().params.get('folder');
       const section = currentRoute().params.get('section') || '';
-      const sectionNames = {resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',settings:'Settings',learning:'Learning settings',tools:'Tools'};
+      const sectionNames = {resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',standards:'NZQA standards'};
       const folderNames = {exams:'Exams',slides:'Slides',extra:'Extra resources',diagrams:'Diagrams',pending:'Classifying'};
       if (section) {
         breadcrumb.append(' / ');
-        if (['learning','tools'].includes(section)) {
-          const settings = document.createElement('a'); settings.href = libraryUrl(subject,topic,'','settings'); settings.textContent = 'Settings'; breadcrumb.append(settings, ' / ');
-        }
         const link = document.createElement('a'); link.href = libraryUrl(subject,topic,'',section); link.textContent = sectionNames[section] || section; breadcrumb.append(link);
       }
       if (folder) breadcrumb.append(' / ' + (folderNames[folder] || 'Unknown folder'));
@@ -519,7 +535,7 @@
         return;
       }
       const list = document.createElement('ul'); list.className = 'folder-list';
-      const choices = section === 'resources' ? folderNames : section === 'settings' ? {learning:'Learning settings',tools:'Tools'} : {resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',settings:'Settings'};
+      const choices = section === 'resources' ? folderNames : {resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',standards:'NZQA standards'};
       const folders = topic ? Object.entries(choices).map(([id,name]) => ({id,name})) : subject ? [...$('topics').options].filter(o => o.value).map(o => ({ id: o.value, name: o.textContent })) :
         (await api('/subjects')).sort((a,b) => a.level-b.level || a.name.localeCompare(b.name));
       for (const folder of folders) {
@@ -537,6 +553,7 @@
         if (active) a.setAttribute('aria-current','page'); nav.append(a);
       }
       link('Subjects', libraryUrl(), !subject);
+      link('Global settings', '#Settings', currentRoute().page === 'Settings');
       if (subject) {
         const label = document.createElement('p'); label.className = 'sidebar-section'; label.textContent = $('subjects').selectedOptions[0]?.textContent || 'Subject'; nav.append(label);
         link('Topics', libraryUrl(subject), !topic);
@@ -544,13 +561,9 @@
       }
       if (topic) {
         const label = document.createElement('p'); label.className = 'sidebar-section'; label.textContent = 'Topic folders'; nav.append(label);
-        for (const [key,name] of Object.entries({resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',settings:'Settings'})) {
+        for (const [key,name] of Object.entries({resources:'Resources',notes:'Notes',lessons:'Lessons',reviews:'Reviews',exams:'Exams',standards:'NZQA standards'})) {
           link(name,libraryUrl(subject,topic,'',key),section === key && !folder);
           if (key === 'resources' && section === key) for (const [type,title] of Object.entries({exams:'Exams',slides:'Slides',extra:'Extra resources',diagrams:'Diagrams',pending:'Classifying'})) link('　'+title,libraryUrl(subject,topic,type,key),folder === type);
-          if (key === 'settings' && ['settings','learning','tools'].includes(section)) {
-            link('　Learning settings',libraryUrl(subject,topic,'','learning'),section === 'learning');
-            link('　Tools',libraryUrl(subject,topic,'','tools'),section === 'tools');
-          }
         }
       }
     }
@@ -592,10 +605,9 @@
       $('style-content').disabled = true;
       $('style-content').value = '';
       savedStyle = ''; styleSubject = '';
-      if (!id) return;
       const profile = await api('/style-profile');
       if ($('subjects').value !== id) return;
-      styleSubject = id; savedStyle = profile.content;
+      styleSubject = 'global'; savedStyle = profile.content;
       $('style-content').value = savedStyle; $('style-content').disabled = false;
       $('style-status').textContent = '';
     }
@@ -766,8 +778,7 @@
       saveScopeUrl();
     });
     $('style-form').onsubmit = run(async () => {
-      if (!styleSubject || styleSubject !== $('subjects').value) throw new Error('Select a subject first');
-      const id = styleSubject, content = $('style-content').value;
+      const id = 'global', content = $('style-content').value;
       await api('/style-profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
       if (styleSubject === id) { savedStyle = content; $('style-status').textContent = 'Teaching style saved.'; }
     });

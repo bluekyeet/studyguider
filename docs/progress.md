@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Removed duplicate topic Settings/Tools diagram screen. Diagrams canonical location
+  Resources/Diagrams; old tools bookmarks redirect there. Global settings sidebar
+  page holds app-wide teaching method and usage without subject selection; topic
+  NZQA standards separate. Gallery selection/create controls aligned. Generic exact
+  wave requests now use deterministic SVG geometry (crest-to-crest wavelength,
+  equilibrium-to-crest amplitude), still independently reviewed; specific scenarios
+  continue model generation. No stored images overwritten/auto-approved. 206 tests
+  passed, six warnings/six subtests; route/syntax passed; API rebuilt/deployed.
+  Browser navigation/visual results and new live wave review unverified.
+
 - Topic Resources now has Diagrams gallery folder, matching top-right New diagram
   action, hidden creation form, thumbnails, selection/select-all, confirmed single/
   multi-delete and readable collapsible review issues. Authenticated DELETE locks

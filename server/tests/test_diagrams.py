@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from diagrams import _sanitise
+from diagrams import _sanitise, wave_diagram
 from diagrams import diagram_router
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -18,6 +18,15 @@ import json
 SAFE = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
         '<rect x="1" y="1" width="20" height="20" fill="#1E3A8A"/>'
         '<text x="5" y="40">Force</text></svg>')
+
+
+def test_generic_wave_uses_fixed_geometry_not_unrelated_requests():
+    source = wave_diagram('waves')
+    assert _sanitise(source) == source
+    assert '230 190 V170 H590' in source  # crest x=230, next crest x=590
+    assert 'cx="410" cy="460"' in source  # trough
+    assert 'M230 240 H290 M230 350' in source  # crest to equilibrium
+    assert wave_diagram('waves in a concave mirror') is None
 
 
 @pytest.mark.parametrize("verdict,status", [('{"pass":true,"issues":[]}', 200), ('invalid', 502), ('recover', 200)])
