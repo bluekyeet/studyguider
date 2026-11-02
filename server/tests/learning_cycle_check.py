@@ -5,6 +5,7 @@ existing study rows. This validates plumbing, not model teaching/marking quality
 """
 import json
 import uuid
+from datetime import datetime, timezone
 from contextlib import contextmanager
 
 from app import connect
@@ -13,6 +14,7 @@ from marking import queue_exam_review
 from reviews import ReviewAnswer, review_router
 from exams import ExamAnswer, exam_router
 from fastapi import HTTPException
+from scheduler import run_due
 
 
 db = connect()
@@ -103,6 +105,35 @@ try:
     assert chemistry['review_focus'][0]['concept'] == 'Collision frequency'
     assert db.execute('SELECT review_focus FROM lessons WHERE id=%s', (generated['id'],)).fetchone()[0][0]['concept'] == 'Frequency'
     print('PASS: Physics/Chemistry lesson prompts and saved review focus remain isolated, including standards, evidence and learner-answer history')
+    # Shadow scheduling tables for this connection only. Never disable or claim
+    # existing users' schedules, even transiently inside the rollback transaction.
+    for table in ('lesson_schedules', 'lesson_schedule_runs', 'courses'):
+        db.execute(f'CREATE TEMP TABLE {table} (LIKE public.{table} INCLUDING ALL) ON COMMIT DROP')
+    db.execute("""INSERT INTO lesson_schedules(topic_id,query,hour_utc,enabled,timezone)
+        VALUES (%s,'Frequency',2,true,'Pacific/Auckland'),
+               (%s,'Concentration',2,true,'Pacific/Auckland')""", (topic, chemistry_topic))
+    scheduled_topics = []
+
+    def scheduled_generate(topic_id, body):
+        scheduled_topics.append(topic_id)
+        if topic_id == topic:
+            assert body.query == 'Frequency'
+            return {'id': generated['id']}
+        assert topic_id == chemistry_topic and body.query == 'Concentration'
+        return {'id': chemistry['id']}
+
+    # 13:00 UTC is 02:00 next day during NZ daylight saving.
+    instant = datetime(2026, 11, 2, 13, tzinfo=timezone.utc)
+    run_due(transaction_connection, scheduled_generate, instant.replace(hour=12))
+    assert scheduled_topics == []
+    run_due(transaction_connection, scheduled_generate, instant)
+    run_due(transaction_connection, scheduled_generate, instant)
+    assert sorted(scheduled_topics) == sorted([topic, chemistry_topic])
+    runs = db.execute('SELECT topic_id,run_date,status,lesson_id FROM lesson_schedule_runs ORDER BY topic_id').fetchall()
+    assert len(runs) == 2
+    assert all(str(run[1]) == '2026-11-03' and run[2] == 'completed' for run in runs)
+    assert {run[0]: run[3] for run in runs} == {topic: generated['id'], chemistry_topic: chemistry['id']}
+    print('PASS: actual scheduler waits until Auckland 02:00, records next local date, links both subjects correctly and does not duplicate claims')
     db.execute("""INSERT INTO exam_answer_scans(exam_id,question_id,image,transcription,confirmed)
         VALUES (%s,%s,%s,'55 Hz',true)""", (exam, question, b'synthetic image bytes'))
     db.execute("""INSERT INTO markings(exam_id,question_id,answer_hash,kind,result,model)

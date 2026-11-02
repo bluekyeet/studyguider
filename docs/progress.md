@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Actual scheduler PostgreSQL check added to rollback-only acceptance script.
+  Temporary schedule/run/course tables shadow public ones for this connection,
+  so no real jobs are claimed/disabled. At 01:00 Auckland no callback; at 02:00
+  both subject callbacks run once, local date is next UTC calendar day, lessons
+  link to correct topics; repeating the tick creates no duplicate claims. Full
+  script PASS (five checks), transaction rolled back. Callbacks return previously
+  generated synthetic lesson IDs, so real overnight model calls/restart durability
+  remain unverified. No app/deploy/emulator/GPU changes.
+
 - Added second-subject isolation to rollback-only PostgreSQL acceptance check.
   Physics completed lesson/answer/mistake remains excluded from Chemistry prompt;
   Chemistry receives only its source, standard 91166 and Collision frequency

@@ -81,6 +81,10 @@ does not mean its end-to-end acceptance checks have passed.
   - [x] Rollback-only PostgreSQL lesson-route probe: Chemistry excludes Physics
     completed lessons/answers/weak concepts and receives Chemistry evidence/standard.
   - [ ] Actual multi-subject scheduled overnight execution and live model output.
+  - [x] Actual run_due with isolated PostgreSQL temporary schedule tables: waits
+    until Auckland 02:00, uses next local date, links both subjects, prevents duplicate
+    claims on repeated ticks. Callback returns synthetic pre-created lessons;
+    real wall-clock overnight/model execution remains open.
 - [ ] Improve learner-summary memory: preferred explanations and useful per-subject summaries fed into teaching.
 - [ ] Evaluate durable queued AI jobs and safe crash recovery; do not retry potentially completed jobs blindly.
 - [ ] Run Android nightly-status UI checks after the emulator is available.
