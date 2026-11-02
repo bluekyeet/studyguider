@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Web Library now browses Subjects -> Topics -> Files with breadcrumb links and
+  hash routes (#Library?subject=ID&topic=ID); location restored after refresh/login,
+  hash navigation supports Back/Forward. Upload cards hidden until inside a topic;
+  category detection remains automatic. Creation forms moved to separate Library
+  setup workspace; scope dropdowns retained for other management tools. Upload
+  handler now sends every selected file/ZIP to existing batch endpoint instead
+  of silently uploading only first file. Node route/syntax and image-auth checks
+  passed; API rebuilt/deployed. Browser interaction/visual verification outstanding;
+  no resource movement/reclassification, Android install or connected tests.
+
 - Auto-category follow-up: reported 91173 2025 paper/schedule were already extracted
   as extra and bypassed auto-only classification. Known filename inference now runs
   at upload for auto/extra clients (including batch duplicate rows), and extraction

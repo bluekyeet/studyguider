@@ -331,6 +331,7 @@
     // Keep the existing forms and handlers; show only the selected workspace.
     const workspaces = {
       Library: ['resources-heading', 'search-heading', 'notes-heading'],
+      'Library setup': ['subjects-heading', 'topics-heading'],
       Lessons: ['saved-lessons-heading', 'draft-heading', 'scheduler-heading'],
       Reviews: ['review-drafts-heading', 'mastery-heading'],
       Exams: ['exam-heading', 'marking-heading'],
@@ -345,23 +346,39 @@
     for (const id of ['subjects-heading', 'topics-heading']) {
       const card = $(id).closest('section');
       const form = card.querySelector('form');
-      const create = document.createElement('details');
-      const label = document.createElement('summary'); label.textContent = id === 'subjects-heading' ? 'Add a subject' : 'Add a topic';
-      create.append(label, form); card.append(create);
       card.querySelector('.hint').hidden = true;
-      scopeContent.append(card);
+      scopeContent.append(card.querySelector('.divider'));
     }
     const workspace = document.createElement('div'); grid.parentNode.insertBefore(workspace, grid);
     workspace.append(scope);
     const workspaceTitle = document.createElement('h2'); workspaceTitle.id = 'workspace-title'; workspaceTitle.tabIndex = -1;
     workspace.append(workspaceTitle, grid);
+    const explorer = document.createElement('section'); explorer.className = 'card'; explorer.id = 'library-explorer';
+    workspace.insertBefore(explorer, grid);
+    function currentRoute() {
+      const [page, query = ''] = location.hash.slice(1).split('?');
+      return { page: decodeURIComponent(page || 'Library'), params: new URLSearchParams(query) };
+    }
+    function libraryUrl(subject = '', topic = '') {
+      const params = new URLSearchParams();
+      if (subject) params.set('subject', subject);
+      if (subject && topic) params.set('topic', topic);
+      return '#Library' + (params.size ? '?' + params : '');
+    }
+    function saveScopeUrl() {
+      const route = currentRoute();
+      const query = libraryUrl($('subjects').value, $('topics').value).split('?')[1];
+      history.replaceState(null, '', '#' + encodeURIComponent(route.page) + (query ? '?' + query : ''));
+    }
     const nav = document.querySelector('.manager-nav div'); nav.replaceChildren();
     function showWorkspace(name, focus = false) {
       if (!workspaces[name]) name = 'Library';
       cards.forEach(card => {
-        if (scopeContent.contains(card)) return;
         card.hidden = !workspaces[name].some(id => card.contains($(id)));
+        if (name === 'Library' && !$('topics').value) card.hidden = true;
       });
+      scope.hidden = name === 'Library';
+      explorer.hidden = name !== 'Library';
       workspaceTitle.textContent = name;
       nav.querySelectorAll('a').forEach(a => {
         if (a.textContent === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -370,10 +387,48 @@
     }
     Object.keys(workspaces).forEach(name => {
       const link = document.createElement('a'); link.href = '#' + encodeURIComponent(name); link.textContent = name;
-      link.onclick = () => showWorkspace(name, true); nav.append(link);
+      link.onclick = () => { link.href = name === 'Library' ? libraryUrl() : '#' + encodeURIComponent(name) + (libraryUrl($('subjects').value, $('topics').value).split('?')[1] ? '?' + libraryUrl($('subjects').value, $('topics').value).split('?')[1] : ''); };
+      nav.append(link);
     });
-    window.addEventListener('hashchange', () => showWorkspace(decodeURIComponent(location.hash.slice(1))));
-    showWorkspace(decodeURIComponent(location.hash.slice(1)));
+    window.addEventListener('hashchange', () => { if (token) loadLibraryRoute().catch(error => message(error.message)); else showWorkspace(currentRoute().page); });
+    showWorkspace(currentRoute().page);
+    async function loadLibraryRoute() {
+      const route = currentRoute();
+      if (route.page === 'Library' || route.params.has('subject')) {
+        $('subjects').value = route.params.get('subject') || '';
+        await loadTopics(route.params.get('topic') || '');
+        if (route.page === 'Library') await renderExplorer();
+      }
+      showWorkspace(route.page, true);
+    }
+    async function renderExplorer() {
+      explorer.replaceChildren();
+      const subject = $('subjects').value, topic = $('topics').value;
+      const breadcrumb = document.createElement('nav'); breadcrumb.setAttribute('aria-label', 'Library location');
+      const root = document.createElement('a'); root.href = libraryUrl(); root.textContent = 'Subjects'; breadcrumb.append(root);
+      if (subject) {
+        breadcrumb.append(' / ');
+        const link = document.createElement('a'); link.href = libraryUrl(subject); link.textContent = $('subjects').selectedOptions[0].textContent; breadcrumb.append(link);
+      }
+      if (topic) breadcrumb.append(' / ' + $('topics').selectedOptions[0].textContent);
+      explorer.append(breadcrumb);
+      const heading = document.createElement('h3'); heading.textContent = topic ? 'Files' : subject ? 'Topics' : 'Subjects'; explorer.append(heading);
+      if (topic) {
+        const hint = document.createElement('p'); hint.textContent = 'Upload into this topic. File categories are detected automatically; subject and topic follow this folder location.'; explorer.append(hint);
+        return;
+      }
+      const list = document.createElement('ul'); list.className = 'folder-list';
+      const folders = subject ? [...$('topics').options].filter(o => o.value).map(o => ({ id: o.value, name: o.textContent })) :
+        (await api('/subjects')).sort((a,b) => a.level-b.level || a.name.localeCompare(b.name));
+      for (const folder of folders) {
+        const item = document.createElement('li');
+        const link = document.createElement('a'); link.href = subject ? libraryUrl(subject, folder.id) : libraryUrl(folder.id);
+        link.textContent = subject ? folder.name : `Level ${folder.level} · ${folder.name}`;
+        link.style.display = 'block'; link.style.padding = '12px'; item.append(link); list.append(item);
+      }
+      explorer.append(list);
+      if (!folders.length) { const empty = document.createElement('p'); empty.textContent = 'No folders yet. Create them in Library setup.'; explorer.append(empty); }
+    }
     function message(text) { $('message').textContent = text; }
     async function api(path, options = {}) {
       const headers = { ...options.headers };
@@ -421,8 +476,11 @@
     }
     async function loadSubjects() {
       options($('subjects'), await api('/subjects'), item => `${item.name} (Level ${item.level})`);
+      $('subjects').insertBefore(new Option('Choose a subject', ''), $('subjects').firstChild);
+      $('subjects').value = currentRoute().params.get('subject') || '';
       await loadStyle();
       await loadTopics();
+      await loadLibraryRoute();
     }
     async function loadStandards() {
       options($('standards'), await api('/standards'), item => `${item.number} — ${item.title}`);
@@ -450,11 +508,13 @@
         list.append(item);
       }
     }
-    async function loadTopics() {
+    async function loadTopics(selectedTopic = '') {
       clearLessonHistory();
       $('verified').checked = false;
       const id = $('subjects').value;
       options($('topics'), id ? await api(`/subjects/${id}/topics`) : [], item => item.name);
+      $('topics').insertBefore(new Option('Choose a topic', ''), $('topics').firstChild);
+      $('topics').value = selectedTopic;
       await loadResources();
       await loadTopicStandards();
       await loadNotes();
@@ -535,6 +595,7 @@
     $('subjects').onchange = run(async () => {
       if (styleSubject && $('style-content').value !== savedStyle && !confirm('Discard unsaved teaching-style changes?')) { $('subjects').value = styleSubject; return; }
       await loadStyle(); await loadTopics();
+      saveScopeUrl();
     });
     $('style-form').onsubmit = run(async () => {
       if (!styleSubject || styleSubject !== $('subjects').value) throw new Error('Select a subject first');
@@ -543,7 +604,7 @@
       if (styleSubject === id) { savedStyle = content; $('style-status').textContent = 'Teaching style saved.'; }
     });
     $('add-topic').onsubmit = run(async () => { if (!$('subjects').value) throw new Error('Select a subject first'); await api(`/subjects/${$('subjects').value}/topics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('topic-name').value }) }); $('topic-name').value = ''; await loadTopics(); });
-    $('topics').onchange = run(async () => { clearLessonHistory(); $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); await loadSchedule(); await loadLessons(); });
+    $('topics').onchange = run(async () => { saveScopeUrl(); clearLessonHistory(); $('verified').checked = false; await loadResources(); await loadTopicStandards(); await loadNotes(); await loadSchedule(); await loadLessons(); });
     $('add-note').onsubmit = run(async () => {
       if (!$('topics').value) throw new Error('Select a topic first');
       await api(`/topics/${$('topics').value}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: $('note').value }) });
@@ -566,12 +627,12 @@
       if (!$('topics').value) throw new Error('Select a topic first');
       if (!$('file').files[0]) throw new Error('Choose a file first');
       const data = new FormData();
-      data.append('file', $('file').files[0]);
+      for (const file of $('file').files) data.append('files', file);
       data.append('category', $('resource-category').value);
-      const result = await api(`/topics/${$('topics').value}/resources`, { method: 'POST', body: data });
+      const result = await api(`/topics/${$('topics').value}/resources/batch`, { method: 'POST', body: data });
       $('file').value = '';
       await loadResources();
-      message(result.duplicate ? 'This exact file is already in this topic; the existing resource is shown once.' : `Uploaded ${result.filename}. Status: ${result.display_status}.`);
+      message(`Accepted ${result.accepted.length} file(s), ${result.duplicates} duplicate(s), ${result.skipped.length} skipped. Files stay in this topic; categories are detected automatically.`);
     });
     $('search').onsubmit = run(async () => {
       if (!$('topics').value) throw new Error('Select a topic first');

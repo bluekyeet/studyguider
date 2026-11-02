@@ -1,0 +1,18 @@
+// Run: node tests/library-route-check.cjs
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const html = fs.readFileSync(path.join(__dirname, '../server/manage.html'), 'utf8');
+const code = html.slice(html.indexOf('function currentRoute()'), html.indexOf('    function saveScopeUrl()'));
+const context = { location: { hash: '#Library?subject=12&topic=34' }, URLSearchParams };
+vm.createContext(context);
+vm.runInContext(code, context);
+assert.equal(vm.runInContext('currentRoute().params.get("topic")', context), '34');
+assert.equal(vm.runInContext('libraryUrl("12", "34")', context), '#Library?subject=12&topic=34');
+assert.equal(vm.runInContext('libraryUrl("12")', context), '#Library?subject=12');
+assert.equal(vm.runInContext('libraryUrl()', context), '#Library');
+context.location.hash = '#Library%20setup?subject=12';
+assert.equal(vm.runInContext('currentRoute().page', context), 'Library setup');
+new Function(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
+console.log('Library route and manager syntax checks passed');
