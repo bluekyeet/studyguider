@@ -1,4 +1,4 @@
-import { mathText, mathInput, autosave } from './web-common.js';
+import { mathText, mathInput, autosave, aiBox } from './web-common.js';
 
 const el = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -113,8 +113,8 @@ export async function renderExams(container, api) {
     return a;
   };
   const feedbackView = (result) => {
-    const view = el('div', '', 'stack');
-    view.append(el('p', result.disclaimer || 'AI-generated study feedback, not an official or verified grade.', 'muted'));
+    const view = el('div', '', 'ai-box stack');
+    view.append(el('span', 'AI generated · unofficial practice feedback', 'ai-badge'), el('p', result.disclaimer || 'AI-generated study feedback, not an official or verified grade.', 'muted'));
     const marks = result.marks || [{ ...result, kind: 'first' }, ...(result.second_review ? [{ ...result.second_review, kind: 'second' }] : [])];
     for (const mark of marks) {
       view.append(el('h4', `${mark.kind === 'second' ? 'Advisory second review' : 'First mark'}: ${mark.marks_awarded}/${mark.marks_available} · ${mark.outcome}`), mathText(mark.feedback || ''));
@@ -256,7 +256,7 @@ export async function renderExams(container, api) {
         const save = el('button', 'Save answer');
         const mark = el('button', 'Save & mark', 'primary');
         const previous = el('button', 'Load saved feedback');
-        const status = el('p', '', 'muted'); status.setAttribute('role', 'status');
+        const status = el('p', '', 'state'); status.setAttribute('role', 'status');
         const feedback = el('div', '', 'stack');
         const draft = { saved: raw.value, value: () => raw.value };
         drafts.push(draft);
@@ -266,10 +266,10 @@ export async function renderExams(container, api) {
           isDirty: () => draft.value() !== draft.saved,
           status: (kind, err) => {
             conflictBox.hidden = kind !== 'conflict';
-            status.className = kind === 'error' || kind === 'conflict' ? 'error' : 'muted';
-            status.textContent = kind === 'saving' ? 'Saving…' : kind === 'saved' ? 'Saved — available on your other devices'
-              : kind === 'conflict' ? 'This answer was changed on another device. Choose which version to keep.'
-              : `Not saved yet (${err?.message || 'offline'}). Your text stays here and will retry.`;
+            status.dataset.state = kind;
+            status.textContent = kind === 'saving' ? 'Saving…' : kind === 'saved' ? 'Saved · on all your devices'
+              : kind === 'conflict' ? 'Changed on another device. Choose which version to keep.'
+              : `Local draft · not saved yet (${err?.message || 'offline'}). Retrying.`;
             if (kind === 'saved') navButton.classList.add('done');
           },
           save: async () => {

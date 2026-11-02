@@ -1,4 +1,4 @@
-import { mathText, mathInput, autosave, stash, sha256Hex } from './web-common.js';
+import { mathText, mathInput, autosave, stash, sha256Hex, aiBox } from './web-common.js';
 
 const element = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -251,8 +251,10 @@ export async function renderLessons(container, api) {
     const main = element('div', '', 'reader-main stack');
     const card = element('article', '', 'card stack');
     card.append(element('h2', readable(chunk.title)), rendered(chunk.body));
-    main.append(element('h1', readable(lesson.query)),
-      element('p', lesson.warning || 'AI-generated lesson: check against the original sources.', 'muted'), card);
+    const banner = element('div', '', 'toolbar');
+    banner.append(element('span', 'AI generated · verify with sources', 'ai-badge'),
+      element('span', lesson.warning || 'Check this lesson against the original sources.', 'muted'));
+    main.append(element('h1', readable(lesson.query)), banner, card);
     const draft = drafts.get(current);
     if (draft) practice(card, draft, lesson);
     const pager = element('div', '', 'toolbar');
@@ -290,19 +292,20 @@ export async function renderLessons(container, api) {
     const label = element('label', 'Your answer', 'stack');
     const input = element('textarea');
     input.rows = 6; input.maxLength = 50000; input.value = draft.answer;
-    const status = element('p', '', 'muted'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+    const status = element('p', '', 'state'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
     const choices = element('div', '', 'toolbar'); choices.hidden = true;
     const feedback = element('div');
-    if (draft.feedback) feedback.append(rendered(draft.feedback));
+    const showFeedback = text => feedback.replaceChildren(...(text ? [aiBox(rendered(text))] : []));
+    showFeedback(draft.feedback);
     const stashKey = `answer:${lesson.id}:${draft.key}`;
 
     const say = (kind, error) => {
-      status.className = kind === 'error' || kind === 'conflict' ? 'error' : 'muted';
+      status.dataset.state = kind;
       choices.hidden = kind !== 'conflict';
       status.textContent = kind === 'saving' ? 'Saving…'
-        : kind === 'saved' ? 'Saved — available on your other devices'
-        : kind === 'conflict' ? 'This answer was changed on another device. Choose which version to keep.'
-        : `Not saved yet (${error?.message || 'offline'}). Your text is kept on this device and will retry.`;
+        : kind === 'saved' ? 'Saved · on all your devices'
+        : kind === 'conflict' ? 'Changed on another device. Choose which version to keep.'
+        : `Local draft · not saved yet (${error?.message || 'offline'}). Retrying.`;
     };
     draft.ui = say;   // lets the autosaver update whichever copy of this panel is on screen
     if (draft.state) say(draft.state.kind, draft.state.error);
@@ -327,7 +330,7 @@ export async function renderLessons(container, api) {
       const row = await latest();
       draft.answer = draft.savedAnswer = row?.answer || ''; draft.feedback = draft.savedFeedback = row?.feedback || '';
       draft.revision = row?.revision || 0; stash.clear(stashKey);
-      input.value = draft.answer; feedback.replaceChildren(draft.feedback ? rendered(draft.feedback) : '');
+      input.value = draft.answer; showFeedback(draft.feedback);
       draft.saver.resume(); say('saved');
     });
     choices.append(keepMine, useTheirs);
@@ -340,14 +343,13 @@ export async function renderLessons(container, api) {
       draft.busy = true;
       try {
         const result = await api(`/lessons/${lesson.id}/explain`, { method: 'POST', ...json({ question }) });
-        draft.feedback = result.explanation; feedback.replaceChildren(rendered(draft.feedback));
+        draft.feedback = result.explanation; showFeedback(draft.feedback);
         changed(); // the feedback is saved with the answer, so both devices show it
       } finally { draft.busy = false; }
     });
     label.append(mathInput(input));
     const actions = element('div', '', 'toolbar'); actions.append(mark);
-    const note = element('p', 'AI feedback is unverified.', 'muted');
-    card.append(label, actions, status, choices, feedback, note);
+    card.append(label, actions, status, choices, feedback);
   }
 
   function explainPanel(lesson, chunk, target) {
@@ -372,7 +374,7 @@ export async function renderLessons(container, api) {
       });
       save.disabled = reply.saved;
       if (reply.saved) save.textContent = 'Saved to notes';
-      entry.append(element('h3', readable(reply.question)), rendered(reply.answer), save); replies.append(entry);
+      entry.append(element('h3', readable(reply.question)), aiBox(rendered(reply.answer)), save); replies.append(entry);
     };
     lesson.replies.forEach(appendReply);
     const ask = button('Explain', async () => {

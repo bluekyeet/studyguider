@@ -1615,3 +1615,22 @@ Changes made in this round, and exactly what was and was not verified.
   against the real server or a real phone; Android's extra per-section questions on non-practice
   sections ("SectionQuestion") are not on the website, and answers saved by the old website under
   its old keys are no longer shown.
+
+## Dark theme from the supplied design system (3 November 2026)
+
+- Applied the "Academic Precision" system from `stitch_modern_website_design_concept.zip` as a
+  dark-only theme (the supplied tokens were light; dark roles were derived, not supplied). Inter for text,
+  JetBrains Mono for metadata (chips, stat labels, crumbs, status, part labels, timer), 8 px buttons
+  and inputs, 16 px cards, pill chips, indigo primary buttons, teal for active and current items, focus ring
+  2 px teal, reading text 17/28 px at about 68 characters, content capped at 1440 px.
+- AI output now sits in a dashed teal container with an "AI generated · verify with sources" badge
+  (lesson banner and feedback, Explain replies, review feedback, exam marking). Autosave status uses the
+  design's mono states with a dot: Saving, Saved (green), Local draft (amber).
+- Added real counts (files, standards, notes) to the topic page, a Pacific/Auckland chip and an Advanced
+  tools link in the sidebar.
+- Not taken from the mock-ups because there is no such feature: student profile, notification bell, "New
+  Problem Set", extraction daemon and vector index figures, calculated exam scores, NCEA grade checklists,
+  formula sheet and scratchpad panels. Fonts load from Google Fonts and fall back to system fonts when offline.
+- Verified in Edge against mock data (lessons, reader, practice, review, exam, library, settings at 1440 px
+  and 390 px). Not verified: light-coloured contrast measurement, a real lesson or exam, the Stitch layouts'
+  extra side panels.

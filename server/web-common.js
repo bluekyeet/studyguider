@@ -139,6 +139,13 @@ export function mathText(target, content) {
   return root;
 }
 
+// AI output always sits in the dashed teal container with its verification badge.
+export function aiBox(...children) {
+  const box = el('div', undefined, 'ai-box');
+  box.append(el('span', 'AI generated · verify with sources', 'ai-badge'), ...children);
+  return box;
+}
+
 // ---- maths input -----------------------------------------------------------
 // Each snippet inserts LaTeX; "|" marks where the cursor lands.
 const SNIPPETS = [

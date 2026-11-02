@@ -1,4 +1,4 @@
-import { mathText, mathInput, stash } from './web-common.js';
+import { mathText, mathInput, stash, aiBox } from './web-common.js';
 
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -197,7 +197,7 @@ export async function renderReviews(container, api) {
         const verdict = element('p'); verdict.append(element('span', outcome[0], `chip ${outcome[1]}`), element('span', ' AI judgement, advisory only.', 'muted'));
         feedback.append(verdict);
         if (result.outcome === 'confidence-based') feedback.append(element('p', 'Scheduled using your confidence.', 'muted'));
-        if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(explanation); }
+        if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(aiBox(explanation)); }
         const mastery = typeof result.mastery === 'number' && Number.isFinite(result.mastery) ? `${Math.round(result.mastery * 100)}%` : 'not provided';
         feedback.append(element('p', `Next due ${result.next_due || 'not provided'} · topic mastery estimate ${mastery}, a scheduling estimate and not proof of mastery.`, 'muted'));
         const finished = back === 'due' ? questions.length <= 1 : true;

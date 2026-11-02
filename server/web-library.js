@@ -162,7 +162,14 @@ function topicView(root, api, subject, topic, params) {
     tabs.append(a);
   }
   const body = el('div');
-  root.append(wrap, removeNote, tabs, body);
+  // Real counts for the topic, filled in as soon as they arrive.
+  const stats = el('div', '', 'stat-row');
+  Promise.all([api(`/topics/${topic.id}/resources`), api(`/topics/${topic.id}/standards`), api(`/topics/${topic.id}/notes`)]).then(([resources, linked, saved]) => {
+    for (const [value, name] of [[resources.filter(r => r.status !== 'deleting').length, 'Files'], [linked.length, 'Standards'], [saved.length, 'Notes']]) {
+      const stat = el('div', '', 'stat'); stat.append(el('b', String(value)), el('span', name)); stats.append(stat);
+    }
+  }).catch(() => {});
+  root.append(wrap, removeNote, stats, tabs, body);
   const ctx = { api, subject, topic, params };
   return { files, standards, notes, search }[tab](body, ctx);
 }

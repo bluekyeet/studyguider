@@ -2,6 +2,9 @@
 <html lang="en-NZ"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>StudyGuider</title>
 <link rel="icon" type="image/png" href="/branding/favicon.png"><link rel="apple-touch-icon" href="/branding/icon.png">
+<meta name="color-scheme" content="dark"><meta name="theme-color" content="#121318">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
 <link rel="stylesheet" href="/assets/katex/katex.min.css">
 <link rel="stylesheet" href="/web.css">
 <script defer src="/assets/katex/katex.min.js"></script><script defer src="/assets/katex/contrib/mhchem.min.js"></script>
@@ -9,6 +12,7 @@
 <div class="shell">
 <aside class="sidebar">
 <a class="brand" href="#lessons" aria-label="StudyGuider home"><img src="/branding/wordmark.png" alt="StudyGuider"></a>
+<p class="label">Study</p>
 <nav aria-label="Main">
 <a href="#lessons"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 8h6"/></svg>Lessons</a>
 <a href="#reviews"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>Review</a>
@@ -17,7 +21,7 @@
 <a href="#settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>Settings</a>
 </nav>
 <div class="spacer"></div>
-<footer><button id="logout" class="small" hidden>Sign out</button></footer>
+<footer><div class="zone" title="Lessons, due dates and schedules use New Zealand time"><span>Pacific/Auckland</span><span>NZ</span></div><a href="/manage">Advanced tools</a><button id="logout" class="small quiet" hidden>Sign out</button></footer>
 </aside>
 <main>
 <form id="login" class="card" hidden><img src="/branding/wordmark.png" alt="StudyGuider"><h1>Welcome back</h1><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><div class="toolbar"><button class="primary">Sign in</button></div><p id="login-error" class="error" role="alert"></p></form>
