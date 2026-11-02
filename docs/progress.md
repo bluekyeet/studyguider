@@ -19,6 +19,7 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
   Android worker fixed restored override drafts/account isolation, stale scan feedback
   and second-marker disagreement; stub-server UI tests compiled, not executed.
   Worker reported app/test APK build exit0. No emulator startup/GPU changes/install.
+  Combined API image subsequently built/recreated successfully; /health returned ok.
 
 - Second parallel batch: structure enforcement now mandatory in review promotion;
   malformed/missing practice sections trigger bounded revision, not a false pass.
