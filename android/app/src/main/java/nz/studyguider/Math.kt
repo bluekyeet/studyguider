@@ -49,7 +49,11 @@ object KaTeX {
           code { font-family:monospace; font-size:0.85em; background:rgba(120,130,150,0.14); padding:0 3px; border-radius:4px; }
           .katex { font-size:1.05em; overflow-wrap:normal; word-break:normal; }
           .katex-display { margin:8px 0; overflow-x:auto; overflow-y:hidden; }
-          .katex-display > .katex, .katex .katex-html, .katex .base, .katex .text { white-space:nowrap; overflow-wrap:normal; word-break:normal; }
+          .katex-display > .katex, .katex .katex-html { white-space:normal; overflow-wrap:normal; word-break:normal; }
+          .katex .base, .katex .text { white-space:nowrap; overflow-wrap:normal; word-break:normal; }
+          .formula-parts { display:inline; }
+          .formula-part { display:inline-block; max-width:100%; vertical-align:middle; }
+          .formula-parts[data-display="1"] { display:block; margin:8px 0; }
           .formula-wide { display:block; max-width:100%; overflow-x:auto; overflow-y:hidden; padding:4px 0; }
           .formula-wide .katex-display { overflow:visible; text-align:left; margin:4px 0; }
           .formula-hint { display:block; font:12px system-ui,sans-serif; opacity:.75; margin:3px 0 8px; }
@@ -117,8 +121,22 @@ object KaTeX {
             var prose = /^\\text\{([^{}]*)\}$/.exec(tex.trim());
             if (prose) { node.textContent = prose[1]; return; }
             try {
-              katex.render(tex, node, { displayMode: display, throwOnError: true,
-                  strict: 'ignore', trust: false, output: 'html' });
+              // Explicit spacing commonly separates a reaction from its enthalpy.
+              // Render those groups independently so the browser can wrap between
+              // them without breaking chemical symbols or fraction layout.
+              var groups = tex.split(/\\(?:qquad|quad)\s*|\s+(?=\\Delta\s*H)/);
+              if (groups.length > 1) {
+                node.classList.add('formula-parts');
+                groups.forEach(function(group, index){
+                  if (index) { node.appendChild(document.createElement('wbr')); node.appendChild(document.createTextNode(' ')); }
+                  var part = document.createElement('span'); part.className = 'formula-part';
+                  katex.render(group, part, { displayMode:false, throwOnError:true, strict:'ignore', trust:false, output:'html' });
+                  node.appendChild(part);
+                });
+              } else {
+                katex.render(tex, node, { displayMode: display, throwOnError: true,
+                    strict: 'ignore', trust: false, output: 'html' });
+              }
             } catch (error) {
               var fallback = document.createElement('span');
               fallback.textContent = tex;
@@ -134,10 +152,10 @@ object KaTeX {
               var math = node.querySelector('.katex');
               if (!math) return;
               node.style.fontSize = '';
-              var width = math.getBoundingClientRect().width;
+              // Prefer natural wrapping, never shrink equations to fit.
+              var width = node.scrollWidth;
               if (width > available) {
                 node.classList.add('formula-wide');
-                node.style.fontSize = (Math.max(0.8, (available - 4) / width) * 100) + '%';
                 var hint = node.nextElementSibling;
                 if (!hint || !hint.classList.contains('formula-hint')) {
                   hint = document.createElement('span'); hint.className = 'formula-hint';
@@ -153,11 +171,17 @@ object KaTeX {
           }
           if (document.fonts && document.fonts.ready) { document.fonts.ready.then(fitFormulas); }
           window.addEventListener('resize', fitFormulas);
-          if (window.ResizeObserver) { new ResizeObserver(report).observe(document.getElementById('content')); }
+          if (window.ResizeObserver) {
+            var lastWidth = 0;
+            new ResizeObserver(function(){
+              var width = document.getElementById('content').clientWidth;
+              if (width !== lastWidth) { lastWidth = width; fitFormulas(); } else report();
+            }).observe(document.getElementById('content'));
+          }
           fitFormulas();
           report();
-          setTimeout(report, 120);
-          setTimeout(report, 500);
+          setTimeout(fitFormulas, 120);
+          setTimeout(fitFormulas, 500);
         })();
     """
 

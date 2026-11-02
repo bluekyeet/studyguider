@@ -8,6 +8,15 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- User clarified wrapping, not shrinking: maths outer HTML now allows breaks between
+  intact KaTeX base groups; individual text/subscript/fraction internals keep nowrap.
+  Explicit quad/qquad and space-before-Delta-H clauses render as independent inline
+  groups with wrap opportunities, preserving reaction + enthalpy order. Removed
+  auto-shrink; oversized indivisible groups still have scroll fallback/hint.
+  Overflow measurement uses scroll width and refits after width/font/layout settles.
+  Debug/test APK builds passed; normal install Success. No connected tests; actual
+  screenshot layout unverified, no semantic rewriting of stored lesson text.
+
 - Long-equation discoverability: rendered formulas wider than reader width become
   explicit scroll blocks, shrink at most 20% and display swipe hint only when still
   overflowing; no symbol line wrapping. Refit after font load/resize, report height.
