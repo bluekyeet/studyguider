@@ -8,6 +8,14 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Fixed stored-feedback GET returning all historical marks as if current. Now
+  returns latest per marker only when saved answer text and confirmed scan revision
+  match; otherwise 404 without deleting history. 173 tests passed, six warnings/
+  six subtests; API rebuilt/deployed. PostgreSQL acceptance script verifies current
+  mark readable, then editing answer hides it (404); full script passed/rolled back.
+  No Android/emulator changes, no model calls. Historical viewing not exposed by
+  this endpoint; underlying rows retained.
+
 - Added/executed concurrent_exam_check.py in unique disposable schema: two actual
   answer-route calls on independent connections -> one 200/revision1, one 409;
   winner stored intact. Simulated lost response by discarding winning result and

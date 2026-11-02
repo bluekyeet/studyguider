@@ -510,12 +510,16 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
     @router.get("/exams/{exam_id}/answers/{question_id}/feedback")
     def get_feedback(exam_id: int, question_id: int):
         with connect() as db:
-            rows = db.execute("""SELECT kind, result FROM markings
-                WHERE exam_id = %s AND question_id = %s ORDER BY created_at""", (exam_id, question_id)).fetchall()
+            rows = db.execute("""SELECT DISTINCT ON (m.kind) m.kind, m.result FROM markings m
+                JOIN exam_items i ON i.exam_id=m.exam_id AND i.question_id=m.question_id
+                LEFT JOIN exam_answer_scans s ON s.exam_id=i.exam_id AND s.question_id=i.question_id
+                WHERE m.exam_id=%s AND m.question_id=%s AND m.answer_text=i.answer
+                  AND m.scan_revision=COALESCE(s.revision,0) AND (s.confirmed IS NULL OR s.confirmed)
+                ORDER BY m.kind,m.created_at DESC,m.id DESC""", (exam_id, question_id)).fetchall()
             override = db.execute("SELECT outcome, note FROM marking_overrides WHERE exam_id = %s AND question_id = %s",
                 (exam_id, question_id)).fetchone()
         if not rows:
-            raise HTTPException(404, "No stored feedback")
+            raise HTTPException(404, "No feedback for the current saved answer and confirmed scan")
         return {"exam_id": exam_id, "question_id": question_id,
                 "marks": [{"kind": row[0], **row[1]} for row in rows],
                 "override": {"outcome": override[0], "note": override[1]} if override else None}

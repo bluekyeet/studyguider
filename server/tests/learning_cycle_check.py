@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 from app import connect
 from lessons import LessonGeneration, lesson_router
-from marking import queue_exam_review
+from marking import queue_exam_review, marking_router
 from reviews import ReviewAnswer, review_router
 from exams import ExamAnswer, exam_router
 from fastapi import HTTPException
@@ -191,11 +191,20 @@ try:
         VALUES (%s,%s,%s,'55 Hz',true)""", (exam, question, b'synthetic image bytes'))
     db.execute("""INSERT INTO markings(exam_id,question_id,answer_hash,kind,result,model)
         VALUES (%s,%s,'synthetic-hash','first',%s::jsonb,'stub')""", (exam, question, json.dumps(mark)))
+    db.execute('UPDATE markings SET answer_text=%s,scan_revision=1 WHERE exam_id=%s', ('55 Hz', exam))
+    marking = marking_router(transaction_connection, lambda: None, None)
+    read_feedback = next(r.endpoint for r in marking.routes if r.path == '/exams/{exam_id}/answers/{question_id}/feedback' and 'GET' in r.methods)
+    assert read_feedback(exam, question)['marks'][0]['marks_awarded'] == 0
     db.execute("""INSERT INTO marking_overrides(exam_id,question_id,outcome,note)
         VALUES (%s,%s,'not_achieved','Synthetic override')""", (exam, question))
     router = exam_router(transaction_connection, lambda: None)
     save = next(route.endpoint for route in router.routes if route.path == '/exams/{exam_id}/answers/{question_id}' and 'PUT' in route.methods)
     assert save(exam, question, ExamAnswer(answer='Client A answer', revision=0, scan_revision=1))['revision'] == 1
+    try:
+        read_feedback(exam, question)
+        raise AssertionError('Previous answer feedback must be withheld')
+    except HTTPException as exc:
+        assert exc.status_code == 404
     # Savepoints model request transaction rollback after expected HTTP conflicts.
     def conflict(body):
         db.execute('SAVEPOINT expected_conflict')
