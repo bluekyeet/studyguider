@@ -64,6 +64,9 @@ class Database:
         elif "FROM lesson_answers" in sql:
             a = getattr(self, "saved_answer", None)
             self.result = [(a[1], a[2], a[3], a[4], "2026-11-01", self.answer_revision)] if a and a[0] == params[0] else []
+        elif "SELECT q.concept, count(*) FROM review_answers" in sql:
+            assert "same_concept.topic_id=q.topic_id" in sql
+            self.result = [("Frequency", 3)]
         elif "FROM review_questions" in sql:
             self.result = []
         elif "FROM resources WHERE id = ANY" in sql:
@@ -134,6 +137,7 @@ def test_generation_snapshot_and_history():
     assert len(item["sources"][0]["content"]) == 4000
     assert json.loads(calls[0][1][1]["content"])["evidence"]["sources"] == item["sources"]
     assert json.loads(calls[0][1][1]["content"])["teaching_style"] == "Subject teaching style:\nUse worked examples"
+    assert json.loads(calls[0][1][1]["content"])["learner_strengths"] == [{"concept": "Frequency", "correct_answers": 3}]
     source["content"] = "changed"
     assert client.get("/lessons/1").json() == item
     assert client.get("/topics/1/lessons").json() == [item]

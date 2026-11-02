@@ -88,6 +88,7 @@ try:
         if task == 'lesson-generate':
             assert [item['concept'] for item in payload['review_focus']] == ['Collision frequency']
             assert payload['learner_answers'] == [] and payload['completed_lessons'] == []
+            assert payload['learner_strengths'] == []
             assert payload['evidence']['sources'][0]['resource_id'] == str(chemistry_resource)
             assert [item['number'] for item in payload['evidence']['standards']] == [91166]
             return 'At fixed temperature, concentration changes collision frequency, not average kinetic energy.'

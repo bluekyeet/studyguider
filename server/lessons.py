@@ -209,7 +209,16 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             review_rows = db.execute("""SELECT question, concept, mastery, due_date
                 FROM review_questions WHERE topic_id = %s
                 AND (due_date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date OR mastery < 0.5)
-                ORDER BY due_date, id LIMIT 12""", (topic_id,)).fetchall()
+                 ORDER BY due_date, id LIMIT 12""", (topic_id,)).fetchall()
+            strengths = db.execute("""SELECT q.concept, count(*) FROM review_answers a
+                JOIN review_questions q ON q.id=a.question_id
+                WHERE q.topic_id=%s AND q.concept<>'' AND a.correct IS TRUE
+                  AND NOT EXISTS (SELECT 1 FROM review_answers recent
+                    JOIN review_questions same_concept ON same_concept.id=recent.question_id
+                    WHERE same_concept.topic_id=q.topic_id AND same_concept.concept=q.concept
+                      AND recent.correct IS FALSE AND recent.answered_at >= now()-interval '30 days')
+                GROUP BY q.topic_id,q.concept HAVING count(*)>=3
+                ORDER BY count(*) DESC,q.concept LIMIT 10""", (topic_id,)).fetchall()
             # The course gives the lesson its place in the sequence from basics to exam level.
             course = db.execute("""SELECT c.id, count(l.id), coalesce(max(l.stage), 0)
                 FROM courses c LEFT JOIN lessons l ON l.course_id = c.id
@@ -244,7 +253,8 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
                   "that question's section, using LaTeX and defining symbols and SI units where needed. Supply "
                   "only formulae supported by the evidence, not substituted values, calculations or the answer. "
                   "For purely conceptual questions, omit the formula line unless a formula genuinely helps. "
-                  "Use learner_answers to revisit misconceptions without treating learner answers as source evidence. "
+                   "Use learner_answers to revisit misconceptions without treating learner answers as source evidence. "
+                   "Use learner_strengths to avoid unnecessary basic repetition, not as proof of mastery: these are AI-marked review counts, not factual source evidence. The saved app-wide teaching method is the learner's explicit preference; do not invent preferences from performance. "
                   "Do not cut off sentences, calculations or solutions. "
                   "This lesson is part of a course that builds from the basics up to exam standard: start from the "
                   "fundamental ideas and vocabulary needed for this topic, define what the learner must already know, "
@@ -254,7 +264,8 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
         lesson = model_reply("education", [
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps({"query": query, "evidence": evidence,
-                "review_focus": review_focus, "completed_lessons": [r[0] for r in completed],
+                 "review_focus": review_focus, "completed_lessons": [r[0] for r in completed],
+                 "learner_strengths": [{"concept": r[0], "correct_answers": r[1]} for r in strengths],
                 "learner_answers": [{"question": r[0][:2000], "answer": r[1][:4000], "feedback": r[2][:4000]} for r in answers], "teaching_style": style,
                 "course": {"goal": "Ace the external exam", "lessons_completed": done, "this_is_stage": stage}},
                 ensure_ascii=False)},

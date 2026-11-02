@@ -8,6 +8,16 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Lesson generation now receives topic-scoped learner_strengths: >=3 correct AI-
+  marked reviews and no incorrect answer for that concept/topic in last 30 days.
+  Prompt uses counts only to reduce needless repetition, not as mastery proof or
+  factual evidence; explicit app-wide style stays authoritative, no preferences
+  invented from results. Existing weaknesses/answer history unchanged. 171 tests
+  passed, six warnings/six subtests; API rebuilt/deployed. Full rollback-only
+  PostgreSQL cycle/isolation/scheduler/stale-write/deletion script passed, including
+  Chemistry empty strengths (no Physics leakage). Live pedagogical use unverified.
+  No Android/emulator/GPU changes.
+
 - Fixed Fontconfig cache warning with XDG_CACHE_HOME=/tmp/studyguider-cache,
   owned by existing nobody user. No privilege increase/new dependency. Built image
   passes runnable font_cache_check.py as non-root: PNG text render (11,093 bytes)

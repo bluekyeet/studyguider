@@ -95,6 +95,11 @@ does not mean its end-to-end acceptance checks have passed.
     claims on repeated ticks. Callback returns synthetic pre-created lessons;
     real wall-clock overnight/model execution remains open.
 - [ ] Improve learner-summary memory: preferred explanations and useful per-subject summaries fed into teaching.
+  - [x] Lesson prompts receive topic-scoped strengths (three correct reviews and
+    no wrong answer for that concept in 30 days), alongside existing weaknesses,
+    answer history and explicit app-wide teaching preference. No inferred preferences.
+  - [ ] Validate that live lessons use the context appropriately; persistent narrative
+    summaries/preference learning remain deferred pending evidence of need.
 - [ ] Evaluate durable queued AI jobs and safe crash recovery; do not retry potentially completed jobs blindly.
 - [ ] Run Android nightly-status UI checks after the emulator is available.
 
