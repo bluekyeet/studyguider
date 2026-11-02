@@ -45,9 +45,12 @@ about how things should look. Written 3 November 2026 from the code in `server/w
 
 ## Home (`#home`, the default page)
 
-Counts of saved records only, from `GET /study-summary`; nothing predicted, no streak.
-- **What to do today:** a one-line summary; a Today's lessons card (Start/Continue/See lessons), a Reviews due now card, and an Unfinished exam card (Resume) when an exam has some answers but not all.
-- **How you're doing:** lessons done today and in 7 days, reviews due/coming up/total, review answers in the last 30 days (correct, incorrect, not independently marked), mastery per topic (an estimate, labelled not a grade), weak concepts the next lesson revisits, and the five most recent exams with marks awarded out of available, labelled unofficial AI marks.
+A dense dashboard, not cards. Numbers come from `GET /study-summary` and `GET /lessons`.
+- **Headline strip:** overall mastery % (average of the topics being learned), lessons done today, reviews due, topics with a grade estimate.
+- **Lessons to do:** a table of today's unfinished lessons (topic, lesson, To do / In progress, Start or Continue). Each opens the lesson directly (`#lessons?lesson=ID`). Below it: Start N reviews, and Resume exam when an exam has some but not all answers.
+- **Topics:** mastery % with a bar and an **estimated grade** per topic. The estimate is a rough band from review mastery (under 40% not achieved, 40-59% achieved, 60-79% merit, 80%+ excellence), only shown with 5+ review answers on the topic, and labelled as not an NZQA grade. The rule is printed under the table.
+- **Weak concepts** and **Reviews** (30-day correct/incorrect, due/upcoming/total) side by side; **Recent exams** as a table, marks labelled unofficial AI marks.
+- No streaks, no predicted exam scores.
 
 ## Lessons (`#lessons`)
 

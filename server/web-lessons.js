@@ -48,7 +48,7 @@ function sections(markdown) {
   return result.length ? result : [{ title: 'Lesson', body: String(markdown || ''), question: `Lesson\n${String(markdown || '').trim()}` }];
 }
 
-export async function renderLessons(container, api) {
+export async function renderLessons(container, api, params) {
   let disposed = false, loading = false, active = null, current = 0;
   const drafts = new Map();
   const root = element('div', '', 'stack');
@@ -420,7 +420,12 @@ export async function renderLessons(container, api) {
     inner.append(ask, replies); target.append(panel);
   }
 
-  try { await feed(); }
+  try {
+    await feed();
+    // #lessons?lesson=ID opens that lesson directly (used by the Home list).
+    const wanted = Number(params?.get('lesson'));
+    if (wanted) { const found = (await api('/lessons')).find(item => item.id === wanted); if (found) await open(found); }
+  }
   catch (error) {
     errorBox.textContent = message(error);
     content.append(button('Retry loading lessons', feed));

@@ -1687,3 +1687,9 @@ From the pasted source review (not a penetration test):
 - Website `#home` is now the default page, with a Home nav link: today's cards, unfinished-exam resume, stats. Checked in headless Edge against mock data at 1440 and 390 px; no script errors. Not yet seen with real data in a browser.
 - Exam marks shown are first AI marks only, labelled unofficial. The real database has no saved markings, so that part is only mock-tested. No streak (needs a definition of a day) and no charts.
 - Android Home not built.
+
+## 3 Nov 2026: Home redesign
+
+- Home is now a dense dashboard: headline strip, a Lessons to do table (rows open the lesson via `#lessons?lesson=ID`), a Topics table with mastery % and an estimated grade, then weak concepts, reviews and recent exams.
+- Estimated grade is new and deliberately rough: fixed bands over review mastery, shown only with 5+ review answers on that topic, labelled not an NZQA grade (`estimate_grade` in reviews.py, unit tested). It is not validated against real marks; the bands are my choice and can be changed. With current data most topics have too few answers, so few estimates show.
+- Checked in headless Edge against mock data (no script errors; Start opens the reader). Not yet viewed with real data in a browser. Android Home still not built.

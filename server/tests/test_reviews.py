@@ -180,3 +180,10 @@ def test_all_questions_lists_due_and_future_questions_with_optional_topic_filter
     client.get("/review-questions")
     assert ListDatabase.calls[-1] == (None, None, 200, 0)
     assert client.get("/review-questions?limit=501").status_code == 422
+
+
+def test_estimated_grade_needs_enough_answers_and_uses_fixed_bands():
+    from reviews import estimate_grade
+    assert estimate_grade(0.9, 4) is None
+    assert [estimate_grade(m, 5) for m in (0.0, 0.39, 0.4, 0.59, 0.6, 0.79, 0.8, 1.0)] == [
+        "Not achieved", "Not achieved", "Achieved", "Achieved", "Merit", "Merit", "Excellence", "Excellence"]

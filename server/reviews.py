@@ -71,6 +71,16 @@ def _clean_json(reply):
     return json.loads(text)
 
 
+MIN_ANSWERS_FOR_ESTIMATE = 5
+
+
+def estimate_grade(mastery, answers):
+    """Rough band from review mastery. Not an NZQA grade: no marking schedule or exam is involved."""
+    if answers < MIN_ANSWERS_FOR_ESTIMATE:
+        return None
+    return "Not achieved" if mastery < 0.4 else "Achieved" if mastery < 0.6 else "Merit" if mastery < 0.8 else "Excellence"
+
+
 def review_router(connect, authorised, model_reply):
     router = APIRouter(dependencies=[Depends(authorised)])
 
@@ -139,7 +149,9 @@ def review_router(connect, authorised, model_reply):
                 FROM review_questions""", (today, today)).fetchone()
             answers = dict(db.execute("""SELECT outcome, count(*) FROM review_answers
                 WHERE answered_at > now() - interval '30 days' GROUP BY outcome""").fetchall())
-            topics = db.execute("""SELECT t.id, s.name, t.name, t.mastery, t.status FROM topics t
+            topics = db.execute("""SELECT t.id, s.name, t.name, t.mastery, t.status,
+                    (SELECT count(*) FROM review_answers a JOIN review_questions q ON q.id = a.question_id WHERE q.topic_id = t.id)
+                FROM topics t
                 JOIN subjects s ON s.id = t.subject_id JOIN courses c ON c.topic_id = t.id AND c.active
                 ORDER BY s.name, t.name""").fetchall()
             weak = db.execute("""SELECT q.concept, t.name, q.mastery FROM review_questions q JOIN topics t ON t.id = q.topic_id
@@ -158,7 +170,10 @@ def review_router(connect, authorised, model_reply):
             "today": today,
             "lessons": {"today": lessons[0], "completed_today": lessons[1], "completed_on_day": lessons[2], "completed_last_7_days": lessons[3]},
             "reviews": {"due": reviews[0], "upcoming": reviews[1], "total": reviews[2], "answers_last_30_days": answers},
-            "topics": [{"topic_id": r[0], "subject": r[1], "topic": r[2], "mastery": round(r[3] or 0, 3), "status": r[4]} for r in topics],
+            "overall_mastery": round(sum(r[3] or 0 for r in topics) / len(topics), 3) if topics else 0,
+            "estimate_rule": f"Rough estimate from review answers (needs {MIN_ANSWERS_FOR_ESTIMATE}+ answers on a topic): under 40% not achieved, 40-59% achieved, 60-79% merit, 80%+ excellence. Not an NZQA grade.",
+            "topics": [{"topic_id": r[0], "subject": r[1], "topic": r[2], "mastery": round(r[3] or 0, 3), "status": r[4],
+                        "review_answers": r[5], "estimated_grade": estimate_grade(r[3] or 0, r[5])} for r in topics],
             "weak_concepts": [{"concept": r[0], "topic": r[1], "mastery": round(r[2], 3)} for r in weak],
             "exams": [{"id": r[0], "created_at": r[1], "kind": r[2], "total_marks": r[3], "questions": r[4], "answered": r[5],
                        "marks_awarded": float(r[6]) if r[8] else None, "marks_available": float(r[7]) if r[8] else None,
