@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Long-equation discoverability: rendered formulas wider than reader width become
+  explicit scroll blocks, shrink at most 20% and display swipe hint only when still
+  overflowing; no symbol line wrapping. Refit after font load/resize, report height.
+  Debug build passed (existing WebView warnings), normal emulator install Success;
+  updated source-level check not connected-run. Exact equation/hint behaviour
+  visually unverified; long expressions deliberately scroll rather than become tiny.
+
 - Corrected regression from maths wrapping change: inherited overflow-wrap:anywhere
   and whitespace overrides broke chemistry into vertical symbols. KaTeX base/text/
   HTML now retain nowrap and normal word-breaking; prose-only text conversion kept.

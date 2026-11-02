@@ -50,6 +50,9 @@ object KaTeX {
           .katex { font-size:1.05em; overflow-wrap:normal; word-break:normal; }
           .katex-display { margin:8px 0; overflow-x:auto; overflow-y:hidden; }
           .katex-display > .katex, .katex .katex-html, .katex .base, .katex .text { white-space:nowrap; overflow-wrap:normal; word-break:normal; }
+          .formula-wide { display:block; max-width:100%; overflow-x:auto; overflow-y:hidden; padding:4px 0; }
+          .formula-wide .katex-display { overflow:visible; text-align:left; margin:4px 0; }
+          .formula-hint { display:block; font:12px system-ui,sans-serif; opacity:.75; margin:3px 0 8px; }
         </style>
         <link rel="stylesheet" href="katex/katex.min.css">
         <script src="katex/katex.min.js"></script>
@@ -124,8 +127,34 @@ object KaTeX {
               node.replaceWith(fallback);
             }
           });
+          function fitFormulas(){
+            var available = document.getElementById('content').clientWidth;
+            if (!available) return;
+            document.querySelectorAll('span[data-tex]').forEach(function(node){
+              var math = node.querySelector('.katex');
+              if (!math) return;
+              node.style.fontSize = '';
+              var width = math.getBoundingClientRect().width;
+              if (width > available) {
+                node.classList.add('formula-wide');
+                node.style.fontSize = (Math.max(0.8, (available - 4) / width) * 100) + '%';
+                var hint = node.nextElementSibling;
+                if (!hint || !hint.classList.contains('formula-hint')) {
+                  hint = document.createElement('span'); hint.className = 'formula-hint';
+                  hint.textContent = 'Swipe sideways to see the full formula →';
+                  node.after(hint);
+                }
+                hint.hidden = node.scrollWidth <= node.clientWidth + 2;
+              } else if (node.nextElementSibling && node.nextElementSibling.classList.contains('formula-hint')) {
+                node.nextElementSibling.hidden = true;
+              }
+            });
+            report();
+          }
+          if (document.fonts && document.fonts.ready) { document.fonts.ready.then(fitFormulas); }
+          window.addEventListener('resize', fitFormulas);
           if (window.ResizeObserver) { new ResizeObserver(report).observe(document.getElementById('content')); }
-          if (document.fonts && document.fonts.ready) { document.fonts.ready.then(report); }
+          fitFormulas();
           report();
           setTimeout(report, 120);
           setTimeout(report, 500);
