@@ -147,7 +147,7 @@ class ReviewTests(unittest.TestCase):
             pass
 
         router = review_router(None, authorised, lambda *args: "")
-        self.assertEqual(len(router.routes), 5)
+        self.assertEqual(len(router.routes), 6)
         self.assertTrue(all(route.dependencies[0].dependency is authorised for route in router.routes))
 
 

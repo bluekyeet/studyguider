@@ -34,7 +34,7 @@ about how things should look. Written 3 November 2026 from the code in `server/w
 
 - **Sign-in screen** shown when there is no session: password field, Sign in button, error text.
   The sidebar is hidden until sign-in.
-- **Navigation**, always visible after sign-in: Lessons, Review, Exams, Library, Settings. The
+- **Navigation**, always visible after sign-in: Home, Lessons, Review, Exams, Library, Settings. The
   current page is marked. Sign out is separate. On wide screens it is a left sidebar; on phones a
   top bar with a scrolling row.
 - **Hash routing**: `#lessons`, `#reviews`, `#exams`, `#library`, `#settings`. Library adds
@@ -42,6 +42,12 @@ about how things should look. Written 3 November 2026 from the code in `server/w
 - **Page notice**: one line under the nav for errors that belong to no single control.
 - **Leave guard**: if a page has unsaved or in-progress work, leaving asks for confirmation. Pages
   signal this with `data-dirty="true"` or `data-busy="true"` on their container.
+
+## Home (`#home`, the default page)
+
+Counts of saved records only, from `GET /study-summary`; nothing predicted, no streak.
+- **What to do today:** a one-line summary; a Today's lessons card (Start/Continue/See lessons), a Reviews due now card, and an Unfinished exam card (Resume) when an exam has some answers but not all.
+- **How you're doing:** lessons done today and in 7 days, reviews due/coming up/total, review answers in the last 30 days (correct, incorrect, not independently marked), mastery per topic (an estimate, labelled not a grade), weak concepts the next lesson revisits, and the five most recent exams with marks awarded out of available, labelled unofficial AI marks.
 
 ## Lessons (`#lessons`)
 

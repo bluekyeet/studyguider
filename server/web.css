@@ -33,11 +33,14 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 [hidden]{display:none!important}
 
 /* controls */
+a.button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;border:1.5px solid rgba(157,178,255,.55);border-radius:var(--radius-sm);padding:8px 18px;min-height:44px;font-weight:500;color:var(--accent)}
+a.button.primary{color:var(--brand-text)}
+progress{flex:1;min-width:120px;height:8px;accent-color:var(--teal)}
 button{cursor:pointer;border:1.5px solid rgba(157,178,255,.55);border-radius:var(--radius-sm);padding:8px 18px;background:transparent;color:var(--accent);min-height:44px;font-weight:500;transition:background .15s,border-color .15s,transform .1s}
 button:hover:not(:disabled){background:rgba(157,178,255,.1)}
 button:active:not(:disabled){transform:scale(.98)}
 button:disabled{opacity:.45;cursor:default}
-button.primary{background:var(--brand);color:var(--brand-text);border-color:transparent}
+button.primary,a.button.primary{background:var(--brand);color:var(--brand-text);border-color:transparent}
 button.primary:hover:not(:disabled){background:#17306f}
 button.danger{color:var(--danger);border-color:rgba(255,180,171,.5)}
 button.danger:hover:not(:disabled){background:var(--danger-soft)}

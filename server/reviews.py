@@ -124,6 +124,48 @@ def review_router(connect, authorised, model_reply):
         return [{"id": row[0], "topic_id": row[1], "question": row[2], "due_date": row[3],
                  "concept": row[4], "standard_number": row[5], "mastery": row[6]} for row in rows]
 
+    @router.get("/study-summary")
+    def study_summary():
+        """Counts for the home page. Everything here is counted from saved records; nothing is predicted."""
+        with connect() as db:
+            today = db.execute("SELECT (now() AT TIME ZONE 'Pacific/Auckland')::date").fetchone()[0]
+            nz = "(%s AT TIME ZONE 'Pacific/Auckland')::date"
+            lessons = db.execute(f"""SELECT count(*) FILTER (WHERE {nz % 'created_at'} = %s),
+                    count(*) FILTER (WHERE {nz % 'created_at'} = %s AND completed_at IS NOT NULL),
+                    count(*) FILTER (WHERE {nz % 'completed_at'} = %s),
+                    count(*) FILTER (WHERE {nz % 'completed_at'} > %s - 7)
+                FROM lessons""", (today, today, today, today)).fetchone()
+            reviews = db.execute("""SELECT count(*) FILTER (WHERE due_date <= %s), count(*) FILTER (WHERE due_date > %s), count(*)
+                FROM review_questions""", (today, today)).fetchone()
+            answers = dict(db.execute("""SELECT outcome, count(*) FROM review_answers
+                WHERE answered_at > now() - interval '30 days' GROUP BY outcome""").fetchall())
+            topics = db.execute("""SELECT t.id, s.name, t.name, t.mastery, t.status FROM topics t
+                JOIN subjects s ON s.id = t.subject_id JOIN courses c ON c.topic_id = t.id AND c.active
+                ORDER BY s.name, t.name""").fetchall()
+            weak = db.execute("""SELECT q.concept, t.name, q.mastery FROM review_questions q JOIN topics t ON t.id = q.topic_id
+                WHERE q.mastery < 0.5 AND EXISTS (SELECT 1 FROM review_answers a WHERE a.question_id = q.id)
+                ORDER BY q.mastery, q.id LIMIT 6""").fetchall()
+            exams = db.execute("""SELECT e.id, e.created_at, e.kind, e.total_marks,
+                    (SELECT count(*) FROM exam_items i WHERE i.exam_id = e.id),
+                    (SELECT count(*) FROM exam_items i WHERE i.exam_id = e.id AND i.answer <> ''),
+                    COALESCE(m.awarded, 0), COALESCE(m.available, 0), COALESCE(m.marked, 0)
+                FROM exams e LEFT JOIN LATERAL (
+                    SELECT sum((r.result->>'marks_awarded')::numeric) awarded, sum((r.result->>'marks_available')::numeric) available, count(*) marked
+                    FROM (SELECT DISTINCT ON (question_id) result FROM markings WHERE exam_id = e.id AND kind = 'first'
+                          ORDER BY question_id, created_at DESC) r) m ON true
+                ORDER BY e.created_at DESC LIMIT 5""").fetchall()
+        return {
+            "today": today,
+            "lessons": {"today": lessons[0], "completed_today": lessons[1], "completed_on_day": lessons[2], "completed_last_7_days": lessons[3]},
+            "reviews": {"due": reviews[0], "upcoming": reviews[1], "total": reviews[2], "answers_last_30_days": answers},
+            "topics": [{"topic_id": r[0], "subject": r[1], "topic": r[2], "mastery": round(r[3] or 0, 3), "status": r[4]} for r in topics],
+            "weak_concepts": [{"concept": r[0], "topic": r[1], "mastery": round(r[2], 3)} for r in weak],
+            "exams": [{"id": r[0], "created_at": r[1], "kind": r[2], "total_marks": r[3], "questions": r[4], "answered": r[5],
+                       "marks_awarded": float(r[6]) if r[8] else None, "marks_available": float(r[7]) if r[8] else None,
+                       "marked_questions": r[8], "unfinished": r[5] < r[4]} for r in exams],
+            "note": "Counts of saved records. AI marks are unofficial and not an NZQA grade; mastery is an estimate from your review answers.",
+        }
+
     @router.get("/review-questions")
     def all_questions(topic_id: int | None = None, limit: int = Query(default=200, ge=1, le=500), offset: int = Query(default=0, ge=0, le=100000)):
         """Every saved question, due or not, so learners can practise ahead or revisit."""

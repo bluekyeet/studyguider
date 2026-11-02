@@ -1680,3 +1680,10 @@ From the pasted source review (not a penetration test):
 
 - Android: reminder time picker added (`Reminders.kt`, preferences `hour`/`minute`, default 19:00); installed; the dialog opened and was cancelled, so the saved time is still 7 pm. Delivery at a chosen time is untested.
 - Website: collapsed "Earlier lessons (N)" list under today's cards. Checked in headless Edge against the mock server (list, row and chip render, no script errors); opening an older lesson was not exercised because the mock has no data for it, though it uses the same open path as today's lessons. API rebuilt.
+
+## 3 Nov 2026: Home page
+
+- `GET /study-summary` (reviews.py): lesson, review, topic mastery, weak-concept and recent-exam counts from saved records, no predictions. Checked against the real database (7 lessons today, 8 reviews due, 4 correct / 4 incorrect answers).
+- Website `#home` is now the default page, with a Home nav link: today's cards, unfinished-exam resume, stats. Checked in headless Edge against mock data at 1440 and 390 px; no script errors. Not yet seen with real data in a browser.
+- Exam marks shown are first AI marks only, labelled unofficial. The real database has no saved markings, so that part is only mock-tested. No streak (needs a definition of a day) and no charts.
+- Android Home not built.

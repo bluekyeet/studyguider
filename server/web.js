@@ -1,3 +1,4 @@
+import {renderHome} from './web-home.js';
 import {renderLessons} from './web-lessons.js';
 import {renderReviews} from './web-reviews.js';
 import {renderExams} from './web-exams.js';
@@ -20,7 +21,7 @@ let activePage = '';
 let cleanup = null;
 async function route() {
   if (!ready) return;
-  const [page, query = ''] = (location.hash.slice(1) || 'lessons').split('?');
+  const [page, query = ''] = (location.hash.slice(1) || 'home').split('?');
   const params = new URLSearchParams(query);
   if (cleanup?.canLeave && !cleanup.canLeave()) { history.replaceState(null,'','#'+activePage); return; }
   if (($('view').querySelector('[data-dirty="true"]') || $('view').querySelector('[data-busy="true"]')) && !confirm('Leave with an unsaved answer or request in progress?')) {
@@ -33,7 +34,7 @@ async function route() {
   });
   $('notice').textContent = '';
   const container = document.createElement('section'); $('view').replaceChildren(container);
-  try { const result = await ({lessons:renderLessons,reviews:renderReviews,exams:renderExams,library:renderLibrary,settings:renderSettings}[page] || renderLessons)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
+  try { const result = await ({home:renderHome,lessons:renderLessons,reviews:renderReviews,exams:renderExams,library:renderLibrary,settings:renderSettings}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
   catch(error) { if (container.isConnected) $('notice').textContent = error.message; }
 }
 $('login').onsubmit = async event => {
