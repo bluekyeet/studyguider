@@ -94,8 +94,8 @@ does not mean its end-to-end acceptance checks have passed.
     stage events (sources, writing, reviewing, rewriting, saving), 15 s keepalives,
     lesson sent only in the final event after review. Draft text is never sent
     (tested). Android Lessons home shows the stage; the old endpoints are unchanged.
-    Server tests pass; Android compiles. Not yet deployed to the running API
-    container, and not run on a device.
+    Server tests pass; API rebuilt and APK installed on the emulator.
+    A full streamed generation has not been exercised yet.
 - [ ] Evaluate validated structured lesson objects instead of relying on Markdown/model structure.
   - [x] Evaluated minimal alternative: deterministic Markdown practice-heading
     checker with 17 cases; no schema migration needed for heading/count validation.

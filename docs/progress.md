@@ -1496,3 +1496,9 @@ Changes made in this round, and exactly what was and was not verified.
 - Live seeded reviewer check extended to five cases; all five drafts rejected with
   scientifically specific issues. Each draft also had weak practice sections, and
   no correct-lesson control was run. Not a measure of general reviewer accuracy.
+- Progress-only lesson streaming added (stage events, keepalives, lesson only after
+  review). Server suite: 210 passed. API container rebuilt and restarted; the new
+  endpoint answers 401 without login (so it exists). Debug APK built with JDK 21 and
+  installed on the emulator (`adb install -r`, Success). No connected tests were
+  run, and the stage display and a full streamed generation have not been
+  exercised yet; they need a live run.
