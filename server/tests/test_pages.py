@@ -41,24 +41,16 @@ def endpoint(router):
 
 
 @pytest.fixture
-def storage(tmp_path):
-    """Point the route at a temporary upload directory."""
+def storage(tmp_path, monkeypatch):
+    """Point the route at a temporary upload directory; the stored file is named by the resource id."""
     pages.CACHE.clear()
-    original = pages.Path
-
-    def resolve(value):
-        text = str(value)
-        if text.startswith("/data/uploads/"):
-            return tmp_path / "sample.pdf"
-        return original(value)
-
-    with patch.object(pages, "Path", side_effect=resolve):
-        yield tmp_path
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+    yield tmp_path
     pages.CACHE.clear()
 
 
 def test_page_image_renders_the_requested_page(storage):
-    sample_pdf(storage / "sample.pdf", 3)
+    sample_pdf(storage / "id", 3)
     router = pages.page_router(FakeConnect("sample.pdf"), lambda: None)
     response = endpoint(router)("id", 2)
     assert response.media_type == "image/png"
@@ -66,7 +58,7 @@ def test_page_image_renders_the_requested_page(storage):
 
 
 def test_page_beyond_the_document_is_a_404(storage):
-    sample_pdf(storage / "sample.pdf", 2)
+    sample_pdf(storage / "id", 2)
     router = pages.page_router(FakeConnect("sample.pdf"), lambda: None)
     with pytest.raises(HTTPException) as error:
         endpoint(router)("id", 9)

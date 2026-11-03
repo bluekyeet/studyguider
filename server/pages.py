@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 
 import pymupdf
+import userspace
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
@@ -46,7 +47,7 @@ def page_router(connect, authorised):
         if Path(row[0]).suffix.lower() != ".pdf":
             raise HTTPException(422, "Diagrams require a PDF source")
         try:
-            with pymupdf.open(Path(f"/data/uploads/{resource_id}")) as document:
+            with pymupdf.open(userspace.upload_root() / str(resource_id)) as document:
                 if not 1 <= page <= len(document):
                     raise HTTPException(404, "Page not found")
                 source = document[page - 1]
@@ -67,7 +68,7 @@ def page_router(connect, authorised):
         values = (x0, y0, x1, y1)
         if not all(math.isfinite(v) for v in values) or not any(all(abs(region[k] - v) < 0.1 for k, v in zip(("x0", "y0", "x1", "y1"), values)) for region in regions):
             raise HTTPException(422, "Select an extracted diagram region")
-        with pymupdf.open(Path(f"/data/uploads/{resource_id}")) as document:
+        with pymupdf.open(userspace.upload_root() / str(resource_id)) as document:
             clip = pymupdf.Rect(*values)
             data = document[page - 1].get_pixmap(clip=clip, dpi=safe_dpi(clip, 160)).tobytes("png")
         return Response(data, media_type="image/png")
@@ -85,7 +86,7 @@ def page_router(connect, authorised):
         with CACHE_LOCK:
             cached = CACHE.get(key)
         if cached is None:
-            path = Path(f"/data/uploads/{resource_id}")
+            path = userspace.upload_root() / str(resource_id)
             if not path.is_file():
                 raise HTTPException(404, "Stored file missing; restore from backup")
             try:
