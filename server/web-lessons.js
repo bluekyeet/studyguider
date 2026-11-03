@@ -1,4 +1,4 @@
-import { mathText, mathInput, autosave, stash, sha256Hex, aiBox } from './web-common.js';
+import { mathText, mathInput, autosave, stash, sha256Hex, aiBox, readable } from './web-common.js';
 
 const element = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -8,18 +8,6 @@ const element = (tag, text = '', className = '') => {
 };
 const json = body => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const message = error => error?.message || String(error);
-
-// Presentation only: source snapshots and saved questions keep their citations.
-function readable(text) {
-  return String(text || '')
-    .replace(/[ \t]*[\[(](?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|S\d+)\s*[,;]\s*[a-z]+(?:_[a-z]+)+\s*[\])]/gi, '')
-    .replace(/\[?\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b\]?/gi, '')
-    .replace(/\[S\d+(?:\s*[,;]\s*S?\d+)*\]/g, '')
-    .replace(/\bS\d+\b/g, '')
-    .replace(/\(\s*\)|\[\s*\]/g, '')
-    // Removing a citation can leave a gap before the full stop or comma that followed it.
-    .replace(/[ \t]+([.,;:!?])/g, '$1').replace(/[ \t]{2,}/g, ' ');
-}
 
 // Chunks a lesson exactly like the Android reader, so a section index saved on one device
 // means the same section on the other, and both derive the same answer key.

@@ -1,4 +1,5 @@
 // Library: subjects -> topics -> files, standards, notes and search for one topic.
+import { mathText, readable } from './web-common.js';
 const el = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
   if (text !== '') node.textContent = text;
@@ -343,7 +344,7 @@ async function notes(body, { api, topic }) {
   if (!items.length) card.append(el('p', 'No notes yet. Notes saved from Explain also appear here.', 'empty'));
   for (const item of items) {
     const article = el('article', '', 'stack');
-    const content = el('div', '', 'math-content'); content.style.whiteSpace = 'pre-wrap'; content.textContent = item.content;
+    const content = mathText(readable(item.content));
     const meta = el('p', when(item.created_at), 'muted');
     const actions = el('div', '', 'toolbar'); const edit = el('button', 'Edit', 'small'); const del = el('button', 'Delete', 'small danger');
     const err = status();

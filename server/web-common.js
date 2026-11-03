@@ -48,6 +48,18 @@ const isTableRule = line => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.
 const cells = line => line.trim().replace(/^\||\|$/g, '').split('|').map(cell => cell.trim());
 const LIST = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 
+// Presentation only: source snapshots and saved questions keep their citations.
+export function readable(text) {
+  return String(text || '')
+    .replace(/[ \t]*[\[(](?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|S\d+)\s*[,;]\s*[a-z]+(?:_[a-z]+)+\s*[\])]/gi, '')
+    .replace(/\[?\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b\]?/gi, '')
+    .replace(/\[S\d+(?:\s*[,;]\s*S?\d+)*\]/g, '')
+    .replace(/\bS\d+\b/g, '')
+    .replace(/\(\s*\)|\[\s*\]/g, '')
+    // Removing a citation can leave a gap before the full stop or comma that followed it.
+    .replace(/[ \t]+([.,;:!?])/g, '$1').replace(/[ \t]{2,}/g, ' ');
+}
+
 export function mathText(target, content) {
   const text = content === undefined ? target : content;
   const root = el('div', undefined, 'math-content');
