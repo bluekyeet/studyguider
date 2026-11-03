@@ -40,16 +40,22 @@ private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { get
 private fun percent(value: Double) = "${Math.round(value * 100)}%"
 
 /** Counts of saved records plus one labelled rough estimate; the same figures as the website Home. */
+private class HomeSnapshot(val token: String, val summary: JSONObject, val todayCount: Int, val todo: List<Pair<JSONObject, Boolean>>)
+private var homeCache: HomeSnapshot? = null
+
 @Composable
 fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit, onGoTo: (Int) -> Unit) {
-    var summary by remember { mutableStateOf<JSONObject?>(null) }
-    var todo by remember { mutableStateOf<List<Pair<JSONObject, Boolean>>>(emptyList()) } // lesson, started
-    var todayCount by remember { mutableIntStateOf(0) }
-    var loading by remember { mutableStateOf(true) }
+    // What Home showed last time appears at once and is refreshed quietly, so switching back to it never starts from empty.
+    val cached = homeCache?.takeIf { it.token == token }
+    var summary by remember { mutableStateOf<JSONObject?>(cached?.summary) }
+    var todo by remember { mutableStateOf<List<Pair<JSONObject, Boolean>>>(cached?.todo ?: emptyList()) } // lesson, started
+    var todayCount by remember { mutableIntStateOf(cached?.todayCount ?: 0) }
+    var loading by remember { mutableStateOf(cached == null) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(base, token, reload) {
-        loading = true; error = ""
+        if (summary == null) loading = true
+        error = ""
         try {
             val data = JSONObject(homeGet(base, token, "/study-summary"))
             val lessons = JSONArray(homeGet(base, token, "/lessons")).objects()
@@ -62,6 +68,7 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
                 runCatching { JSONObject(homeGet(base, token, "/lessons/${lesson.getLong("id")}/progress")).optInt("section", 0) > 0 }.getOrDefault(false)
             }
             summary = data; todayCount = todays.size; todo = open.zip(started)
+            homeCache = HomeSnapshot(token, data, todays.size, todo)
         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load Home" }
         finally { loading = false }
     }

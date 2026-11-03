@@ -17,6 +17,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+// What the list showed last time, so coming back to it fills in at once and refreshes quietly.
+private var examCache: Pair<String, List<ExamSummary>>? = null
+
 private data class ExamSummary(val id: Long, val createdAt: String, val questionCount: Int, val kind: String, val totalMarks: Int, val title: String)
 
 private suspend fun examMenuRequest(base: String, token: String, path: String, body: JSONObject? = null, method: String = if (body == null) "GET" else "POST"): String = withContext(Dispatchers.IO) {
@@ -57,7 +60,7 @@ private suspend fun loadExamList(base: String, token: String): List<ExamSummary>
 /** Displays exams for an authenticated session. The caller supplies scrolling. */
 @Composable
 fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
-    var exams by remember(base, token) { mutableStateOf<List<ExamSummary>?>(null) }
+    var exams by remember(base, token) { mutableStateOf<List<ExamSummary>?>(examCache?.takeIf { it.first == token }?.second) }
     var error by remember(base, token) { mutableStateOf("") }
     var busy by remember(base, token) { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
@@ -97,8 +100,9 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
     }
 
     suspend fun load() {
-        busy = true; error = ""
-        try { exams = loadExamList(base, token) }
+        if (exams == null) busy = true
+        error = ""
+        try { exams = loadExamList(base, token); exams?.let { examCache = token to it } }
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { error = e.message ?: "Unable to load exams" }
         finally { busy = false }

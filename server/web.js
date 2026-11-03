@@ -28,6 +28,7 @@ const PAGES = ['home', 'lessons', 'reviews', 'exams', 'library', 'settings', 'ac
 const SUBS = ['', 'rapid', 'revision'];
 const place = (page, sub, params) => ({ page: PAGES.indexOf(page), sub: Math.max(0, SUBS.indexOf(sub)), depth: ['subject', 'topic', 'lesson'].filter(key => params.get(key)).length });
 let lastPlace = null;
+let routeId = 0;
 function arrival(now) {
   const was = lastPlace; lastPlace = now;
   if (!was) return [0, 14];
@@ -65,6 +66,8 @@ async function route() {
   if (($('view').querySelector('[data-dirty="true"]') || $('view').querySelector('[data-busy="true"]')) && !confirm('Leave with an unsaved answer or request in progress?')) {
     history.replaceState(null,'','#'+activePage); return;
   }
+  // The same address again is a refresh in place (for example after saving): no entrance animation, scroll position kept.
+  const same = (location.hash.slice(1) || page) === activePage;
   activePage = location.hash.slice(1) || page;
   if (cleanup) { cleanup(); cleanup=null; }
   $('me').classList.toggle('active', page === 'account');
@@ -73,11 +76,20 @@ async function route() {
   });
   placePill();
   $('notice').textContent = '';
-  const container = document.createElement('section'); container.className = 'entering'; $('view').replaceChildren(container);
-  const [ex, ey] = arrival(place(page, sub, params));
+  // The page being left stays on screen, untouched, until the next one has its content; then the two swap in one step. Nothing
+  // blanks or flashes while data loads, and a loading bar only appears if the wait is long.
+  const mine = ++routeId;
+  const container = document.createElement('section'); if (!same) container.className = 'entering'; container.hidden = true;
+  for (const node of $('view').children) if (!node.hidden) node.inert = true;
+  $('view').append(container); $('view').dataset.loading = '1';
+  const [ex, ey] = same ? [0, 0] : arrival(place(page, sub, params));
   container.style.setProperty('--ex', ex + 'px'); container.style.setProperty('--ey', ey + 'px');
   try { const result = await ({home:renderHome,lessons:renderLessons,reviews:renderReviews,exams:renderExams,library:renderLibrary,settings:renderSettings,account:renderAccount}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
   catch(error) { if (container.isConnected) $('notice').textContent = error.message; }
+  if (mine === routeId) {
+    $('view').replaceChildren(container); container.hidden = false; delete $('view').dataset.loading;
+    if (!same) window.scrollTo(0, 0);
+  } else container.remove();
   // The entrance animation belongs to arriving on a page; later refreshes of its lists must not replay it.
   setTimeout(() => container.classList.remove('entering'), 1000);
 }

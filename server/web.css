@@ -382,3 +382,8 @@ button.danger:disabled{opacity:.45}
 .switch-list label.check{display:flex;width:100%}
 .switch-list h3{margin:22px 0 4px}
 .switch-list h3:first-child{margin-top:8px}
+
+/* Switching pages: the old page stays until the new one is ready. A thin bar shows only if that takes longer than a moment. */
+#view>section[hidden]{display:none}
+#view[data-loading]::before{content:'';position:fixed;top:0;left:0;right:0;height:3px;z-index:20;background:linear-gradient(90deg,var(--teal),var(--accent));transform-origin:left;animation:route-load 1.6s var(--ease-out) .5s both}
+@keyframes route-load{from{opacity:0;transform:scaleX(.08)}to{opacity:1;transform:scaleX(.85)}}

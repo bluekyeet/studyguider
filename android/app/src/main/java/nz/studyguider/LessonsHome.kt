@@ -64,12 +64,17 @@ private suspend fun generateLesson(base: String, token: String, topicId: Long, r
     } finally { connection.disconnect() }
 }
 
+private class LessonsSnapshot(val token: String, val courses: List<JSONObject>, val lessons: List<JSONObject>)
+private var lessonsCache: LessonsSnapshot? = null
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit) {
-    var courses by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
-    var lessons by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    // The last list appears at once and is refreshed quietly, so switching back to Lessons never starts from empty.
+    val cached = lessonsCache?.takeIf { it.token == token }
+    var courses by remember { mutableStateOf<List<JSONObject>>(cached?.courses ?: emptyList()) }
+    var lessons by remember { mutableStateOf<List<JSONObject>>(cached?.lessons ?: emptyList()) }
+    var loading by remember { mutableStateOf(cached == null) }
     var generating by remember { mutableStateOf(false) }
     var stage by remember { mutableStateOf("") }
     var picker by remember { mutableStateOf(false) }
@@ -78,12 +83,14 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
     var reload by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(base, token, reload) {
-        loading = true; error = ""
+        if (cached == null && lessons.isEmpty()) loading = true
+        error = ""
         try {
             val c = JSONArray(api(base, token, "/courses"))
             val l = JSONArray(api(base, token, "/lessons"))
             courses = (0 until c.length()).map { c.getJSONObject(it) }
             lessons = (0 until l.length()).map { l.getJSONObject(it) }
+            lessonsCache = LessonsSnapshot(token, courses, lessons)
         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load lessons" }
         finally { loading = false }
     }
