@@ -22,7 +22,21 @@ export const json = (method, body) => ({ method, headers: { 'Content-Type': 'app
 
 // Paper text keeps the PDF's line breaks. Join them back into sentences, but keep
 // blank lines and lines that start a new source credit or sub-part.
-export const reflow = text => String(text || '').replace(/[ \t]*\n(?!\s*\n)(?!\s*(?:Source|\([a-hivx]+\)))/gi, ' ').trim();
+// Paper text comes out of the PDF without subscripts or superscripts ("CH3CH2OH", "mol–1"). This is display only:
+// it never changes what is stored, and it only touches digits after real element symbols and exponents after unit symbols.
+const ELEMENTS = new Set('H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi U'.split(' '));
+const SUB = '₀₁₂₃₄₅₆₇₈₉', SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+const digits = (text, table) => text.replace(/\d/g, d => table[+d]);
+const isGroup = chunk => /^(?:[A-Z][a-z]?\d*)+$/.test(chunk) && [...chunk.matchAll(/[A-Z][a-z]?/g)].every(m => ELEMENTS.has(m[0]));
+const isFormula = chunk => /\d/.test(chunk) && isGroup(chunk);
+const UNITS = 'mol|kJ|kg|mg|cm|dm|mm|nm|Pa|Hz|[smgLJKVNWA]';
+export const scienceText = text => String(text || '')
+  .replace(/\uf0ae/g, '→')
+  .replace(/\(([A-Z][A-Za-z0-9]*)\)(\d+)/g, (all, inner, n) => isGroup(inner) ? `(${inner})${digits(n, SUB)}` : all)
+  .replace(/(?<![A-Za-z0-9])(\d*)([A-Z][A-Za-z0-9]*)/g, (all, coefficient, chunk) => isFormula(chunk) ? coefficient + chunk.replace(/\d+/g, d => digits(d, SUB)) : all)
+  .replace(new RegExp(`(?<![A-Za-z])(${UNITS})\\s?[–−-]\\s?(\\d)(?!\\d)`, 'g'), (all, unit, n) => `${unit}⁻${digits(n, SUP)}`)
+  .replace(/Δr(?=[A-Z])/g, 'Δᵣ');
+export const reflow = text => scienceText(String(text || '').replace(/[ \t]*\n(?!\s*\n)(?!\s*(?:Source|\([a-hivx]+\)))/gi, ' ')).trim();
 // A part's wording often begins with its own label, which is already shown beside it.
 export const withoutLabel = text => String(text || '').replace(/^\s*\([a-hivx]+\)\s*/i, '');
 export const displayLabel = label => !label || label === 'context' ? ''
