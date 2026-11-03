@@ -261,13 +261,15 @@ private fun StudyApp() {
     val scope = rememberCoroutineScope()
     val openTopic = { id: Long, title: String ->
         if (examDirty) { confirmExamExit = true } else scope.launch {
-            selectedTopic = id; topicTitle = title
+            // The files arrive first, so the screen opens already filled instead of showing an empty list that then fills in.
             try {
                 resources = JSONArray(request(base, "/topics/$id/resources", token))
                 resourceRefreshError = ""
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                resources = JSONArray()
                 resourceRefreshError = "Could not load resources: ${e.message ?: "request failed"}"
             }
+            selectedTopic = id; topicTitle = title
         }
         Unit
     }
@@ -279,8 +281,8 @@ private fun StudyApp() {
      */
     fun goBack(): Boolean {
         if (topicSourceId.isNotEmpty()) { topicSourceId = ""; return true }
-        if (selectedTopic != 0L) { selectedTopic = 0; selectedLesson = 0; topicTitle = ""; resources = JSONArray(); return true }
-        if (selected != 0L) { selected = 0; subjectTitle = ""; topics = JSONArray(); return true }
+        if (selectedTopic != 0L) { selectedTopic = 0; selectedLesson = 0; return true }
+        if (selected != 0L) { selected = 0; return true }
         if (tab != 5) { tab = 5; return true }
         return false
     }
@@ -499,8 +501,8 @@ private fun StudyApp() {
                     onOpenTopic = { id, title -> run { resources = JSONArray(request(base, "/topics/$id/resources", token)); selectedTopic = id; topicTitle = title } },
                     onBack = {
                         if (topicSourceId.isNotEmpty()) topicSourceId = ""
-                        else if (selectedTopic != 0L) { selectedTopic = 0; topicTitle = ""; resources = JSONArray() }
-                        else { selected = 0; subjectTitle = ""; topics = JSONArray() }
+                        else if (selectedTopic != 0L) selectedTopic = 0
+                        else selected = 0
                     },
                     onAddSubject = { run {
                         val level = subjectLevel.toIntOrNull()?.takeIf { it in 1..3 } ?: throw IllegalArgumentException("Enter a level from 1 to 3")

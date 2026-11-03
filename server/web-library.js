@@ -143,7 +143,7 @@ async function topics(root, api, subject) {
   root.append(card, note);
 }
 
-function topicView(root, api, subject, topic, params) {
+async function topicView(root, api, subject, topic, params) {
   const tab = TABS.some(([key]) => key === params.get('tab')) ? params.get('tab') : 'files';
   const { wrap, actions } = head(topic.name, `${subject.name} · Level ${subject.level}`, crumbs([
     { label: 'Library', href: libraryUrl() },
@@ -163,13 +163,14 @@ function topicView(root, api, subject, topic, params) {
     tabs.append(a);
   }
   const body = el('div');
-  // Real counts for the topic, filled in as soon as they arrive.
+  // Real counts for the topic. They are waited for, so the page appears whole instead of growing a row a moment later.
   const stats = el('div', '', 'stat-row');
-  Promise.all([api(`/topics/${topic.id}/resources`), api(`/topics/${topic.id}/standards`), api(`/topics/${topic.id}/notes`)]).then(([resources, linked, saved]) => {
+  try {
+    const [resources, linked, saved] = await Promise.all([api(`/topics/${topic.id}/resources`), api(`/topics/${topic.id}/standards`), api(`/topics/${topic.id}/notes`)]);
     for (const [value, name] of [[resources.filter(r => r.status !== 'deleting').length, 'Files'], [linked.length, 'Standards'], [saved.length, 'Notes']]) {
       const stat = el('div', '', 'stat'); stat.append(el('b', String(value)), el('span', name)); stats.append(stat);
     }
-  }).catch(() => {});
+  } catch { /* the counts are optional */ }
   root.append(wrap, removeNote, stats, tabs, body);
   const ctx = { api, subject, topic, params };
   return { files, standards, notes, search }[tab](body, ctx);
