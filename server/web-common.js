@@ -61,6 +61,8 @@ export function readable(text) {
     .replace(/\[?\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b\]?/gi, '')
     .replace(/\[S\d+(?:\s*[,;]\s*S?\d+)*\]/g, '')
     .replace(/\bS\d+\b/g, '')
+    // A citation whose source id was removed leaves only its page behind: "(, p. 1)" or "(, p. 1;, p. 3)".
+    .replace(/[ \t]*[(\[]\s*(?:,?\s*(?:pp?\.|pages?)\s*\d+(?:\s*[-–,]\s*\d+)*\s*;?\s*)+[)\]]/gi, '')
     .replace(/\(\s*\)|\[\s*\]/g, '')
     // Removing a citation can leave a gap before the full stop or comma that followed it.
     .replace(/[ \t]+([.,;:!?])/g, '$1').replace(/[ \t]{2,}/g, ' ');
