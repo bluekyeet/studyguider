@@ -428,13 +428,12 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None):
             db.execute("LOCK TABLE exam_items IN SHARE ROW EXCLUSIVE MODE")
             if not db.execute("SELECT 1 FROM subjects WHERE id = %s FOR KEY SHARE", (body.subject_id,)).fetchone():
                 raise HTTPException(404, "Subject not found")
-            rows = db.execute("""SELECT q.id, q.standard_number, q.marks,
-                COALESCE(MAX(i.exam_id), 0) AS last_used
+            # The latest use is worked out in a subquery because PostgreSQL does not allow FOR KEY SHARE together with GROUP BY.
+            rows = db.execute("""SELECT q.id, q.standard_number, q.marks, COALESCE(u.last_used, 0) AS last_used
                 FROM exam_questions q
                 JOIN topics t ON t.id = q.topic_id
-                LEFT JOIN exam_items i ON i.question_id = q.id
+                LEFT JOIN (SELECT question_id, MAX(exam_id) AS last_used FROM exam_items GROUP BY question_id) u ON u.question_id = q.id
                 WHERE t.subject_id = %s AND q.verified_at IS NOT NULL AND q.source <> 'ai' AND q.parent_id IS NULL
-                GROUP BY q.id
                 ORDER BY last_used ASC, q.id
                 FOR KEY SHARE OF q""", (body.subject_id,)).fetchall()
             if len(rows) < body.question_count:

@@ -45,7 +45,7 @@ def edit(answer, revision=0):
 try:
     with connect() as db:
         db.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
-        for table in ('exam_items', 'exam_answer_scans'):
+        for table in ('exam_items', 'exam_answer_scans', 'rapid_sessions'):
             db.execute(sql.SQL('CREATE TABLE {}.{} (LIKE public.{} INCLUDING ALL)').format(sql.Identifier(schema), sql.Identifier(table), sql.Identifier(table)))
         db.execute(sql.SQL("INSERT INTO {}.exam_items(exam_id,question_id,position,answer) VALUES (7,2,1,'Original')").format(sql.Identifier(schema)))
     with ThreadPoolExecutor(max_workers=2) as workers:
@@ -64,7 +64,7 @@ try:
     print('PASS: competing exam saves yield one success/one 409; lost-result retry cannot double-save; reloaded revision succeeds', results)
 finally:
     with connect() as db:
-        for table in ('exam_answer_scans', 'exam_items'):
+        for table in ('exam_answer_scans', 'exam_items', 'rapid_sessions'):
             db.execute(sql.SQL('DROP TABLE IF EXISTS {}.{}').format(sql.Identifier(schema), sql.Identifier(table)))
         db.execute(sql.SQL('DROP SCHEMA IF EXISTS {}').format(sql.Identifier(schema)))
     print('CLEANUP: disposable exam tables/schema removed')

@@ -90,7 +90,7 @@ with urllib.request.urlopen(urllib.request.Request(f'http://api:8000/resources/{
     assert response.read() == b"hello"
 assert request("GET", f'/topics/{topic["id"]}/resources', token=token)[1][0]["filename"] == "sample.txt"
 wait_for_extraction(topic["id"], resource["id"], token)
-assert request("POST", f'/resources/{resource["id"]}/extract', token=token)[1] == {"status": "extracted", "characters": 5, "warnings": []}
+assert request("POST", f'/resources/{resource["id"]}/extract', token=token)[1] == {"status": "extracted", "characters": 5, "pages": 1, "warnings": []}
 assert request("GET", f'/resources/{resource["id"]}/text', token=token)[1] == {"content": "hello"}
 assert request("GET", f'/resources/{resource["id"]}/pages', token=token)[1] == [{"page": 1, "content": "hello"}]
 assert request("GET", f'/topics/{topic["id"]}/resources', token=token)[1][0]["status"] == "extracted"
@@ -153,14 +153,14 @@ assert request("GET", "/exam-questions")[0] == 401
 assert request("PUT", standard_path, token=token)[0] == 200
 exam_resources = []
 for filename in ("paper.txt", "schedule.txt"):
-    payload = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n\r\noriginal\r\n--{boundary}--\r\n').encode()
+    payload = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n\r\noriginal {filename}\r\n--{boundary}--\r\n').encode()
     upload = urllib.request.Request(f'http://api:8000/topics/{topic["id"]}/resources', data=payload, headers={"Authorization": "Bearer " + token, "Content-Type": "multipart/form-data; boundary=" + boundary}, method="POST")
     with urllib.request.urlopen(upload) as response:
         exam_resources.append(json.load(response)["id"])
 question = {"topic_id": topic["id"], "standard_number": 91170, "year": 2020, "question_number": " 1 ", "paper_resource_id": exam_resources[0], "paper_page": 1, "schedule_resource_id": exam_resources[1], "schedule_page": 2, "verified_against_originals": True}
 assert request("POST", "/exam-questions", {**question, "verified_against_originals": False}, token)[0] == 422
 status, created = request("POST", "/exam-questions", question, token)
-assert status == 201 and created["question_number"] == "1"
+assert status == 201 and created["question_number"] == "1", (status, created)
 assert any(item["id"] == created["id"] for item in request("GET", f'/exam-questions?topic_id={topic["id"]}', token=token)[1])
 question_ids = {created["id"]}
 for number in ("2", "3"):
@@ -189,7 +189,7 @@ for exam in (first, second, third):
 for resource_id in exam_resources:
     assert request("DELETE", f'/resources/{resource_id}', token=token)[0] == 409
     with urllib.request.urlopen(urllib.request.Request(f'http://api:8000/resources/{resource_id}/download', headers={"Authorization": "Bearer " + token})) as response:
-        assert response.read() == b"original"
+        assert response.read().startswith(b"original ")
 assert request("POST", "/logout", token=token)[0] == 200
 assert request("GET", "/subjects", token=token)[0] == 401
 for _ in range(5):
