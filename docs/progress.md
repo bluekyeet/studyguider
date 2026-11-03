@@ -1706,3 +1706,9 @@ From the pasted source review (not a penetration test):
 
 - Cause: `web-exams.js` built JSON requests without `Content-Type: application/json`, so the browser sent `text/plain` and FastAPI rejected the body with a 422 whose detail is a list, shown only as "Request failed (422)". This affected Start exam, exam answer saves and Save & mark on the website, not Android.
 - Fix: the helper now sets the header. Added a test that every website JSON body declares its type, and one that shows text/plain is rejected and application/json accepted. Deployed (the served `web-exams.js` has the header). Not re-run against a signed-in browser session.
+
+## 3 Nov 2026: AI practice "incomplete paper"
+
+- The generator is intermittent: a live run for Mechanics returned a valid 3-question paper, so the failure the user saw was a shape problem in some other reply (the reply itself was not captured, so the exact cause is unknown).
+- Changes (`parse_practice_paper` in `exams.py`): accepts a wrapped list, string marks like "6" and extra questions (dropped, never padded); still rejects too few questions, missing text or rubric, marks outside 1-15. One corrective retry tells the model what was wrong. If that also fails, the error now says why.
+- Checked: 2 new unit tests (suite 222 passed); on the real database with a stub model, a bad first reply then a good one saved a 3-question exam (2 model calls), and two bad replies returned 502 with the reason and saved nothing (rolled back). Not checked: a live failing reply, since I could not reproduce one.

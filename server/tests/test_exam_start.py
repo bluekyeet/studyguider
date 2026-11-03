@@ -18,3 +18,28 @@ def test_boundaries_require_original_review_and_order():
     for change in ({"reviewed_against_original": False}, {"excellence": 25}, {"merit": 8}):
         with pytest.raises(ValidationError):
             ScheduleBoundaries(**(values | change))
+
+
+def _paper(count, **override):
+    import json
+    item = {"question": "A trolley of mass 2.0 kg accelerates at 3.0 m s^-2. Calculate the force.", "rubric": "Achievement: F = ma. Merit: 6.0 N. Excellence: units.", "marks": 4}
+    return json.dumps([{**item, **override} for _ in range(count)])
+
+
+def test_practice_paper_parser_accepts_harmless_variations():
+    import json
+    from exams import parse_practice_paper
+    assert len(parse_practice_paper(_paper(3), 3)) == 3
+    assert len(parse_practice_paper("```json\n" + _paper(2) + "\n```\nextra chatter", 2)) == 2
+    assert len(parse_practice_paper(json.dumps({"questions": json.loads(_paper(3))}), 3)) == 3
+    assert len(parse_practice_paper(_paper(5), 3)) == 3          # extras are dropped, never padded
+    assert parse_practice_paper(_paper(1, marks="6"), 1)[0]["marks"] == 6
+
+
+def test_practice_paper_parser_rejects_bad_papers_and_says_why():
+    import pytest
+    from exams import parse_practice_paper
+    for reply, fragment in ((_paper(2), "2 questions, 3"), ("not json at all", "not valid JSON"), (_paper(3, marks=20), "marks outside"),
+                            (_paper(3, rubric="x"), "usable rubric"), (_paper(3, question=None), "usable question"), ('{"a": 1}', "not a list")):
+        with pytest.raises(ValueError, match=fragment):
+            parse_practice_paper(reply, 3)
