@@ -75,7 +75,8 @@ private fun GradeChip(outcome: String?) {
 }
 
 private fun sourceLine(q: JSONObject) =
-    if (q.optString("source") == "ai") "AI-written question · unofficial" else "Past paper · AS ${q.optInt("standard_number")} · ${q.text("year")}"
+    if (q.optString("source") == "ai") "AI-written question · unofficial"
+    else "Past paper · AS ${q.optInt("standard_number")} · ${q.text("year")}" + q.text("label").let { if (it.isNotEmpty()) " · Question $it" else "" }
 
 private fun displayLabel(label: String): String = when {
     label.isEmpty() || label == "context" -> ""

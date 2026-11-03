@@ -145,6 +145,10 @@ def create_exam_tables(db):
         updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (exam_id, question_id),
         FOREIGN KEY (exam_id, question_id) REFERENCES exam_items(exam_id, question_id) ON DELETE CASCADE)""")
     db.execute("ALTER TABLE exam_items ADD COLUMN IF NOT EXISTS answer_revision integer NOT NULL DEFAULT 0")
+    # Rapid practice splits a paper question into its lettered parts; each part is its own row pointing at the whole question.
+    db.execute("ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS parent_id bigint REFERENCES exam_questions(id) ON DELETE CASCADE")
+    db.execute("ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS split_state text NOT NULL DEFAULT ''")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS exam_questions_part_idx ON exam_questions (parent_id, question_number) WHERE parent_id IS NOT NULL")
     db.execute("ALTER TABLE exam_answer_scans ADD COLUMN IF NOT EXISTS revision integer NOT NULL DEFAULT 1")
 
 
@@ -225,7 +229,7 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None):
     def available_papers(topic_id: int):
         with connect() as db:
             rows = db.execute("""SELECT year, paper_resource_id, standard_number, count(*)
-                FROM exam_questions WHERE topic_id = %s AND source <> 'ai'
+                FROM exam_questions WHERE topic_id = %s AND source <> 'ai' AND parent_id IS NULL
                 GROUP BY year, paper_resource_id, standard_number ORDER BY year DESC""", (topic_id,)).fetchall()
         return [{"year": r[0], "paper_resource_id": r[1], "standard_number": r[2], "question_count": r[3],
                  "notice": "Registered questions only; completeness and human review must be checked against the original."} for r in rows]
@@ -294,7 +298,7 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None):
         with connect() as db:
             if body.mode == "mixed":
                 db.execute("LOCK TABLE exam_items IN SHARE ROW EXCLUSIVE MODE")
-            rows = db.execute("""SELECT id, marks FROM exam_questions WHERE topic_id = %s AND source <> 'ai'
+            rows = db.execute("""SELECT id, marks FROM exam_questions WHERE topic_id = %s AND source <> 'ai' AND parent_id IS NULL
                 AND (%s::integer IS NULL OR year = %s) AND (%s::uuid IS NULL OR paper_resource_id = %s)
                 ORDER BY CASE WHEN %s THEN COALESCE((SELECT max(i.exam_id) FROM exam_items i
                     WHERE i.question_id=exam_questions.id),0) ELSE 0 END,
@@ -429,7 +433,7 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None):
                 FROM exam_questions q
                 JOIN topics t ON t.id = q.topic_id
                 LEFT JOIN exam_items i ON i.question_id = q.id
-                WHERE t.subject_id = %s AND q.verified_at IS NOT NULL AND q.source <> 'ai'
+                WHERE t.subject_id = %s AND q.verified_at IS NOT NULL AND q.source <> 'ai' AND q.parent_id IS NULL
                 GROUP BY q.id
                 ORDER BY last_used ASC, q.id
                 FOR KEY SHARE OF q""", (body.subject_id,)).fetchall()

@@ -8,7 +8,7 @@ const GRADE = { not_achieved: 'Not achieved', achieved: 'Achieved', merit: 'Meri
 const gradeChip = outcome => el('span', GRADE[outcome] || 'Unclear', `chip ${outcome === 'merit' || outcome === 'excellence' ? 'ok' : outcome === 'not_achieved' ? 'warn' : ''}`.trim());
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const minutes = seconds => seconds >= 90 ? `${Math.round(seconds / 60)} min` : `${seconds} s`;
-const sourceLine = q => q.source === 'ai' ? 'AI-written question · unofficial' : `Past paper · AS ${q.standard_number} · ${q.year}`;
+const sourceLine = q => q.source === 'ai' ? 'AI-written question · unofficial' : `Past paper · AS ${q.standard_number} · ${q.year}${q.label ? ` · Question ${q.label}` : ''}`;
 const link = (text, href) => { const a = el('a', text, 'button'); a.href = href; return a; };
 const sourceLinks = item => {
   const row = el('div', '', 'toolbar');

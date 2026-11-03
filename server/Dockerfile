@@ -22,7 +22,7 @@ COPY styles.py .
 COPY pages.py .
 COPY paper_parser.py paper_import.py ./
 COPY lesson_quality.py .
-COPY rapid.py rapid_state.py ./
+COPY rapid.py rapid_state.py splitting.py ./
 COPY check_formula.cjs .
 COPY --from=katex_assets / /app/katex/
 ENV KATEX_ASSET_DIR=/app/katex

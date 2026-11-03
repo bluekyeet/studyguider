@@ -601,7 +601,7 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                 raise HTTPException(404, "Exam not found")
             if len({(r[0], r[1], r[2]) for r in rows}) != 1 or any(r[3] is None or not r[8] for r in rows):
                 return {"outcome": "uncertain", "reason": "Requires a complete single-year standard paper, all questions marked, and reviewed schedule boundaries. Mixed/AI practice has no official cut score."}
-            all_ids = db.execute("SELECT id FROM exam_questions WHERE standard_number=%s AND year=%s AND schedule_resource_id=%s AND source <> 'ai'", rows[0][:3]).fetchall()
+            all_ids = db.execute("SELECT id FROM exam_questions WHERE standard_number=%s AND year=%s AND schedule_resource_id=%s AND source <> 'ai' AND parent_id IS NULL", rows[0][:3]).fetchall()
             if {r[0] for r in all_ids} != {r[9] for r in rows} or sum(r[8]["marks_available"] for r in rows) != rows[0][6]:
                 return {"outcome": "uncertain", "reason": "Registered paper coverage or schedule total does not match. Check originals."}
         total = sum(r[8]["marks_awarded"] for r in rows)

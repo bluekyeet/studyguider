@@ -19,6 +19,7 @@ from psycopg import sql
 
 import app
 import rapid
+import splitting
 from exams import exam_router
 from marking import marking_router
 from rapid import RapidMove, RapidStart, rapid_router
@@ -59,6 +60,10 @@ def model(name, messages, task="general"):
             items.append({"question": f"{'BAD ' if n == 2 else ''}AI practice question number {n}: calculate the force on a 2.0 kg trolley.",
                           "rubric": "Achievement: F = ma. Merit: 6.0 N. Excellence: units and reasoning.", "marks": 4})
         return json.dumps(items)
+    if task == "rapid-split":
+        return json.dumps({"units": [
+            {"label": "a", "context": "A trolley of mass 2.0 kg is pushed.", "question": "Find the force on the trolley.", "marks": 2, "schedule": "", "needs_figure": False},
+            {"label": "b", "context": "A trolley of mass 2.0 kg is pushed.", "question": "State what happens when the push stops.", "marks": 1, "schedule": "", "needs_figure": False}]})
     if task == "rapid-review":
         question = json.loads(messages[1]["content"])["question"]
         return json.dumps({"pass": "BAD" not in question, "issues": ["ambiguous"] if "BAD" in question else []})
@@ -80,6 +85,12 @@ def seed():
             questions.append(db.execute("""INSERT INTO exam_questions (topic_id, standard_number, year, question_number, paper_page, schedule_page,
                 marks, question_text, schedule_text, source) VALUES (%s, 99901, %s, %s, 1, 1, 1, %s, %s, 'pdf-layout') RETURNING id""",
                 (topic, 2020 + n, str(n), f"Bank question {n}: find the acceleration.", RUBRIC)).fetchone()[0])
+        db.execute("UPDATE exam_questions SET split_state = 'single' WHERE source = 'pdf-layout'")
+        db.execute("""INSERT INTO exam_questions (topic_id, standard_number, year, question_number, paper_page, schedule_page,
+            marks, parts, question_text, schedule_text, source) VALUES (%s, 99901, 2030, '9', 1, 1, 3, %s::jsonb, %s, %s, 'pdf-layout')""",
+                   (topic, json.dumps([{"label": "a", "marks": 2}, {"label": "b", "marks": 1}]),
+                    "QUESTION NINE\nA trolley of mass 2.0 kg is pushed.\n(a)\nFind the force on the trolley.\n(b)\nState what happens when the push stops.\n"
+                    "3\nPhysics 91170, 2030\nASSESSOR’S\nUSE ONLY", RUBRIC))
     return topic, questions
 
 
@@ -243,6 +254,37 @@ async def main():
         refuses(lambda: results(s6["id"]), "results while open")
         end(s6["id"])
         print("PASS results refused until the session ends")
+
+        # 8. A multi-part paper question is served one part at a time, each with its own context; the whole question is not.
+        # Starting any session already queued the split in the background; wait for it, then run it again by hand.
+        def split_done():
+            with isolated() as db:
+                return db.execute("SELECT split_state FROM exam_questions WHERE question_number = '9' AND parent_id IS NULL").fetchone()[0] == "done"
+        wait(split_done, "the background split")
+        with isolated() as db:
+            parent = db.execute("SELECT id, split_state FROM exam_questions WHERE question_number = '9' AND parent_id IS NULL").fetchone()
+            kids = db.execute("SELECT question_number, question_text, marks, year, source, verified_at FROM exam_questions WHERE parent_id = %s ORDER BY id", (parent[0],)).fetchall()
+            assert parent[1] == "done" and [k[0] for k in kids] == ["9 a", "9 b"], (parent, kids)
+            assert kids[0][1] == "A trolley of mass 2.0 kg is pushed.\n\nFind the force on the trolley." and kids[0][2] == 2 and kids[0][3] == 2030 and kids[0][4] == "part" and kids[0][5] is None
+            assert "ASSESSOR" not in kids[1][1] and "Find the force" not in kids[1][1]          # part b shows only its own question
+            assert splitting.split_pending(isolated, model, topic)["checked"] == 0                 # nothing left, and a rerun adds nothing
+            assert db.execute("SELECT count(*) FROM exam_questions WHERE parent_id = %s", (parent[0],)).fetchone()[0] == 2
+            papers = endpoint(exams, "/exam-papers", "GET")(topic)
+            assert sum(p["question_count"] for p in papers) == 5, papers                           # four singles + the whole question 9; no parts
+        s8 = start(RapidStart(topic_id=topic, source="past", count=None))
+        seen, labels, current = [], [], s8["question"]
+        while current:
+            seen.append(current["question_id"])
+            labels.append(current.get("label"))
+            reply = nxt(s8["id"], RapidMove(question_id=current["question_id"], answer="RIGHT"))
+            current = reply.get("question")
+            if not current:
+                break
+        assert parent[0] not in seen, "the whole split question must not be served"
+        assert sorted(l for l in labels if l) == ["9 a", "9 b"], labels
+        assert len(seen) == 6, seen                      # 4 single questions + 2 parts
+        end(s8["id"])
+        print("PASS a split question is served as its parts (own context, label, marks); the whole question and a rerun add nothing")
 
 
 try:

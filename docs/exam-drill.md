@@ -51,6 +51,26 @@ original paper page, schedule page and schedule text. All came from machine rout
 import 36, parsed 18) and none is recorded as human-reviewed, so the player shows "check against the original"
 links after the session, never "verified". Questions you have not seen come first, then the least recently seen.
 
+### 4.1a Parts, not whole questions
+
+An NCEA question is several parts (a), (b), (c)(i), (c)(ii). Some share a set-up and some stand alone, so serving
+the whole question is too much for a rapid session. Each paper question is split into its parts
+(`server/splitting.py`). A part is stored as its own `exam_questions` row (`source = 'part'`, `parent_id` pointing at the
+whole question, label such as `1 d(ii)`), holding:
+
+- only the context that part needs: the shared introduction, the lead-in shared by sub-parts, and, when a part relies on an
+  earlier part, that part's wording prefixed `Earlier part (b):`; a self-contained part has no context;
+- its own question text, its marks, and its own section of the marking schedule (or the whole schedule if it could not be isolated);
+- the figures only if the part refers to a diagram, graph or table.
+
+The model only chooses where to cut. Every word of a part must appear in the paper text (a 92% word check; page furniture
+such as page numbers and "ASSESSOR'S USE ONLY" is stripped), and a schedule excerpt must come from the schedule text (85%),
+otherwise the excerpt is dropped and the whole schedule is used. A split that fails the check is retried once and then
+left whole. Gateway errors do not count as failures: the question stays waiting and the next run tries again.
+Splitting runs in the background (and starts again whenever a rapid session starts); `POST /rapid/split` runs it for one topic or all,
+and `GET /rapid/split` shows how many are waiting, split, single, failed. Questions waiting to be split are not served. Classic exam
+papers, the monthly selection and the paper totals ignore parts.
+
 ### 4.2 AI-generated questions, prepared ahead
 
 - When a session starts, the server begins generating questions for the topic and keeps **a buffer of about six

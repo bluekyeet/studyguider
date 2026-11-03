@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 import rapid_state
+import splitting
 from exams import PRACTICE_SYSTEM, parse_practice_paper
 
 log = logging.getLogger("uvicorn.error")
@@ -26,6 +27,8 @@ MARK_RETRIES = 3
 
 MARKERS = ThreadPoolExecutor(max_workers=3, thread_name_prefix="rapid-mark")
 GENERATORS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rapid-gen")
+SPLITTERS = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rapid-split")
+_splitting = set()      # topic ids (0 = all) with a split run going
 _lock = threading.Lock()
 _inflight = set()       # (exam_id, question_id) being marked
 _attempts = {}          # (exam_id, question_id) -> failed marking attempts
@@ -95,7 +98,7 @@ def _text_sql(alias="q"):
 def _payload(db, exam_id, question_id):
     """What the learner may see while answering: no schedule, rubric or marks."""
     row = db.execute(f"""SELECT q.id, i.position, q.source, q.standard_number, q.year, q.parts, {_text_sql()},
-            q.figure_pages, q.paper_resource_id, q.paper_page
+            q.figure_pages, q.paper_resource_id, q.paper_page, q.parent_id, q.question_number
         FROM exam_items i JOIN exam_questions q ON q.id = i.question_id
         LEFT JOIN resource_pages page ON page.resource_id = q.paper_resource_id AND page.page = q.paper_page
         WHERE i.exam_id = %s AND i.question_id = %s""", (exam_id, question_id)).fetchone()
@@ -105,7 +108,8 @@ def _payload(db, exam_id, question_id):
     return {"question_id": row[0], "position": row[1], "source": "ai" if ai else "past",
             "standard_number": row[3], "year": None if ai else row[4], "parts": row[5],
             "question_text": row[6][:30000], "figure_pages": row[7],
-            "paper_resource_id": None if ai or not row[8] else str(row[8]), "paper_page": None if ai else row[9]}
+            "paper_resource_id": None if ai or not row[8] else str(row[8]), "paper_page": None if ai else row[9],
+            "label": row[11] if row[10] else None}
 
 
 def _current(db, exam_id):
@@ -114,10 +118,14 @@ def _current(db, exam_id):
 
 
 def _bank_pick(db, exam_id, topic_id):
+    # One part at a time: lettered parts of a split question, or a question that has no parts. A question that is still
+    # waiting to be split is skipped, and so is the whole of one that was split (its parts stand in for it).
+    # Least recently seen first; the order inside that is stable for a session but differs between sessions.
     row = db.execute("""SELECT q.id FROM exam_questions q WHERE q.topic_id = %s AND q.source <> 'ai'
+        AND (q.parent_id IS NOT NULL OR q.split_state IN ('single', 'failed'))
         AND NOT EXISTS (SELECT 1 FROM exam_items i WHERE i.exam_id = %s AND i.question_id = q.id)
-        ORDER BY COALESCE((SELECT max(i.exam_id) FROM exam_items i WHERE i.question_id = q.id), 0), q.year DESC, q.paper_page, q.id
-        LIMIT 1""", (topic_id, exam_id)).fetchone()
+        ORDER BY COALESCE((SELECT max(i.exam_id) FROM exam_items i WHERE i.question_id = q.id), 0), md5(q.id::text || %s::text)
+        LIMIT 1""", (topic_id, exam_id, str(exam_id))).fetchone()
     return row[0] if row else None
 
 
@@ -338,6 +346,42 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
         return row
 
     # ---- sessions ------------------------------------------------------------------------------
+    def kick_split(topic_id=None):
+        """Split paper questions into parts in the background; one run per topic at a time."""
+        if model_reply is None:
+            return False
+        key = topic_id or 0
+        with _lock:
+            if key in _splitting or 0 in _splitting:
+                return False
+            _splitting.add(key)
+
+        def run():
+            try:
+                log.info("Rapid split finished: %s", splitting.split_pending(connect, model_reply, topic_id))
+            except Exception as error:
+                log.warning("Rapid split failed: %s", getattr(error, "detail", error))
+            finally:
+                with _lock:
+                    _splitting.discard(key)
+        SPLITTERS.submit(run)
+        return True
+
+    @router.post("/rapid/split", status_code=202)
+    def split_questions(topic_id: int | None = None):
+        """Split past-paper questions into their lettered parts (all topics, or one). Runs in the background."""
+        with connect() as db:
+            waiting = len(splitting.pending(db, topic_id, 100000))
+        return {"waiting": waiting, "started": kick_split(topic_id) if waiting else False}
+
+    @router.get("/rapid/split")
+    def split_status():
+        with connect() as db:
+            rows = db.execute("""SELECT split_state, count(*) FROM exam_questions WHERE parent_id IS NULL AND source <> 'ai' GROUP BY 1""").fetchall()
+            parts = db.execute("SELECT count(*) FROM exam_questions WHERE parent_id IS NOT NULL").fetchone()[0]
+        names = {"": "waiting", "done": "split", "single": "single", "failed": "failed"}
+        return {**{names.get(r[0], r[0]): r[1] for r in rows}, "parts": parts, "running": bool(_splitting)}
+
     @router.post("/rapid", status_code=201)
     def start(body: RapidStart):
         with connect() as db:
@@ -356,6 +400,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                       AND NOT EXISTS (SELECT 1 FROM rapid_queue r WHERE r.question_id = q.id)
                     ORDER BY q.id LIMIT %s""", (exam_id, body.topic_id, BUFFER_TARGET))
             first = _advance(db, exam_id, body.topic_id, body.source, body.count)
+            if body.source != "ai":
+                kick_split(body.topic_id)     # questions added since the last run become available shortly
             if isinstance(first, str):
                 raise HTTPException(409, "There are no questions for this topic yet" if body.source != "revision" else "Nothing to revise for this topic")
             question = _payload(db, exam_id, first)
@@ -441,7 +487,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                 raise HTTPException(409, "Results are hidden until you end the session")
             rows = db.execute(f"""SELECT i.position, q.id, q.source, q.standard_number, q.year, q.parts, {_text_sql()}, q.figure_pages,
                     q.paper_resource_id, q.paper_page, q.schedule_resource_id, q.schedule_page, q.schedule_text, i.answer,
-                    r.skipped, r.seconds_spent
+                    r.skipped, r.seconds_spent, q.parent_id, q.question_number
                 FROM rapid_items r JOIN exam_items i ON i.exam_id = r.exam_id AND i.question_id = r.question_id
                 JOIN exam_questions q ON q.id = r.question_id
                 LEFT JOIN resource_pages page ON page.resource_id = q.paper_resource_id AND page.page = q.paper_page
@@ -460,7 +506,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                     "paper_resource_id": None if ai or not row[8] else str(row[8]), "paper_page": None if ai else row[9],
                     "schedule_resource_id": None if ai or not row[10] else str(row[10]), "schedule_page": None if ai else row[11],
                     "schedule_text": row[12][:6000], "rubric_type": "AI-written rubric, unofficial" if ai else "registered schedule (machine-extracted)",
-                    "answer": row[13] or "", "seconds": row[15]}
+                    "answer": row[13] or "", "seconds": row[15], "label": row[17] if row[16] else None}
             result = marks.get(row[1])
             if row[14]:
                 item.update(status="skipped", outcome="not_achieved", missed=True); breakdown["skipped"] += 1
@@ -515,7 +561,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             rows = db.execute(f"""SELECT r.question_id, r.topic_id, t.name, s.name, q.standard_number, q.year, q.source, {_text_sql()}, q.parts,
                     r.attempts, r.first_missed_at, r.last_attempt_at, r.resolved_at, i.answer, q.schedule_text, q.schedule_resource_id, q.schedule_page,
                     q.paper_resource_id, q.paper_page, (SELECT m.result->>'feedback' FROM markings m WHERE m.exam_id = r.last_exam_id
-                        AND m.question_id = r.question_id AND m.kind = 'first' ORDER BY m.id DESC LIMIT 1)
+                        AND m.question_id = r.question_id AND m.kind = 'first' ORDER BY m.id DESC LIMIT 1),
+                    q.parent_id, q.question_number
                 FROM exam_revision r JOIN exam_questions q ON q.id = r.question_id JOIN topics t ON t.id = r.topic_id JOIN subjects s ON s.id = t.subject_id
                 LEFT JOIN resource_pages page ON page.resource_id = q.paper_resource_id AND page.page = q.paper_page
                 LEFT JOIN exam_items i ON i.exam_id = r.last_exam_id AND i.question_id = r.question_id
@@ -523,11 +570,12 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                 ORDER BY r.resolved_at IS NOT NULL, r.last_attempt_at DESC""", (topic_id, topic_id, include_resolved)).fetchall()
         keys = ("question_id", "topic_id", "topic", "subject", "standard_number", "year", "source", "question_text", "parts", "attempts",
                 "first_missed_at", "last_attempt_at", "resolved_at", "your_answer", "schedule_text", "schedule_resource_id", "schedule_page",
-                "paper_resource_id", "paper_page", "feedback")
+                "paper_resource_id", "paper_page", "feedback", "parent_id", "question_number")
         out = []
         for row in rows:
             item = dict(zip(keys, row))
             ai = item["source"] == "ai"
+            item["label"] = item.pop("question_number") if item.pop("parent_id") else None
             item.update(source="ai" if ai else "past", year=None if ai else item["year"], question_text=(item["question_text"] or "")[:30000],
                         schedule_text=(item["schedule_text"] or "")[:6000], your_answer=item["your_answer"] or "",
                         schedule_resource_id=None if ai or not item["schedule_resource_id"] else str(item["schedule_resource_id"]),

@@ -1342,7 +1342,7 @@ _marking = marking_router(connect, authorised, model_reply, model_reply_vision)
 app.include_router(_marking)
 # Rapid sessions mark answers in the background by calling the same marking route function.
 _mark_answer = next(r.endpoint for r in _marking.routes if r.path == "/exams/{exam_id}/answers/{question_id}/feedback" and "POST" in r.methods)
-app.include_router(rapid_router(connect, authorised, model_reply, lambda topic, query: search_resources(topic, query), _mark_answer))
+app.include_router(rapid_router(connect, authorised, model_reply_reliable, lambda topic, query: search_resources(topic, query), _mark_answer))
 app.include_router(explain_router(connect, authorised, model_reply, model_reply_stream))
 app.include_router(review_generation_router(authorised, model_reply, search_resources, connect))
 
