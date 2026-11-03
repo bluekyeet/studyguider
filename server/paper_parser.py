@@ -143,6 +143,28 @@ def schedule_sections(document):
     return sections
 
 
+def drawing_regions(page):
+    """Boxes around the vector drawings on a page (graphs, diagrams), without the page's own furniture.
+
+    NCEA papers print a decorative pattern along one edge and ruled answer lines across the page. Clustering them with
+    the real drawings joins everything into one page-sized box, which the size filter then discards, so a graph drawn as
+    vectors was never found. Leave out thin full-width lines and anything inside the outer tenth of the page's width."""
+    width, height = page.rect.width, page.rect.height
+    kept = []
+    for drawing in page.get_drawings():
+        box = drawing["rect"]
+        if box.height <= 1.5 and box.width > width * 0.7:
+            continue
+        if box.x1 < width * 0.1 or box.x0 > width * 0.9:
+            continue
+        if box.width > width * 0.9 and box.height > height * 0.9:
+            continue
+        if drawing.get("type") == "f" and len(drawing.get("items", ())) >= 20:
+            continue    # the decorative edge pattern is made of large many-segment filled shapes that cross into the page
+        kept.append(drawing)
+    return list(page.cluster_drawings(drawings=kept, x_tolerance=20, y_tolerance=20))
+
+
 def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
     identity = file_identity(filenames[0] if filenames else Path(paper_path).name)
     other = file_identity(filenames[1] if filenames else Path(schedule_path).name)
@@ -167,7 +189,7 @@ def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
             q["diagram_regions"] = []
             for number in q["pages"]:
                 page = paper[number - 1]
-                regions = [fitz.Rect(image["bbox"]) for image in page.get_image_info()] + list(page.cluster_drawings())
+                regions = [fitz.Rect(image["bbox"]) for image in page.get_image_info()] + drawing_regions(page)
                 for region in regions:
                     if region.width > 45 and region.height > 35 and region.get_area() < page.rect.get_area() * .7:
                         box = [max(0, region.x0 - 8), max(0, region.y0 - 8), min(page.rect.width, region.x1 + 8), min(page.rect.height, region.y1 + 8)]

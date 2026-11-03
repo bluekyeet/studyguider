@@ -34,7 +34,7 @@ def import_topic_papers(connect, topic_id):
         with connect() as db:
             if not db.execute("SELECT pg_try_advisory_xact_lock(hashtext(%s))", (str(paper_id),)).fetchone()[0]:
                 continue
-            prior = db.execute("SELECT status, detail FROM paper_import_runs WHERE paper_id=%s AND schedule_id=%s AND parser_version=4", (paper_id, schedule_id)).fetchone()
+            prior = db.execute("SELECT status, detail FROM paper_import_runs WHERE paper_id=%s AND schedule_id=%s AND parser_version=5", (paper_id, schedule_id)).fetchone()
             if prior and prior[0] == 'imported':
                 results.append({"standard": standard, "year": year, "status": prior[0], "detail": prior[1]})
                 continue
@@ -58,10 +58,17 @@ def import_topic_papers(connect, topic_id):
                                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
                                     (standard, year, schedule_id, page_index + 1, boundaries['achieved'], boundaries['merit'], boundaries['excellence'], boundaries['total'], boundaries['quote']))
                     for q in parsed['questions']:
-                        db.execute("""UPDATE exam_questions SET parts=%s::jsonb
-                            WHERE paper_resource_id=%s AND question_number=%s AND source='pdf-layout'
-                            AND NOT EXISTS (SELECT 1 FROM exam_items WHERE question_id=exam_questions.id)""",
-                            (json.dumps(q['parts']), paper_id, q['question_number']))
+                        # A re-read refreshes the parts (their wording and diagram positions). A question already in an exam only
+                        # takes it when it has the same labelled parts, so saved answers still line up; the restored
+                        # maths for the old wording is dropped so it is read again.
+                        labels = [part.get('label') for part in q['parts']]
+                        for question_id, old_parts, used in db.execute("""SELECT id, parts, EXISTS (SELECT 1 FROM exam_items WHERE question_id=exam_questions.id)
+                                FROM exam_questions WHERE paper_resource_id=%s AND question_number=%s AND source='pdf-layout'""",
+                                                                    (paper_id, q['question_number'])).fetchall():
+                            if used and [part.get('label') for part in (old_parts or [])] != labels:
+                                continue
+                            db.execute("UPDATE exam_questions SET parts=%s::jsonb, math_state='', math_display=NULL WHERE id=%s",
+                                       (json.dumps(q['parts']), question_id))
                         db.execute("""INSERT INTO exam_questions
                             (topic_id,standard_number,year,question_number,paper_resource_id,paper_page,
                              schedule_resource_id,schedule_page,marks,parts,question_text,schedule_text,figure_pages,source,verified_at)
@@ -72,9 +79,9 @@ def import_topic_papers(connect, topic_id):
                              json.dumps(q['pages']), paper_id, q['question_number']))
             except (OSError, RuntimeError, ValueError) as exc:
                 status, detail = 'needs_attention', type(exc).__name__ + ': PDF could not be parsed safely'
-            db.execute("""INSERT INTO paper_import_runs (paper_id,schedule_id,status,detail,parser_version) VALUES (%s,%s,%s,%s,4)
+            db.execute("""INSERT INTO paper_import_runs (paper_id,schedule_id,status,detail,parser_version) VALUES (%s,%s,%s,%s,5)
                 ON CONFLICT (paper_id) DO UPDATE SET schedule_id=EXCLUDED.schedule_id,status=EXCLUDED.status,
-                detail=EXCLUDED.detail,parser_version=4,updated_at=now()""", (paper_id, schedule_id, status, detail))
+                detail=EXCLUDED.detail,parser_version=5,updated_at=now()""", (paper_id, schedule_id, status, detail))
             results.append({"standard": standard, "year": year, "status": status, "detail": detail})
     return results
 

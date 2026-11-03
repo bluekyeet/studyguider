@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pymupdf
 import userspace
+from paper_parser import drawing_regions
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
@@ -52,7 +53,7 @@ def page_router(connect, authorised):
                     raise HTTPException(404, "Page not found")
                 source = document[page - 1]
                 regions = [pymupdf.Rect(item["bbox"]) for item in source.get_image_info()]
-                regions += list(source.cluster_drawings())
+                regions += drawing_regions(source)
                 # ponytail: geometric extraction, not semantic association; original page remains authoritative.
                 regions = [r for r in regions if r.width >= 45 and r.height >= 35 and r.get_area() < source.rect.get_area() * 0.7]
                 return {"regions": [{"x0": max(0, r.x0 - 8), "y0": max(0, r.y0 - 8), "x1": min(source.rect.width, r.x1 + 8), "y1": min(source.rect.height, r.y1 + 8)} for r in regions[:20]], "notice": "Automatically located diagram regions; check labels against the original page"}
