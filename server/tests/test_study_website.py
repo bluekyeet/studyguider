@@ -53,3 +53,17 @@ def test_a_text_plain_json_body_is_rejected_which_is_why_the_header_matters():
     client = TestClient(app)
     assert client.post("/x", content='{"topic_id": 1}', headers={"Content-Type": "text/plain;charset=UTF-8"}).status_code == 422
     assert client.post("/x", content='{"topic_id": 1}', headers={"Content-Type": "application/json"}).status_code == 200
+
+
+def test_dockerfile_copies_every_server_module():
+    """The image copies modules one by one; a new module that is not listed only fails once deployed."""
+    from pathlib import Path
+
+    server = Path(__file__).resolve().parents[1]
+    dockerfile = (server / "Dockerfile").read_text(encoding="utf-8")
+    copied = set()
+    for line in dockerfile.splitlines():
+        if line.startswith("COPY ") and "--from" not in line:
+            copied.update(token for token in line.split()[1:-1])
+    missing = [path.name for path in server.glob("*.py") if path.name not in copied]
+    assert not missing, f"Add to the Dockerfile: {missing}"

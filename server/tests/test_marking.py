@@ -54,6 +54,8 @@ class DB:
         pass
 
     def execute(self, sql, params=()):
+        if "FROM rapid_sessions" in sql:
+            return Result()   # an ordinary exam, not a rapid session
         if "SELECT answer FROM exam_items" in sql:
             return Result((self.row[0],) if self.row else None)
         if "SELECT revision, confirmed FROM exam_answer_scans" in sql:

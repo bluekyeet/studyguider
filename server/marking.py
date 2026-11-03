@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import io
+from rapid_state import refuse_if_blind
 from PIL import Image, UnidentifiedImageError
 from typing import Literal
 
@@ -409,6 +410,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
 
     @router.post("/exams/{exam_id}/answers/{question_id}/feedback")
     def answer_feedback(exam_id: int, question_id: int, request: ReviewRequest = ReviewRequest()):
+        with connect() as db:
+            refuse_if_blind(db, exam_id)
         row, style = load(exam_id, question_id)
         if not row[0] or not row[0].strip():
             raise HTTPException(422, "An answer is required")
@@ -531,6 +534,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
     @router.get("/exams/{exam_id}/answers/{question_id}/feedback")
     def get_feedback(exam_id: int, question_id: int):
         with connect() as db:
+            refuse_if_blind(db, exam_id)
+        with connect() as db:
             rows = db.execute("""SELECT DISTINCT ON (m.kind) m.kind, m.result FROM markings m
                 JOIN exam_items i ON i.exam_id=m.exam_id AND i.question_id=m.question_id
                 LEFT JOIN exam_answer_scans s ON s.exam_id=i.exam_id AND s.question_id=i.question_id
@@ -548,6 +553,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
     @router.get("/exams/{exam_id}/answers/{question_id}/override")
     def get_override(exam_id: int, question_id: int):
         with connect() as db:
+            refuse_if_blind(db, exam_id)
+        with connect() as db:
             if not db.execute("SELECT 1 FROM exam_items WHERE exam_id = %s AND question_id = %s", (exam_id, question_id)).fetchone():
                 raise HTTPException(404, "Exam question not found")
             row = db.execute("SELECT outcome, note FROM marking_overrides WHERE exam_id = %s AND question_id = %s", (exam_id, question_id)).fetchone()
@@ -555,6 +562,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
 
     @router.put("/exams/{exam_id}/answers/{question_id}/override")
     def override(exam_id: int, question_id: int, body: OverrideRequest):
+        with connect() as db:
+            refuse_if_blind(db, exam_id)
         with connect() as db:
             if not db.execute("SELECT 1 FROM exam_items WHERE exam_id = %s AND question_id = %s", (exam_id, question_id)).fetchone():
                 raise HTTPException(404, "Exam question not found")
@@ -568,6 +577,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
 
     @router.get("/exams/{exam_id}/schedule-grade")
     def schedule_grade(exam_id: int):
+        with connect() as db:
+            refuse_if_blind(db, exam_id)
         with connect() as db:
             rows = db.execute("""SELECT q.standard_number, q.year, q.schedule_resource_id,
                 r.achieved, r.merit, r.excellence, r.total, r.quote,
@@ -595,6 +606,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
 
     @router.get("/exams/{exam_id}/marks")
     def exam_marks(exam_id: int):
+        with connect() as db:
+            refuse_if_blind(db, exam_id)
         with connect() as db:
             exam = db.execute("SELECT total_marks FROM exams WHERE id = %s", (exam_id,)).fetchone()
             if not exam:
