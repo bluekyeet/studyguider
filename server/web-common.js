@@ -6,7 +6,13 @@ const el = (tag, text, className) => {
   return node;
 };
 
+// Models often double the backslash before a command or spacing (text, frac, comma), which LaTeX reads as a line break and wraps the formula.
+// Same rule as the Android app: repair only known commands and spacing, never a row break between matrix or aligned rows.
+const DOUBLED = /\\\\(?=(?:text|mathrm|mathbf|vec|frac|tfrac|sqrt|ce)\b|[,;!])/g;
+export const repairEscapes = source => source.replace(DOUBLED, '\\');
+
 function renderMath(source, display) {
+  source = repairEscapes(source);
   const holder = el('span', undefined, display ? 'math-display' : 'math-inline');
   if (window.katex) {
     try { window.katex.render(source, holder, { displayMode: display, throwOnError: true, trust: false, maxExpand: 1000 }); return holder; }
