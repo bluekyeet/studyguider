@@ -361,3 +361,13 @@ button[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-soft-te
 .who{display:inline-flex;align-items:center;gap:10px}
 button.danger{background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger)}
 button.danger:disabled{opacity:.45}
+
+/* form fields: label above a full-width control, whatever the control's natural width */
+.fields>label{display:flex;flex-direction:column;gap:6px}
+.fields>label>:is(select,input,textarea){width:100%;font-weight:400}
+.fields{margin-bottom:6px}
+/* settings topic switches: one per row with even spacing */
+.switch-list{display:flex;flex-direction:column}
+.switch-list label.check{display:flex;width:100%}
+.switch-list h3{margin:22px 0 4px}
+.switch-list h3:first-child{margin-top:8px}

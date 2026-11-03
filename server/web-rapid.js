@@ -59,9 +59,9 @@ export async function renderRapid(container, api) {
     stop();
     const form = el('form', '', 'card stack');
     const subject = el('select'), topic = el('select'), source = el('select'), length = el('select');
-    option(source, 'mix', 'Mix of past-paper and AI questions');
-    option(source, 'past', 'Past-paper questions only');
-    option(source, 'ai', 'AI-generated questions only');
+    option(source, 'mix', 'Past-paper and AI mix');
+    option(source, 'past', 'Past papers only');
+    option(source, 'ai', 'AI-written only');
     for (const n of [10, 20, 30, 50]) option(length, n, `${n} questions`);
     option(length, 'unlimited', 'Unlimited, until I end the session');
     const fields = el('div', '', 'fields');
