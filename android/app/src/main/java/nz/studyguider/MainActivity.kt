@@ -1455,7 +1455,7 @@ private fun ResourceHub(
                 (fadeIn(tween(300, delayMillis = 70, easing = Motion.easeOut)) + slideInHorizontally(tween(380, easing = Motion.easeOut)) { it / 9 * direction })
                     .togetherWith(fadeOut(tween(160)) + slideOutHorizontally(tween(300, easing = Motion.easeOut)) { -it / 9 * direction })
             },
-        ) { shown -> when {
+        ) { shown -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) { when {
             shown == 0 -> {
                 Text("Resource Hub", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                 Text("Choose a subject to explore its topics and resources.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1512,6 +1512,6 @@ private fun ResourceHub(
                 if (refreshError.isNotEmpty()) Text(refreshError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 TopicFiles(resources, busy, uploadNotice, onUpload, onRefresh, onExtract, onOpenPdf, onDelete)
             }
-        } }
+        } } }
     }
 }
