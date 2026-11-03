@@ -21,6 +21,24 @@ async function api(path, options={}) {
 let ready = false;
 let activePage = '';
 let cleanup = null;
+// Where each page sits, so a page entered from further down the menu arrives from below and one from above arrives from above.
+// On a phone the menu runs sideways, so the same order becomes left and right. Going deeper in a page (a topic, a lesson) or to a
+// later tab arrives from the right; going back arrives from the left.
+const PAGES = ['home', 'lessons', 'reviews', 'exams', 'library', 'settings', 'account'];
+const SUBS = ['', 'rapid', 'revision'];
+const place = (page, sub, params) => ({ page: PAGES.indexOf(page), sub: Math.max(0, SUBS.indexOf(sub)), depth: ['subject', 'topic', 'lesson'].filter(key => params.get(key)).length });
+let lastPlace = null;
+function arrival(now) {
+  const was = lastPlace; lastPlace = now;
+  if (!was) return [0, 14];
+  const sign = n => n > 0 ? 1 : n < 0 ? -1 : 0;
+  if (now.page !== was.page) {
+    const step = sign(now.page - was.page) * 22;
+    return matchMedia('(max-width:800px)').matches ? [step, 0] : [0, step];
+  }
+  const step = sign(now.depth - was.depth) || sign(now.sub - was.sub);
+  return step ? [step * 28, 0] : [0, 14];
+}
 // One indicator glides between nav links instead of each link lighting up on its own.
 function placePill() {
   const nav = document.querySelector('.sidebar nav');
@@ -56,6 +74,8 @@ async function route() {
   placePill();
   $('notice').textContent = '';
   const container = document.createElement('section'); container.className = 'entering'; $('view').replaceChildren(container);
+  const [ex, ey] = arrival(place(page, sub, params));
+  container.style.setProperty('--ex', ex + 'px'); container.style.setProperty('--ey', ey + 'px');
   try { const result = await ({home:renderHome,lessons:renderLessons,reviews:renderReviews,exams:renderExams,library:renderLibrary,settings:renderSettings,account:renderAccount}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
   catch(error) { if (container.isConnected) $('notice').textContent = error.message; }
   // The entrance animation belongs to arriving on a page; later refreshes of its lists must not replay it.

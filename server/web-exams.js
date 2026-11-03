@@ -176,7 +176,9 @@ async function renderClassicExams(container, api) {
       const cards = [], navButtons = [];
       let shownQuestion = 0;
       const showQuestion = index => {
+        const step = Math.sign(index - shownQuestion);
         shownQuestion = index;
+        if (step && cards[index]) { cards[index].style.setProperty('--ex', step * 28 + 'px'); cards[index].style.setProperty('--ey', '0px'); }
         cards.forEach((c, i) => { c.hidden = i !== index; });
         navButtons.forEach((b, i) => { if (i === index) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
         pager.hidden = cards.length < 2;

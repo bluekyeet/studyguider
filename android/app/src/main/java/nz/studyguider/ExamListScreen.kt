@@ -159,7 +159,7 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
             }
         }) { Text(if (mode == "ai") "Generate practice exam" else "Start exam") }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (busy) LoadingBar(Modifier.fillMaxWidth())
         OutlinedButton(enabled = !busy, shape = RoundedCornerShape(50), onClick = { scope.launch { load() } }) { Text(if (exams == null && error.isNotEmpty()) "Retry" else "Refresh") }
         if (exams?.isEmpty() == true) StudyCard(tone = CardTone.Low) {
             Text("No exams yet", style = MaterialTheme.typography.titleMedium)

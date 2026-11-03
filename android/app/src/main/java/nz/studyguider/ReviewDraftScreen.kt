@@ -63,7 +63,7 @@ fun ReviewDraftScreen(base: String, token: String, topicId: Long) {
                     } catch (e: Exception) { error = e.message ?: "Generation failed" } finally { busy = false }
                 }
             }) { Text("Generate drafts") }
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (busy) LoadingBar(Modifier.fillMaxWidth())
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         if (drafts.isNotEmpty()) {

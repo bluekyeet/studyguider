@@ -1,5 +1,6 @@
 package nz.studyguider
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +27,7 @@ fun StudyCard(
         CardTone.High -> colours.containerHigh
     }
     Surface(shape = RoundedCornerShape(16.dp), color = background, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+        Column(Modifier.animateContentSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
     }
 }
 

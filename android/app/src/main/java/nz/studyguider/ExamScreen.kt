@@ -233,7 +233,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                 else Text(grade.optString("reason", "Overall grade pending schedule-based marking"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (busy) LoadingBar(Modifier.fillMaxWidth())
             if (exam == null && !busy) {
                 Button(shape = RoundedCornerShape(50), onClick = {
                     scope.launch {
@@ -255,7 +255,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                 val question = questions.getJSONObject(i)
                 val id = question.getLong("id")
                 key(id) {
-                    StudyCard(tone = CardTone.Container) {
+                    StudyCard(tone = CardTone.Container, modifier = Modifier.sectionTransition(page)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("${question.getInt("position")}. QUESTION ${question.getString("question_number")}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                             StudyChip("AS ${question.getInt("standard_number")} · ${question.getInt("year")}", MaterialTheme.colorScheme.onSurfaceVariant, colours.containerHigh)

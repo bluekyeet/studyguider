@@ -274,13 +274,15 @@ body.signed-out .sidebar{display:none}
    for people who ask the system to reduce motion (block at the end). */
 :root{--ease-out:cubic-bezier(.22,1,.36,1);--ease-spring:cubic-bezier(.34,1.45,.5,1);--ease-inout:cubic-bezier(.65,0,.35,1)}
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* Content arrives from the side it is coming from: --ex / --ey are set by the router and the readers. */
+@keyframes enter{from{opacity:0;transform:translate(var(--ex,0px),var(--ey,14px))}to{opacity:1;transform:none}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes pop{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
 @keyframes grow{from{transform:scaleX(0)}}
 
 /* Pages: each top-level block eases up in turn, so a screen builds from the top down. This only happens as a page is
    entered (the router sets .entering); a background refresh of a list never replays it. */
-#view>section.entering>*{animation:rise .55s var(--ease-out) both}
+#view>section.entering>*{animation:enter .55s var(--ease-out) both}
 #view>section.entering>:nth-child(2){animation-delay:.05s}
 #view>section.entering>:nth-child(3){animation-delay:.1s}
 #view>section.entering>:nth-child(4){animation-delay:.15s}
@@ -301,12 +303,12 @@ body.signed-out .sidebar{display:none}
 .entering .stat-row>:nth-child(4){animation-delay:.18s}.entering .stat-row>:nth-child(5){animation-delay:.24s}
 
 /* Reader and exams: the next section or question slides in rather than snapping. */
-.reader-main>*{animation:rise .42s var(--ease-out) both}
+.reader-main>*{animation:enter .42s var(--ease-out) both}
 .reader-main>:nth-child(2){animation-delay:.04s}.reader-main>:nth-child(3){animation-delay:.08s}
 .reader-main>:nth-child(n+4){animation-delay:.12s}
-.exam-layout article.card{animation:rise .42s var(--ease-out) both}
+.exam-layout article.card{animation:enter .42s var(--ease-out) both}
 .exam-part{animation:fade .5s var(--ease-out) both}
-.ai-box,.exam-figure,.math-preview:not([hidden]){animation:pop .4s var(--ease-out) both}
+.ai-box,.exam-figure,.math-preview:not([hidden]){animation:pop .4s var(--ease-out) both;transform-origin:top left}
 .empty,.card[data-new]{animation:pop .45s var(--ease-out) both}
 
 /* Navigation: one pill glides to the current page. */

@@ -102,7 +102,7 @@ fun SourceScreen(base: String, token: String, resourceId: String, initialPage: I
     Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Source document", style = MaterialTheme.typography.headlineMedium)
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-        else if (image == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+        else if (image == null) LoadingBar(Modifier.fillMaxWidth())
         if (pageCount > 0) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { page-- }, enabled = page > 1) { Text("Previous page") }

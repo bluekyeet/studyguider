@@ -212,7 +212,7 @@ fun LessonScreen(
             allTopics = allTopics, onSwitchTopic = onSwitchTopic, onOpenResources = onOpenResources,
         )
         if (lessonId > 0 && result == null) {
-            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error) else LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error) else LoadingBar(Modifier.fillMaxWidth())
         } else {
         result?.let { draft -> LessonArticle(base, token, draft, onExit, onPendingChange) }
         if (result == null && !historyLoading && history.isEmpty() && historyError.isEmpty()) {
@@ -276,7 +276,7 @@ private fun LessonEmptyState(
         }
         Button(enabled = canGenerate, onClick = onGenerate, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = RoundedCornerShape(50)) { Text("Generate lesson draft") }
         if (busy) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
+            LoadingBar(Modifier.fillMaxWidth())
             Text("Generating and reviewing the draft may take several minutes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -492,7 +492,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                 Text("Follow-up context: last ${helpHistory.size} exchanges in this panel only.", style = MaterialTheme.typography.bodySmall)
                 TextButton(enabled = !helpBusy && !noteBusy, onClick = { helpHistory = emptyList(); helpAnswer = ""; helpNote = "" }) { Text("New conversation") }
             }
-            if (helpBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (helpBusy) LoadingBar(Modifier.fillMaxWidth())
             if (helpAnswer.isNotBlank()) TutorText(helpAnswer, draft)
             if (helpNote.isNotEmpty()) {
                 TextButton(enabled = !helpBusy && !noteBusy && !noteSaved && helpNote.length <= 50000, onClick = {
@@ -634,7 +634,7 @@ private fun SectionQuestion(base: String, token: String, draft: JSONObject, chun
         TextButton(onClick = { revealed = !revealed }) { Text(if (revealed) "Hide answer" else question.revealLabel) }
     }
     if (questions.size > 1) TextButton(onClick = { index = (index + 1) % questions.size }) { Text("Another question") }
-    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (busy) LoadingBar(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     if (feedback.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = colours.containerHigh, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -676,7 +676,7 @@ private fun PracticePanel(base: String, token: String, draft: JSONObject, chunk:
         }) { Text("Check my answer") }
         OutlinedButton(shape = RoundedCornerShape(50), onClick = { revealed = !revealed }) { Text(if (revealed) "Hide answer" else "Reveal answer") }
     }
-    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (busy) LoadingBar(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     if (reply.isNotBlank()) StudyCard(tone = CardTone.High) {
         Text("TUTOR FEEDBACK", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
@@ -911,7 +911,7 @@ private fun SavedLessons(
     StudyCard(tone = CardTone.Container) {
         SectionLabel("Saved lessons", if (loading) "LOADING" else "${history.size} RECENT")
         // ponytail: The API defaults to the latest 50; add pagination when older drafts are needed.
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (loading) LoadingBar(Modifier.fillMaxWidth())
         else if (error.isNotEmpty()) Text("Could not load lesson history: $error", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         else if (history.isEmpty()) Text("No saved lessons yet. Generate one to start.", style = MaterialTheme.typography.bodySmall)
         history.take(50).forEach { draft ->

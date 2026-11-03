@@ -78,7 +78,7 @@ fun ReviewScreen(base: String, token: String) {
             }
         }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (busy) LoadingBar(Modifier.fillMaxWidth())
         if (loaded && questions.length() == 0 && !busy) StudyCard(tone = CardTone.Low) {
             Text("Nothing due right now", style = MaterialTheme.typography.titleMedium)
             Text("Generate review questions for a topic, or come back tomorrow.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -100,7 +100,8 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
     var showEarlier by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (loading || generating) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (generating) stage.ifBlank { "Generating your lesson…" } else "Loading lessons…") }
+            if (generating) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(stage.ifBlank { "Generating your lesson…" }) }
+            else if (loading) DelayedLoading { Column { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Loading lessons…") } }
             if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); OutlinedButton(onClick = { reload++ }) { Text("Try again") } }
             if (!loading && lessons.isEmpty() && error.isEmpty()) StudyCard(tone = CardTone.Low) {
                 Text("No lessons available yet.", style = MaterialTheme.typography.titleMedium)

@@ -398,7 +398,7 @@ fun AuthorisedImage(base: String, token: String, path: String, modifier: Modifie
     when {
         bitmap != null -> ZoomableImage(bitmap!!, contentDescription, modifier)
         failed -> Text("Image could not be loaded.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        else -> Box(modifier.height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        else -> Box(modifier.height(120.dp), contentAlignment = Alignment.Center) { DelayedLoading { CircularProgressIndicator() } }
     }
 }
 

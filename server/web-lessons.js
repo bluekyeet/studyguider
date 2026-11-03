@@ -220,8 +220,9 @@ export async function renderLessons(container, api, params) {
       else position.next = undefined;
     }
   }
+  let readerStep = 0;
   function goTo(section) {
-    current = section; savePosition(active, section); showLesson(); window.scrollTo({ top: 0 });
+    readerStep = Math.sign(section - current); current = section; savePosition(active, section); showLesson(); window.scrollTo({ top: 0 });
   }
 
   // Coming back to the tab picks up answers written on another device, unless this one has newer text.
@@ -266,6 +267,7 @@ export async function renderLessons(container, api, params) {
     outline.append(element('p', `Section ${current + 1} of ${lesson.chunks.length}`, 'muted'), items);
 
     const main = element('div', '', 'reader-main stack');
+    if (readerStep) { main.style.setProperty('--ex', readerStep * 28 + 'px'); main.style.setProperty('--ey', '0px'); }
     const card = element('article', '', 'card stack');
     card.append(inlineMath(readable(chunk.title), 'h2'), rendered(chunk.body));
     const banner = element('div', '', 'toolbar');

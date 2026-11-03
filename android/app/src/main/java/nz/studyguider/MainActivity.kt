@@ -570,10 +570,18 @@ private fun StudyApp() {
                             }, label = { Text(label) })
                         }
                     }
-                    when (examSection) {
+                    AnimatedContent(
+                        targetState = examSection, modifier = Modifier.weight(1f), label = "exam section",
+                        transitionSpec = {
+                            // Sections sit side by side in the chip row, so a later one arrives from the right and an earlier one from the left.
+                            val direction = if (targetState > initialState) 1 else -1
+                            (fadeIn(tween(300, delayMillis = 70, easing = Motion.easeOut)) + slideInHorizontally(tween(380, easing = Motion.easeOut)) { it / 9 * direction })
+                                .togetherWith(fadeOut(tween(160)) + slideOutHorizontally(tween(300, easing = Motion.easeOut)) { -it / 9 * direction })
+                        },
+                    ) { shownSection -> when (shownSection) {
                         1 -> RapidScreen(base, token, rapidStart, onStartedWith = { rapidStart = null })
                         2 -> RevisionScreen(base, token)
-                        else ->                 Column(Modifier.weight(1f).verticalScroll(examScroll).padding(horizontal = 16.dp)) {
+                        else ->                 Column(Modifier.fillMaxSize().verticalScroll(examScroll).padding(horizontal = 16.dp)) {
                     if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString(); sourceId = "" }
                     else {
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -585,7 +593,7 @@ private fun StudyApp() {
                         ExamScreen(base, token, examId.toLong(), onOpenSource = { id, page -> sourceId = id; sourcePage = page }, onDirtyChange = { examDirty = it }, onPageChange = { scope.launch { examScroll.scrollTo(0) } })
                     }
                 }
-                    }
+                    } }
                 }
             } }
         }
@@ -667,7 +675,7 @@ private fun TopicPickerSheet(
             Text("Tick the topics you want lessons for. They appear on your Lessons page, starting from the basics.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             if (loading && allTopics.isEmpty()) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                LoadingBar(Modifier.fillMaxWidth())
                 Text("Loading topics…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             var shownLevel: Int? = null
@@ -769,7 +777,7 @@ private fun TopicBrowser(
         when {
             loading && allTopics.isEmpty() -> {
                 StudyCard(tone = CardTone.Low) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    LoadingBar(Modifier.fillMaxWidth())
                     Text("Loading your topics…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -848,7 +856,7 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             Text("What I'm learning", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             TextButton(onClick = onManageCourses) { Text("Edit topics") }
         }
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (loading) LoadingBar(Modifier.fillMaxWidth())
         if (error.isNotEmpty()) {
             Text(error, color = MaterialTheme.colorScheme.error)
             TextButton(onClick = { retry++ }) { Text("Try again") }
@@ -881,7 +889,7 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             TopicNotes(base, token)
         } else {
             if (managerDay == null) Text(page, style = MaterialTheme.typography.titleLarge)
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (loading) LoadingBar(Modifier.fillMaxWidth())
             if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); TextButton(onClick = { retry++ }) { Text("Try again") } }
             val visible = if (page == "Lesson history") lessons.filter { !it.isNull("completed_at") } else lessons
             val days = visible.groupBy { lesson ->
@@ -972,7 +980,7 @@ internal fun NightlyStatus(base: String, token: String, topic: JSONObject, onDis
         title = { Text("Nightly lessons · ${topic.optString("topic")}") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Latest seven runs. Completed means generation finished, not that AI review passed.", style = MaterialTheme.typography.bodySmall)
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (loading) LoadingBar(Modifier.fillMaxWidth())
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
             if (!loading && error.isEmpty() && runs.isEmpty()) Text("No scheduled runs recorded yet.")
             runs.forEach { run ->
@@ -1045,7 +1053,7 @@ internal fun TopicNotes(base: String, token: String) {
         }
     }
     TextButton(enabled = !busy && !deletingNote, onClick = { reload++ }) { Text("Refresh") }
-    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (busy) LoadingBar(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
     if (!busy && error.isEmpty() && topic != null && notes.isEmpty()) Text("No notes saved for this topic yet.")
     notes.forEach { note ->
@@ -1274,7 +1282,7 @@ private fun TeachingStyleEditor(base: String, token: String) {
                     shape = RoundedCornerShape(12.dp),
                 )
                 Text("${draft.length}/50000 characters", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (busy) LoadingBar(Modifier.fillMaxWidth())
                 if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 if (savedNotice.isNotEmpty()) Text(savedNotice, style = MaterialTheme.typography.bodySmall, color = LocalStudyColours.current.teal)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1436,8 +1444,17 @@ private fun ResourceHub(
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (selected != 0L) TextButton(enabled = !busy, onClick = onBack) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
-        when {
-            selected == 0L -> {
+        // Going into a subject or a topic arrives from the right; going back arrives from the left.
+        val stage = if (selected == 0L) 0 else if (selectedTopic == 0L) 1 else 2
+        AnimatedContent(
+            targetState = stage, label = "library depth",
+            transitionSpec = {
+                val direction = if (targetState > initialState) 1 else -1
+                (fadeIn(tween(300, delayMillis = 70, easing = Motion.easeOut)) + slideInHorizontally(tween(380, easing = Motion.easeOut)) { it / 9 * direction })
+                    .togetherWith(fadeOut(tween(160)) + slideOutHorizontally(tween(300, easing = Motion.easeOut)) { -it / 9 * direction })
+            },
+        ) { shown -> when {
+            shown == 0 -> {
                 Text("Resource Hub", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                 Text("Choose a subject to explore its topics and resources.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (subjects.length() == 0) StudyCard(tone = CardTone.Low) { Text("No subjects yet. Add one below to get started.") }
@@ -1467,7 +1484,7 @@ private fun ResourceHub(
                     Button(enabled = !busy && subjectName.isNotBlank(), onClick = onAddSubject, shape = RoundedCornerShape(50)) { Text("Add subject") }
                 }
             }
-            selectedTopic == 0L -> {
+            shown == 1 -> {
                 Text("$subjectTitle · Topics", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 Text("Choose a topic to open its resources and lessons.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 for (i in 0 until topics.length()) {
@@ -1493,6 +1510,6 @@ private fun ResourceHub(
                 if (refreshError.isNotEmpty()) Text(refreshError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 TopicFiles(resources, busy, uploadNotice, onUpload, onRefresh, onExtract, onOpenPdf, onDelete)
             }
-        }
+        } }
     }
 }

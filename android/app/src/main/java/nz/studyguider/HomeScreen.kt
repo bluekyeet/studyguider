@@ -67,7 +67,7 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
     }
     val data = summary
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (loading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Loading…") }
+        if (loading) DelayedLoading { Column { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Loading…") } }
         if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); OutlinedButton(onClick = { reload++ }) { Text("Try again") } }
         if (data == null) return@Column
         val reviews = data.getJSONObject("reviews")

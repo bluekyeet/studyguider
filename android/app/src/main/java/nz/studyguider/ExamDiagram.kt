@@ -69,7 +69,7 @@ fun ExamDiagram(base: String, token: String, examId: Long, questionId: Long, ena
         OutlinedButton(enabled = enabled && !busy, onClick = { drawing = true }) { Text("Draw diagram") }
     }
     Text("One image per question. A new image replaces the previous one. Check the recognition, then Save & mark.", style = MaterialTheme.typography.bodySmall)
-    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (busy) LoadingBar(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
     if (drawing) {
         val bitmap = remember { Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.WHITE) } }

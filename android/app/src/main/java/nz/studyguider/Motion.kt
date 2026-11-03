@@ -1,5 +1,7 @@
 package nz.studyguider
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -11,6 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -88,3 +93,19 @@ fun animatedFill(target: Float, durationMillis: Int = 1100, delayMillis: Int = 2
     LaunchedEffect(target) { value.animateTo(target, tween(durationMillis, delayMillis, Motion.easeOut)) }
     return value.value
 }
+
+
+/**
+ * Loading feedback only when a wait is really long: nothing shows for the first moments (most requests finish by then, so
+ * the screen simply fills in), and what does show fades in rather than flashing.
+ */
+@Composable
+fun DelayedLoading(delayMillis: Long = 500, content: @Composable () -> Unit) {
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(delayMillis); show = true }
+    AnimatedVisibility(show, enter = fadeIn(tween(250))) { content() }
+}
+
+/** A thin progress bar for a wait that is still going after a moment. */
+@Composable
+fun LoadingBar(modifier: Modifier = Modifier) = DelayedLoading { LinearProgressIndicator(modifier) }
