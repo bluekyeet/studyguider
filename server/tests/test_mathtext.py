@@ -66,3 +66,15 @@ def test_a_misread_exponent_is_rejected():
     old = "Solve the equation z3 + 8m27i = 0, where m is a positive real constant."
     assert mathtext.acceptable(r"Solve the equation $z^3 + 8m^{27}\text{i} = 0$, where $m$ is a positive real constant.", old)
     assert not mathtext.acceptable(r"Solve the equation $z^3 + 8m^3\text{i} = 0$, where $m$ is a positive real constant.", old)
+
+
+def test_restored_text_prefers_the_question_then_parts_then_the_original():
+    def db_with(row):
+        db = MagicMock()
+        db.execute.return_value.fetchone.return_value = row
+        return db
+    assert mathtext.restored_text(db_with(None), 1, "orig") == "orig"
+    assert mathtext.restored_text(db_with(({"q": "Whole $x^2$", "p": []}, [])), 1, "orig") == "Whole $x^2$"
+    parts = [{"text": "(a) a"}, {"text": "(b) b"}]
+    assert mathtext.restored_text(db_with(({"q": None, "p": [None, "(b) b $y$"]}, parts)), 1, "orig") == "(a) a\n\n(b) b $y$"
+    assert mathtext.restored_text(db_with(({"q": None, "p": [None, None]}, parts)), 1, "orig") == "orig"

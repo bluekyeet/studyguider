@@ -5,6 +5,7 @@ same answer return the stored first mark, so consistency can be checked. The
 second marker is advisory and disagreements are shown to the learner.
 """
 import hashlib
+import mathtext
 import logging
 import json
 import re
@@ -219,6 +220,9 @@ def queue_exam_review(connect, exam_id, question_id, row, result, schedule, scan
     question = row[5] or row[9] or ""
     if not question.strip() or len(question) > 20000 or not schedule.strip() or len(schedule) > 20000:
         return
+    if row[5]:
+        with connect() as db:
+            question = mathtext.restored_text(db, question_id, question)
     source = [{"resource_id": str(row[10]) if row[10] else None, "page": row[11],
                "content": schedule, "exam_id": exam_id, "question_id": question_id,
                "rubric_type": "official schedule" if row[7] else "unofficial AI practice rubric"}]

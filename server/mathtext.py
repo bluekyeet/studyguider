@@ -198,3 +198,23 @@ def overlay(db, items, id_key="question_id"):
                 replaced.append({**part, "text": new} if isinstance(part, dict) and isinstance(new, str) and new.strip() else part)
             item["parts"] = replaced
     return items
+
+
+def restored_text(db, question_id, original):
+    """The question as the learner saw it with its equations restored, for copies stored elsewhere (review questions).
+    Falls back to the original text when nothing was restored."""
+    row = db.execute("SELECT math_display, parts FROM exam_questions WHERE id = %s AND math_state = 'done'", (question_id,)).fetchone()
+    if not row or not row[0]:
+        return original
+    display, parts = row
+    if isinstance(display.get("q"), str) and display["q"].strip():
+        return display["q"]
+    shown = display.get("p") or []
+    pieces, changed = [], False
+    for index, part in enumerate(parts if isinstance(parts, list) else []):
+        new = shown[index] if index < len(shown) else None
+        changed = changed or isinstance(new, str)
+        text = new if isinstance(new, str) else (part.get("text") if isinstance(part, dict) else "")
+        if text and text.strip():
+            pieces.append(text.strip())
+    return "\n\n".join(pieces) if changed and pieces else original

@@ -193,7 +193,7 @@ def _queue_skipped_review(db, exam_id, question_id):
     db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, exam_origin)
         VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s, %s, %s)
         ON CONFLICT (exam_origin) DO NOTHING""",
-               (row[0], row[7], row[3], json.dumps(source), row[1], f"Exam question {row[2]}", f"{exam_id}:{question_id}"))
+               (row[0], mathtext.restored_text(db, question_id, row[7]), row[3], json.dumps(source), row[1], f"Exam question {row[2]}", f"{exam_id}:{question_id}"))
 
 
 def rapid_router(connect, authorised, model_reply=None, search_resources=None, mark_answer=None, vision=None):
