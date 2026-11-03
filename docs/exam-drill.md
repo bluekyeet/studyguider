@@ -138,11 +138,23 @@ well is still an open item on the task list.
 
 ## 8. Exam revision page (the third section)
 
-Built after Rapid questions. A list of the questions you have missed, grouped by topic, newest first. For each:
-the question, your earlier answer, the AI's feedback, the schedule or rubric excerpt, how many times you have
-tried it, and **Redo**. Redo uses the same flashing player with just those questions (again with no feedback
-until the end), and a question leaves the list when you next get it to Achieved or better. Filters: topic,
-source (past paper or AI), not yet retried. A count of outstanding questions shows on the Exam revision chip.
+Revised 3 November 2026. Exam revision is not a list of missed questions. You pick a topic and the server builds a
+**revision pack** from the mistakes you have made in it, lesson-like but question-heavy: for each weak concept a short
+re-teach (grounded in your resources and the schedules of the questions you missed), then three to five questions, easier
+first. Mistakes come from three places: rapid-session misses (including exact parts such as `2 b(ii)`), marked classic exams
+(Not achieved) and wrong daily-review answers; review questions that were queued from exam misses are not counted twice.
+The topic list shows how many mistakes each topic has; a topic with none cannot build a pack.
+
+- **Generation** is in the background (`server/revision.py`, a few seconds to a minute). One generator call writes the pack; a
+  second independent model checks every question and its worked answer, and failed questions are dropped (a section left with fewer
+  than two questions goes). Gateway errors are retried. The page shows a quiet status line, never a spinner, and can be left and reopened.
+- **Answering** uses the existing daily-review marking: each pack question is saved as a review question, so you get feedback
+  straight away, a worked answer after you answer, and a wrong answer comes back tomorrow through spaced repetition. Pack
+  questions are due far in the future until answered, so they do not appear in the daily review early.
+- **Honesty:** every pack is labelled AI-written and unofficial, shows what it was built from, and is checked by a second model that can miss errors.
+- The old list of missed questions and its Redo button were removed; `/exam-revision` and `source: "revision"` remain on the server but no screen uses them.
+- Known side effect: unanswered pack questions count in the topic mastery average until they are answered (it is the mean of all review questions in the topic).
+- Lesson answers are not a source: they have no right/wrong mark, so there is nothing reliable to learn from.
 
 ## 9. How it fits the existing system
 

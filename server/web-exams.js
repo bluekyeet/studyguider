@@ -1,6 +1,7 @@
 import { mathText, mathInput, autosave, aiBox } from './web-common.js';
 import { el, field, option, json, reflow, withoutLabel, displayLabel, scanForm } from './web-exam-shared.js';
-import { renderRapid, renderRevision, revisionCount } from './web-rapid.js';
+import { renderRapid } from './web-rapid.js';
+import { renderRevision } from './web-revision.js';
 
 // Answer boxes get the maths toolbar and a live preview.
 const mathField = (title, textarea) => {
@@ -508,8 +509,6 @@ export async function renderExams(container, api, params) {
     bar.append(a); links[key] = a;
   }
   container.replaceChildren(bar, body);
-  // Misses waiting in Exam revision show on its tab.
-  revisionCount(api).then(count => { if (count > 0 && bar.isConnected) links.revision.append(' ', el('span', String(count), 'chip warn')); }).catch(() => {});
   const render = sub === 'rapid' ? renderRapid : sub === 'revision' ? renderRevision : renderClassicExams;
   return render(body, api, params);
 }

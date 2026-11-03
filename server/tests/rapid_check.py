@@ -23,6 +23,8 @@ import splitting
 from exams import exam_router
 from marking import marking_router
 from rapid import RapidMove, RapidStart, rapid_router
+from reviews import ReviewAnswer, review_router
+from revision import PackStart, revision_router
 
 SCHEMA = os.environ.get("RAPID_CHECK_SCHEMA") or "rapid_check_" + uuid4().hex
 ORIGINAL = app.connect
@@ -41,6 +43,7 @@ class StoppedThread:
 
 
 generated = []
+pack_inputs = []
 
 
 def model(name, messages, task="general"):
@@ -60,6 +63,15 @@ def model(name, messages, task="general"):
             items.append({"question": f"{'BAD ' if n == 2 else ''}AI practice question number {n}: calculate the force on a 2.0 kg trolley.",
                           "rubric": "Achievement: F = ma. Merit: 6.0 N. Excellence: units and reasoning.", "marks": 4})
         return json.dumps(items)
+    if task == "revision-pack":
+        seen = json.loads(messages[1]["content"])
+        pack_inputs.append(seen)
+        return json.dumps({"sections": [{"concept": "Newton's second law", "why": "You skipped the force question.", "teaching": "Force is $F = ma$.",
+            "questions": [{"question": f"A {m}.0 kg trolley accelerates at 2.0 m s-2; find the force.", "expected_answer": f"F = ma = {2 * m}.0 N"} for m in (1, 2, 3)]}]})
+    if task == "revision-review":
+        return json.dumps({"fail": [{"section": 0, "question": 2, "reason": "check"}]})
+    if task == "review-mark":
+        return json.dumps({"correct": "RIGHT" in json.loads(messages[1]["content"])["answer"], "feedback": "Marked.", "concept": "Newton's second law"})
     if task == "rapid-split":
         return json.dumps({"units": [
             {"label": "a", "context": "A trolley of mass 2.0 kg is pushed.", "question": "Find the force on the trolley.", "marks": 2, "schedule": "", "needs_figure": False},
@@ -284,6 +296,41 @@ async def main():
         assert sorted(l for l in labels if l) == ["9 a", "9 b"], labels
         assert len(seen) == 6, seen                      # 4 single questions + 2 parts
         end(s8["id"])
+        # 9. Exam revision: a pack is built from the topic's mistakes and its questions are answered through the review marking.
+        packs = revision_router(isolated, lambda: None, model, search)
+        reviews = review_router(isolated, lambda: None, model)
+        topics_route = endpoint(packs, "/revision/topics", "GET")
+        start_pack = endpoint(packs, "/revision/packs", "POST")
+        get_pack = endpoint(packs, "/revision/packs/{pack_id}", "GET")
+        answer_review = endpoint(reviews, "/review-questions/{question_id}/answers", "POST")
+        row = next(t for t in topics_route() if t["topic_id"] == topic)
+        assert row["mistakes"] > 0, row
+        started = start_pack(PackStart(topic_id=topic))
+        again = start_pack(PackStart(topic_id=topic)) if started["status"] == "generating" else started
+        assert again["id"] == started["id"], (started, again)               # a second press joins the running pack
+        wait(lambda: get_pack(started["id"])["status"] != "generating", "the pack")
+        pack = get_pack(started["id"])
+        assert pack["status"] == "ready", pack
+        assert len(pack["sections"]) == 1 and len(pack["sections"][0]["questions"]) == 2, pack      # the reviewer's failure was dropped
+        assert any(m["from"].startswith("rapid exam") for m in pack["mistakes"]), pack["mistakes"]
+        assert pack_inputs and pack_inputs[-1]["mistakes"] and pack_inputs[-1]["sources"], pack_inputs
+        q1, q2 = pack["sections"][0]["questions"]
+        assert "result" not in q1, "the expected answer must stay hidden until it is answered"
+        with isolated() as db:
+            made = db.execute("SELECT exam_origin, due_date > CURRENT_DATE + 1000 FROM review_questions WHERE id = ANY(%s)", ([q1["id"], q2["id"]],)).fetchall()
+            assert all(o.startswith(f"pack:{started['id']}:") and far for o, far in made), made      # not in the daily review until answered
+        wrong = answer_review(q1["id"], ReviewAnswer(answer="no idea", confidence=3))
+        right = answer_review(q2["id"], ReviewAnswer(answer="RIGHT 6.0 N", confidence=3))
+        assert wrong["correct"] is False and right["correct"] is True and wrong["interval_days"] == 1, (wrong, right)
+        pack = get_pack(started["id"])
+        assert pack["answered"] == 2 and pack["correct"] == 1 and pack["sections"][0]["questions"][0]["result"]["expected_answer"].startswith("F = ma"), pack
+        refused = None
+        try:
+            start_pack(PackStart(topic_id=topic + 1000))
+        except HTTPException as error:
+            refused = error.status_code
+        assert refused == 404, refused
+        print("PASS revision pack: built from the topic's mistakes, failed question dropped, hidden until answered, marked through review")
         print("PASS a split question is served as its parts (own context, label, marks); the whole question and a rerun add nothing")
 
 

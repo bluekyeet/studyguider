@@ -62,6 +62,9 @@ does not mean its end-to-end acceptance checks have passed.
   - [ ] Not verified: quality of generated questions and rubrics; how long a 30 to 50 question session takes to mark; an authenticated
     browser session end to end; handwriting photo upload in the rapid player; the Android layout on a small phone; whether missed
     questions actually change live lessons (the existing open lesson-quality item).
+- [x] Exam revision packs (3 Nov 2026), website and Android: pick a topic, get a re-teach and questions built from your mistakes (rapid parts, marked exams, daily review); see `docs/exam-drill.md` section 8.
+  - [x] Real PostgreSQL check (`rapid_check.py` section 9) and a live pack through the gateway (6 s, 2 sections, 6 questions, quoted the learner's own answers); answering checked on the emulator and in a headless browser.
+  - [ ] Not verified: quality of packs over many topics and larger mistake sets; whether pack questions are repeated across packs; the effect of unanswered pack questions on topic mastery.
 - [ ] Notification reminders
 
 ## Foundation, access and resources

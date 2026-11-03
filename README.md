@@ -22,7 +22,7 @@ unverified, and AI-written practice is kept separate from real past papers.
   scanned answers, evidence-linked AI marking checked against the schedule, and your own override.
 - **Rapid questions:** pick a topic and flash through exam questions (past-paper and AI-written, prepared ahead), with no
   feedback until you end the session. Answers are marked in the background and the results are a grade breakdown. Misses go to
-  **Exam revision** and to your lessons. Both live under Exams.
+  **Exam revision**, where you pick a topic and get a pack of re-teaching and questions built from your mistakes there. Both live under Exams.
 - **Home:** today's lessons, reviews due, mastery per topic and a rough estimated grade (from review
   answers only, not an NZQA grade), weak concepts and recent exams.
 

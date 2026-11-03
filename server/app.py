@@ -28,6 +28,7 @@ from reviews import create_review_tables, review_router
 from lessons import create_lesson_tables, lesson_router
 from marking import create_marking_tables, marking_router
 from rapid import create_rapid_tables, rapid_router
+from revision import create_revision_tables, revision_router
 from exams import create_exam_tables, exam_router
 from parsing import create_parsing_tables, parsing_router
 from usage import create_usage_tables, usage_router, log_run
@@ -100,6 +101,7 @@ async def lifespan(app):
         create_diagram_tables(db)
         create_marking_tables(db)
         create_rapid_tables(db)
+        create_revision_tables(db)
         create_scheduler_tables(db)
     stop, thread = start_scheduler(connect, scheduled_generate, prepare_reviews=prepare_daily_reviews)
     extraction_stop, extraction_thread = start_worker(connect, extract_resource)
@@ -391,7 +393,7 @@ def study_styles():
 
 @app.get('/{module_name}.js', include_in_schema=False)
 def study_module(module_name: str):
-    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-library', 'web-settings'}:
+    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-library', 'web-settings'}:
         raise HTTPException(404, 'Module not found')
     return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript')
 
@@ -1342,6 +1344,7 @@ _marking = marking_router(connect, authorised, model_reply, model_reply_vision)
 app.include_router(_marking)
 # Rapid sessions mark answers in the background by calling the same marking route function.
 _mark_answer = next(r.endpoint for r in _marking.routes if r.path == "/exams/{exam_id}/answers/{question_id}/feedback" and "POST" in r.methods)
+app.include_router(revision_router(connect, authorised, model_reply_reliable, lambda topic, query: search_resources(topic, query)))
 app.include_router(rapid_router(connect, authorised, model_reply_reliable, lambda topic, query: search_resources(topic, query), _mark_answer))
 app.include_router(explain_router(connect, authorised, model_reply, model_reply_stream))
 app.include_router(review_generation_router(authorised, model_reply, search_resources, connect))

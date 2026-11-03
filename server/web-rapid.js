@@ -1,4 +1,4 @@
-// Rapid exam questions and the Exam revision page.
+// Rapid exam questions.
 // A rapid session is one-way: questions flash up, you answer or skip and move on, and you see nothing about
 // how you are doing until you end the session. The server enforces that; this page just never asks for results early.
 import { mathText, mathInput, stash, aiBox, countUp } from './web-common.js';
@@ -18,8 +18,6 @@ const sourceLinks = item => {
   }
   return row;
 };
-
-export async function revisionCount(api) { return (await api('/exam-revision/summary')).total; }
 
 // What a question looked like, what you wrote and what the marker said. Used by results and by revision.
 function reviewBody(item) {
@@ -297,74 +295,4 @@ export async function renderRapid(container, api) {
 
   home();
   return () => { stop(); alive = () => false; };
-}
-
-// ---- Exam revision --------------------------------------------------------------------------
-export async function renderRevision(container, api) {
-  const root = el('section', '', 'stack');
-  container.replaceChildren(root);
-  const alive = () => root.isConnected;
-  const error = el('p', '', 'error'); error.setAttribute('role', 'alert');
-  const head = el('div', '', 'page-head'); const title = el('div');
-  title.append(el('h1', 'Exam revision'),
-    el('p', 'Questions you have missed or skipped in rapid sessions. Look at the schedule, then redo them; a question clears when you next get it Achieved or better. Misses also feed your next lessons.', 'muted'));
-  head.append(title);
-  const filters = el('div', '', 'toolbar'), cleared = el('input'), list = el('div', '', 'stack');
-  cleared.type = 'checkbox';
-  const clearedLabel = el('label', 'Show cleared', 'check'); clearedLabel.prepend(cleared);
-  root.append(head, error, filters, list);
-  let topicId = null, summary = { total: 0, topics: [] };
-  const report = err => { if (alive()) error.textContent = err?.message || String(err); };
-
-  const redo = async id => {
-    try {
-      const session = await api('/rapid', json('POST', { topic_id: id, source: 'revision', count: null }));
-      sessionStorage.setItem('sg:autostart', String(session.id));
-      location.hash = '#exams/rapid';
-    } catch (err) { report(err); }
-  };
-
-  const draw = async () => {
-    try {
-      const rows = await api(`/exam-revision${topicId ? `?topic_id=${topicId}&` : '?'}include_resolved=${cleared.checked}`);
-      if (!alive()) return;
-      error.textContent = '';
-      list.replaceChildren();
-      if (!rows.length) { list.append(el('p', summary.total ? 'Nothing in this view.' : 'Nothing to revise. Questions you miss in rapid sessions will appear here.', 'empty')); return; }
-      const byTopic = new Map();
-      for (const row of rows) { if (!byTopic.has(row.topic_id)) byTopic.set(row.topic_id, []); byTopic.get(row.topic_id).push(row); }
-      for (const [id, items] of byTopic) {
-        const section = el('section', '', 'stack');
-        const bar = el('div', '', 'toolbar');
-        const open = items.filter(i => !i.resolved_at).length;
-        bar.append(el('h2', `${items[0].subject} · ${items[0].topic}`));
-        if (open) { const go = el('button', `Redo ${plural(open, 'question')}`, 'primary'); go.type = 'button'; go.onclick = () => redo(id); bar.append(go); }
-        section.append(bar);
-        for (const item of items) {
-          const row = el('details', '', 'card');
-          const head = el('summary'); head.append(item.resolved_at ? el('span', 'Cleared', 'chip ok') : el('span', `Tried ${item.attempts} time${item.attempts === 1 ? '' : 's'}`, 'chip warn'), ' ',
-            el('span', sourceLine(item), 'muted'), ' ', el('span', (item.question_text || '').replace(/\s+/g, ' ').slice(0, 90)));
-          row.append(head, reviewBody({ ...item, answer: item.your_answer, feedback: item.feedback }));
-          section.append(row);
-        }
-        list.append(section);
-      }
-    } catch (err) { report(err); }
-  };
-
-  try {
-    summary = await api('/exam-revision/summary');
-    const chip = (label, id, n) => {
-      const b = el('button', n === undefined ? label : `${label} (${n})`, 'small'); b.type = 'button';
-      b.setAttribute('aria-pressed', String(topicId === id));
-      b.onclick = () => { topicId = id; for (const x of filters.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b)); draw(); };
-      return b;
-    };
-    filters.append(chip('All topics', null, summary.total));
-    for (const t of summary.topics) filters.append(chip(`${t.subject} · ${t.topic}`, t.topic_id, t.outstanding));
-    filters.append(clearedLabel);
-    cleared.addEventListener('change', draw);
-    await draw();
-  } catch (err) { report(err); }
-  return () => {};
 }

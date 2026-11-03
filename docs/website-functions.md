@@ -148,9 +148,10 @@ plus Skipped, Unclear and Could not mark when present) as counts and a proportio
 Exam revision and sent to lessons, and every question with the answer, the AI feedback and quoted evidence, and the schedule
 or AI rubric. Grades arrive as marking finishes (no spinner). AI questions are labelled unofficial. Earlier sessions can be reopened.
 
-**Exam revision.** The questions missed or skipped in rapid sessions, grouped by topic with a count on the tab, each showing
-your last answer, the feedback and the schedule. Redo starts a rapid session of just those; a question clears when you next get it
-Achieved or better. A Show cleared switch lists cleared ones.
+**Exam revision.** Pick a topic; the page lists every topic with how many mistakes it has and Build pack (disabled with no mistakes).
+A pack (`#exams/revision?pack=ID`) is built from your mistakes in that topic (rapid questions and parts, marked exams, daily review): for
+each weak concept a short re-teach and several questions. Check answer marks it straight away with feedback and a worked answer, and a wrong
+answer returns tomorrow. A pack is AI-written and unofficial. Earlier packs are reached from the Latest pack link on each topic.
 
 ## Library (`#library`)
 

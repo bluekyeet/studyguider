@@ -27,11 +27,11 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-// Rapid exam questions and the Exam revision list.
+// Rapid exam questions.
 // A rapid session is one-way: questions flash up, you answer or skip and move on, and you see nothing about
 // how you are doing until you end the session. The server enforces that; this screen never asks for results early.
 
-private suspend fun rapidCall(base: String, token: String, path: String, method: String = "GET", body: JSONObject? = null): String = withContext(Dispatchers.IO) {
+internal suspend fun rapidCall(base: String, token: String, path: String, method: String = "GET", body: JSONObject? = null): String = withContext(Dispatchers.IO) {
     val c = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
     try {
         c.connectTimeout = 10000; c.readTimeout = 60000
@@ -52,10 +52,6 @@ private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { get
 private fun JSONObject.text(key: String): String = if (isNull(key)) "" else optString(key)
 private fun plural(n: Int, word: String) = "$n $word${if (n == 1) "" else "s"}"
 private fun minutes(seconds: Int) = if (seconds >= 90) "${Math.round(seconds / 60f)} min" else "$seconds s"
-
-/** Misses waiting in Exam revision, shown on its chip. */
-suspend fun fetchRevisionCount(base: String, token: String): Int =
-    JSONObject(rapidCall(base, token, "/exam-revision/summary")).optInt("total")
 
 private val gradeNames = mapOf("not_achieved" to "Not achieved", "achieved" to "Achieved", "merit" to "Merit", "excellence" to "Excellence")
 
@@ -431,62 +427,6 @@ private fun RapidResults(base: String, token: String, id: Long, note: String, on
                 }
                 Text(sourceLine(item), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (expanded) ReviewBody(base, token, item, item.text("answer"), item.text("feedback"))
-            }
-        }
-    }
-}
-
-/** Questions missed or skipped in rapid sessions. Redo starts a session of just those. */
-@Composable
-fun RevisionScreen(base: String, token: String, onRedo: (JSONObject) -> Unit) {
-    var summary by remember { mutableStateOf<JSONObject?>(null) }
-    var items by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
-    var topic by remember { mutableStateOf<Long?>(null) }
-    var cleared by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
-    val open = remember { mutableStateListOf<Long>() }
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(base, token) {
-        try { summary = JSONObject(rapidCall(base, token, "/exam-revision/summary")) } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load" }
-    }
-    LaunchedEffect(base, token, topic, cleared) {
-        try {
-            val query = (topic?.let { "topic_id=$it&" } ?: "") + "include_resolved=$cleared"
-            items = JSONArray(rapidCall(base, token, "/exam-revision?$query")).objects(); error = ""
-        } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load" }
-    }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Exam revision", style = MaterialTheme.typography.headlineSmall)
-        Text("Questions you have missed or skipped in rapid sessions. Look at the schedule, then redo them; a question clears when you next get it Achieved or better. Misses also feed your next lessons.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-        val topics = summary?.optJSONArray("topics")?.objects().orEmpty()
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = topic == null, onClick = { topic = null }, label = { Text("All (${summary?.optInt("total") ?: 0})") })
-            topics.forEach { t -> FilterChip(selected = topic == t.getLong("topic_id"), onClick = { topic = t.getLong("topic_id") }, label = { Text("${t.optString("topic")} (${t.optInt("outstanding")})") }) }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = cleared, onCheckedChange = { cleared = it }); Text("Show cleared") }
-        if (items.isEmpty() && error.isEmpty()) Text(if ((summary?.optInt("total") ?: 0) == 0) "Nothing to revise. Questions you miss in rapid sessions will appear here." else "Nothing in this view.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        items.groupBy { it.getLong("topic_id") }.forEach { (topicId, group) ->
-            Text("${group.first().optString("subject")} · ${group.first().optString("topic")}", style = MaterialTheme.typography.titleMedium)
-            val outstanding = group.count { it.isNull("resolved_at") }
-            if (outstanding > 0) Button(shape = RoundedCornerShape(50), onClick = {
-                scope.launch {
-                    try { onRedo(JSONObject(rapidCall(base, token, "/rapid", "POST", JSONObject().put("topic_id", topicId).put("source", "revision").put("count", JSONObject.NULL)))) }
-                    catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not start" }
-                }
-            }) { Text("Redo ${plural(outstanding, "question")}") }
-            group.forEachIndexed { index, item ->
-                val qid = item.getLong("question_id")
-                val expanded = qid in open
-                StudyCard(modifier = Modifier.staggeredEnter(index, topicId).animateContentSize()) {
-                    Row(Modifier.fillMaxWidth().clickable { if (expanded) open.remove(qid) else open.add(qid) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(if (item.isNull("resolved_at")) "Tried ${item.optInt("attempts")}×" else "Cleared", style = MaterialTheme.typography.labelMedium, color = if (item.isNull("resolved_at")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary)
-                        Text(item.text("question_text").replace(Regex("\\s+"), " ").take(70), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 2)
-                        Text(if (expanded) "Hide" else "View", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                    }
-                    Text(sourceLine(item), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (expanded) ReviewBody(base, token, item, item.text("your_answer"), item.text("feedback"))
-                }
             }
         }
     }

@@ -241,7 +241,6 @@ private fun StudyApp() {
     var examSection by rememberSaveable { mutableIntStateOf(0) }
     var pendingSection by remember { mutableStateOf<Int?>(null) }
     var rapidStart by remember { mutableStateOf<JSONObject?>(null) }
-    var revisionCount by remember { mutableIntStateOf(0) }
     var confirmExamExit by remember { mutableStateOf(false) }
     var tab by remember { mutableIntStateOf(5) }
     var subjectTitle by remember { mutableStateOf("") }
@@ -547,17 +546,16 @@ private fun StudyApp() {
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        listOf(0 to "Classic exam papers", 1 to "Rapid questions", 2 to (if (revisionCount > 0) "Exam revision ($revisionCount)" else "Exam revision")).forEach { (section, label) ->
+                        listOf(0 to "Classic exam papers", 1 to "Rapid questions", 2 to "Exam revision").forEach { (section, label) ->
                             FilterChip(selected = examSection == section, onClick = {
                                 if (section == examSection) return@FilterChip
                                 if (examDirty) { pendingSection = section; pendingTab = null; confirmExamExit = true } else examSection = section
                             }, label = { Text(label) })
                         }
                     }
-                    LaunchedEffect(token, examSection) { if (token.isNotEmpty()) runCatching { revisionCount = fetchRevisionCount(base, token) } }
                     when (examSection) {
                         1 -> RapidScreen(base, token, rapidStart, onStartedWith = { rapidStart = null })
-                        2 -> RevisionScreen(base, token, onRedo = { session -> rapidStart = session; examSection = 1 })
+                        2 -> RevisionScreen(base, token)
                         else ->                 Column(Modifier.weight(1f).verticalScroll(examScroll).padding(horizontal = 16.dp)) {
                     if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString(); sourceId = "" }
                     else {
