@@ -251,7 +251,7 @@ def queue_exam_review(connect, exam_id, question_id, row, result, schedule, scan
     asked = [(question, concept, f"{exam_id}:{question_id}")]
     if parts:
         missed = missed_labels(model_reply, parts, row[0], result)
-        asked = [(text, f"Exam question {row[1]}, part ({label})", f"{exam_id}:{question_id}:{label}")
+        asked = [(text, f"Exam question {row[1]}, part {mathtext.display_label(label)}", f"{exam_id}:{question_id}:{label}")
                  for label, text in parts if label in missed]
     source = [{"resource_id": str(row[10]) if row[10] else None, "page": row[11],
                "content": schedule, "exam_id": exam_id, "question_id": question_id,

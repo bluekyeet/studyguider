@@ -95,7 +95,7 @@ private fun QuestionView(base: String, token: String, q: JSONObject) {
             var text = part.text("text")
             var heading = ""
             if (label.isNotEmpty()) text = text.replace(Regex("^\\s*\\([a-hivx]+\\)\\s*", RegexOption.IGNORE_CASE), "")
-            else Regex("^\\s*QUESTION\\s+(?:ONE|TWO|THREE|\\d+)\\s*:?\\s*([^\\n]*)\\n?([\\s\\S]*)$", RegexOption.IGNORE_CASE).find(text)?.let { heading = it.groupValues[1].trim(); text = it.groupValues[2] }
+            else Regex("^\\s*QUESTION\\s+(?:ONE|TWO|THREE|\\d+)[ \\t]*:?[ \\t]*([^\\n]*)\\n?([\\s\\S]*)$", RegexOption.IGNORE_CASE).find(text)?.let { heading = it.groupValues[1].trim(); text = it.groupValues[2] }
             if (text.isBlank() && heading.isBlank()) return@forEach
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (label.isNotEmpty()) Text(label, color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, modifier = Modifier.width(44.dp))

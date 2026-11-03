@@ -200,12 +200,17 @@ def overlay(db, items, id_key="question_id"):
     return items
 
 
+def display_label(label):
+    """'b(i)' as '(b)(i)', the way the paper prints it."""
+    return "(" + label.replace("(", ")(") + ("" if label.endswith(")") else ")")
+
+
 CONTEXT_ONLY = re.compile(r"^\s*question\s+\w+\s*$", re.I)
 
 
 def review_parts(db, question_id):
     """[(label, text)] for a question with two or more labelled parts, each with its restored maths, so a review question can
-    be one part. Shared opening text is added to every part; a bare "QUESTION ONE" heading is not. [] when it has no parts."""
+    be one part. Shared opening text, and a sub-part's parent wording, are added to each; a bare "QUESTION ONE" heading is not. [] when it has no parts."""
     row = db.execute("SELECT parts, math_display, math_state FROM exam_questions WHERE id = %s", (question_id,)).fetchone()
     if not row or not isinstance(row[0], list):
         return []
@@ -225,9 +230,15 @@ def review_parts(db, question_id):
             context = "" if CONTEXT_ONLY.match(text) else text
         else:
             labelled.append((label, text))
-    if len(labelled) < 2:
-        return []
-    return [(label, f"{context}\n\n{text}" if context else text) for label, text in labelled]
+    texts = dict(labelled)
+    children = {label.split("(")[0] for label, _ in labelled if "(" in label}
+    asked = []
+    for label, text in labelled:
+        if label in children:
+            continue    # a part that only introduces its sub-parts is not asked on its own
+        parent = texts.get(label.split("(")[0]) if "(" in label else None
+        asked.append((label, "\n\n".join(piece for piece in (context, parent, text) if piece)))
+    return asked if len(labelled) > 1 else []
 
 
 def restored_text(db, question_id, original):

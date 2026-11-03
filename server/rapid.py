@@ -192,7 +192,7 @@ def _queue_skipped_review(db, exam_id, question_id):
                "question_id": question_id, "rubric_type": "official schedule" if row[6] else "unofficial AI practice rubric"}]
     # A skipped question with labelled parts is one review question for each part, so each asks a single thing.
     parts = mathtext.review_parts(db, question_id)
-    asked = [(text, f"Exam question {row[2]}, part ({label})", f"{exam_id}:{question_id}:{label}") for label, text in parts] or         [(mathtext.restored_text(db, question_id, row[7]), f"Exam question {row[2]}", f"{exam_id}:{question_id}")]
+    asked = [(text, f"Exam question {row[2]}, part {mathtext.display_label(label)}", f"{exam_id}:{question_id}:{label}") for label, text in parts] or         [(mathtext.restored_text(db, question_id, row[7]), f"Exam question {row[2]}", f"{exam_id}:{question_id}")]
     for text, concept, origin in asked:
         db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, exam_origin)
             VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s, %s, %s)

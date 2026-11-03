@@ -78,3 +78,14 @@ def test_restored_text_prefers_the_question_then_parts_then_the_original():
     parts = [{"text": "(a) a"}, {"text": "(b) b"}]
     assert mathtext.restored_text(db_with(({"q": None, "p": [None, "(b) b $y$"]}, parts)), 1, "orig") == "(a) a\n\n(b) b $y$"
     assert mathtext.restored_text(db_with(({"q": None, "p": [None, None]}, parts)), 1, "orig") == "orig"
+
+
+def test_review_parts_are_single_asks_with_their_parents_wording():
+    parts = [{"label": "context", "text": "QUESTION TWO"}, {"label": "a", "text": "(a)\nCalculate x."}, {"label": "b", "text": "(b)\nThe products are CO2 and H2O."},
+             {"label": "b(i)", "text": "(i)\nDraw two arrows."}, {"label": "b(ii)", "text": "(ii)\nCircle the polar one."}]
+    db = MagicMock()
+    db.execute.return_value.fetchone.return_value = (parts, None, "")
+    assert mathtext.review_parts(db, 1) == [("a", "(a)\nCalculate x."), ("b(i)", "(b)\nThe products are CO2 and H2O.\n\n(i)\nDraw two arrows."),
+                                            ("b(ii)", "(b)\nThe products are CO2 and H2O.\n\n(ii)\nCircle the polar one.")]
+    db.execute.return_value.fetchone.return_value = ([{"label": "a", "text": "(a) only"}], None, "")
+    assert mathtext.review_parts(db, 1) == []

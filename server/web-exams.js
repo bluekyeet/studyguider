@@ -242,7 +242,7 @@ async function renderClassicExams(container, api) {
           // A bare "QUESTION ONE" line is only a heading; "QUESTION ONE: TITLE" keeps its title.
           .map(p => {
             if (p.label) return { ...p, text: withoutLabel(p.text) };
-            const head = /^\s*QUESTION\s+(?:ONE|TWO|THREE|\d+)\s*:?\s*([^\n]*)\n?([\s\S]*)$/i.exec(p.text);
+            const head = /^\s*QUESTION\s+(?:ONE|TWO|THREE|\d+)[ \t]*:?[ \t]*([^\n]*)\n?([\s\S]*)$/i.exec(p.text);
             return head ? { ...p, heading: head[1].trim(), text: head[2] } : p;
           })
           .filter(p => p.text.trim() || p.heading);

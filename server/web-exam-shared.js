@@ -85,7 +85,7 @@ export function questionView(q) {
     if (label) text = withoutLabel(text);
     else {
       // "QUESTION ONE: TITLE" is a heading, not wording.
-      const head = /^\s*QUESTION\s+(?:ONE|TWO|THREE|\d+)\s*:?\s*([^\n]*)\n?([\s\S]*)$/i.exec(text);
+      const head = /^\s*QUESTION\s+(?:ONE|TWO|THREE|\d+)[ \t]*:?[ \t]*([^\n]*)\n?([\s\S]*)$/i.exec(text);
       if (head) { heading = head[1].trim(); text = head[2]; }
     }
     if (!text.trim() && !heading) continue;

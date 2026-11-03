@@ -95,3 +95,18 @@ def test_safe_dpi_scales_down_huge_pages_and_refuses_absurd_ones():
     with pytest.raises(HTTPException) as raised:
         pages.safe_dpi(pymupdf.Rect(0, 0, 20000, 100), 110)
     assert raised.value.status_code == 422
+
+
+def test_a_saved_diagram_box_is_served_even_if_the_finder_would_pick_another(storage):
+    key = "152b7220-71bd-45da-9e9f-2b166dd5f261"
+    sample_pdf(storage / key, 2)
+    router = pages.page_router(FakeConnect("paper.pdf"), lambda: None)
+    crop = next(item for item in router.routes if item.path == "/resources/{resource_id}/pages/{page}/diagram-image").endpoint
+    assert crop(key, 1, 50.0, 50.0, 300.0, 200.0).body.startswith(b"\x89PNG")
+    for box in ((50.0, 50.0, 55.0, 200.0), (700.0, 900.0, 800.0, 950.0), (float("nan"), 0.0, 100.0, 100.0)):
+        with pytest.raises(HTTPException) as error:
+            crop(key, 1, *box)
+        assert error.value.status_code == 422
+    with pytest.raises(HTTPException) as error:
+        crop(key, 9, 50.0, 50.0, 300.0, 200.0)
+    assert error.value.status_code == 404

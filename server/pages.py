@@ -64,14 +64,36 @@ def page_router(connect, authorised):
 
     @router.get("/resources/{resource_id}/pages/{page}/diagram-image")
     def diagram_image(resource_id: str, page: int, x0: float, y0: float, x1: float, y1: float):
+        """A crop of one page. Boxes saved with a paper stay valid when the diagram finder improves, so any box that lies
+        on the page is served; it is only a picture of the learner's own PDF."""
         import math
-        regions = diagram_regions(resource_id, page)["regions"]
+        import uuid
+        try:
+            resource_id = str(uuid.UUID(resource_id))
+        except ValueError:
+            raise HTTPException(422, "Invalid resource id") from None
         values = (x0, y0, x1, y1)
-        if not all(math.isfinite(v) for v in values) or not any(all(abs(region[k] - v) < 0.1 for k, v in zip(("x0", "y0", "x1", "y1"), values)) for region in regions):
-            raise HTTPException(422, "Select an extracted diagram region")
-        with pymupdf.open(userspace.upload_root() / str(resource_id)) as document:
-            clip = pymupdf.Rect(*values)
-            data = document[page - 1].get_pixmap(clip=clip, dpi=safe_dpi(clip, 160)).tobytes("png")
+        if not all(math.isfinite(v) for v in values) or x1 - x0 < 10 or y1 - y0 < 10:
+            raise HTTPException(422, "Select a diagram region")
+        with connect() as db:
+            row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting'", (resource_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Resource not found")
+        if Path(row[0]).suffix.lower() != ".pdf":
+            raise HTTPException(422, "Diagrams require a PDF source")
+        try:
+            with pymupdf.open(userspace.upload_root() / str(resource_id)) as document:
+                if not 1 <= page <= len(document):
+                    raise HTTPException(404, "Page not found")
+                target = document[page - 1]
+                clip = pymupdf.Rect(*values) & target.rect
+                if clip.is_empty or clip.width < 10 or clip.height < 10:
+                    raise HTTPException(422, "Select a diagram region on the page")
+                data = target.get_pixmap(clip=clip, dpi=safe_dpi(clip, 160)).tobytes("png")
+        except HTTPException:
+            raise
+        except (OSError, RuntimeError, ValueError):
+            raise HTTPException(422, "Could not extract PDF diagrams") from None
         return Response(data, media_type="image/png")
 
     @router.get("/resources/{resource_id}/pages/{page}/image")
