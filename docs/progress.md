@@ -1723,3 +1723,8 @@ From the pasted source review (not a penetration test):
 
 - New first tab "Home" (`HomeScreen.kt`, house icon, six tabs now, app opens on it, Back returns to it). It uses `/study-summary` and `/lessons`, same figures as the website: overall mastery, lessons done today, reviews due; a plain Lessons to do list (Start / Continue from the saved reading position; tapping opens the lesson); Start N reviews; Topics with mastery bar and estimated grade (labelled rough, not an NZQA grade, needs 5+ review answers); weak concepts; review counts; recent exams (unofficial) and Resume exam.
 - Verified on the emulator against the live server: tab renders with real data, scrolling works, tapping Start opened the Waves lesson. Not exercised: Start N reviews, Resume exam, an exam-in-progress leave prompt, a signed-out start, and the six-tab bar on a small phone. The old instrumented tests were compiled only; some may assume Lessons is the first tab.
+
+## 3 Nov 2026: Android Home, buttons checked
+
+- "Start 8 reviews" on Home opens the Review tab showing the same 8 due questions (emulator, live server).
+- Resume exam could not be exercised: no saved exam has answers, so the button correctly does not appear. The exam-leave prompt, sign-out/in and the six-tab bar on a small phone remain unchecked.
