@@ -62,7 +62,7 @@ class DB:
             return Result()
         if "SELECT 1 FROM marking_overrides" in sql:
             return Result()
-        if "SELECT math_display, parts FROM exam_questions" in sql:
+        if "SELECT math_display, parts FROM exam_questions" in sql or "SELECT parts, math_display" in sql:
             return Result()     # no restored maths for this question
         if "INSERT INTO review_questions" in sql:
             return Result()

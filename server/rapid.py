@@ -190,10 +190,13 @@ def _queue_skipped_review(db, exam_id, question_id):
         return
     source = [{"resource_id": str(row[4]) if row[4] else None, "page": row[5], "content": row[3], "exam_id": exam_id,
                "question_id": question_id, "rubric_type": "official schedule" if row[6] else "unofficial AI practice rubric"}]
-    db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, exam_origin)
-        VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s, %s, %s)
-        ON CONFLICT (exam_origin) DO NOTHING""",
-               (row[0], mathtext.restored_text(db, question_id, row[7]), row[3], json.dumps(source), row[1], f"Exam question {row[2]}", f"{exam_id}:{question_id}"))
+    # A skipped question with labelled parts is one review question for each part, so each asks a single thing.
+    parts = mathtext.review_parts(db, question_id)
+    asked = [(text, f"Exam question {row[2]}, part ({label})", f"{exam_id}:{question_id}:{label}") for label, text in parts] or         [(mathtext.restored_text(db, question_id, row[7]), f"Exam question {row[2]}", f"{exam_id}:{question_id}")]
+    for text, concept, origin in asked:
+        db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, exam_origin)
+            VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s, %s, %s)
+            ON CONFLICT (exam_origin) DO NOTHING""", (row[0], text, row[3], json.dumps(source), row[1], concept, origin))
 
 
 def rapid_router(connect, authorised, model_reply=None, search_resources=None, mark_answer=None, vision=None):
@@ -213,9 +216,10 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
 
     def flush_pending_reviews(db, exam_id):
         for (review,) in db.execute("SELECT review FROM rapid_pending_reviews WHERE exam_id = %s", (exam_id,)).fetchall():
-            db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, exam_origin)
-                VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s, %s, %s)
-                ON CONFLICT (exam_origin) DO NOTHING""", review)
+            for one in (review if review and isinstance(review[0], list) else [review]):
+                db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, exam_origin)
+                    VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s, %s, %s)
+                    ON CONFLICT (exam_origin) DO NOTHING""", one)
         db.execute("DELETE FROM rapid_pending_reviews WHERE exam_id = %s", (exam_id,))
 
     def after_mark(exam_id, question_id):

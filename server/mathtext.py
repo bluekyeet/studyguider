@@ -200,6 +200,36 @@ def overlay(db, items, id_key="question_id"):
     return items
 
 
+CONTEXT_ONLY = re.compile(r"^\s*question\s+\w+\s*$", re.I)
+
+
+def review_parts(db, question_id):
+    """[(label, text)] for a question with two or more labelled parts, each with its restored maths, so a review question can
+    be one part. Shared opening text is added to every part; a bare "QUESTION ONE" heading is not. [] when it has no parts."""
+    row = db.execute("SELECT parts, math_display, math_state FROM exam_questions WHERE id = %s", (question_id,)).fetchone()
+    if not row or not isinstance(row[0], list):
+        return []
+    parts, display, state = row
+    shown = display.get("p") if state == "done" and isinstance(display, dict) else None
+    shown = shown or []
+    context, labelled = "", []
+    for index, part in enumerate(parts):
+        if not isinstance(part, dict):
+            continue
+        new = shown[index] if index < len(shown) else None
+        text = (new if isinstance(new, str) and new.strip() else part.get("text") or "").strip()
+        label = part.get("label")
+        if not text or not isinstance(label, str) or not label:
+            continue
+        if label == "context":
+            context = "" if CONTEXT_ONLY.match(text) else text
+        else:
+            labelled.append((label, text))
+    if len(labelled) < 2:
+        return []
+    return [(label, f"{context}\n\n{text}" if context else text) for label, text in labelled]
+
+
 def restored_text(db, question_id, original):
     """The question as the learner saw it with its equations restored, for copies stored elsewhere (review questions).
     Falls back to the original text when nothing was restored."""
