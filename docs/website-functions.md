@@ -131,6 +131,7 @@ Short spaced-repetition questions made from completed lessons and wrong exam ans
   review when the first was uncertain, with a plain "markers disagree" message; the learner's own
   separate override if set. A compare-with-schedule section shows the registered schedule, or the
   AI rubric labelled unofficial.
+- **Switching mode:** an open exam has a "Type answers / Write on paper" switch (as in the Android app). It changes that exam's answer mode on the server and reopens it; unsaved answers prompt before being discarded.
 - **Handwritten answers:** when starting an exam the learner chooses "Type my answers" or "Write on paper, then upload photos". In the paper mode the exam page offers an upload of the whole paper (up to 10 PNG/JPEG photos in order, or one PDF, 10 MiB total) and an upload per question. The pages are read by AI (the same recognition the Android app uses); the recognised text appears in the answer box with the message that it is unsaved. It is **not saved or confirmed until the learner presses "Confirm recognised answer"** (or Save answer), and Save & mark is refused until then. Questions with no answer on the uploaded pages keep their saved answer. Marking afterwards uses the saved text, as in typed mode.
 
 ## Library (`#library`)

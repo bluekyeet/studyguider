@@ -161,6 +161,24 @@ export async function renderExams(container, api) {
       const heading = el('div', '', 'card stack');
       heading.append(el('h2', info.title || `Exam ${id}`), el('p', `${exam.kind.replaceAll('_', ' ')} · ${exam.total_marks > 0 ? `${exam.total_marks} registered marks` : 'marks not recorded'} · ${info.answer_mode} answer mode`, 'muted'), link('Download text-only practice PDF (original diagrams not included)', `/exams/${id}/print`));
       const handwritten = info.answer_mode === 'handwritten';
+      // Same switch as the Android app: the choice belongs to this exam and can change at any time.
+      const modes = el('div', '', 'toolbar'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'How you answer');
+      for (const [value, label] of [['digital', 'Type answers'], ['handwritten', 'Write on paper']]) {
+        const choice = el('button', label, value === info.answer_mode ? 'primary' : ''); choice.type = 'button';
+        choice.setAttribute('aria-pressed', String(value === info.answer_mode));
+        choice.onclick = async () => {
+          if (value === info.answer_mode || busy) return;
+          if (dirty() && !window.confirm('Discard unsaved exam answers and switch how you answer?')) return;
+          try {
+            await api(`/exams/${id}/answer-mode`, json('PUT', { answer_mode: value }));
+            drafts.forEach(d => { d.saved = d.value(); });   // the learner chose to discard; reopen without a second prompt
+            container.dataset.dirty = 'false';
+            await openExam(id);
+          } catch (err) { report(err); }
+        };
+        modes.append(choice);
+      }
+      heading.append(modes);
       const appliers = new Map();   // question id -> function that shows a recognised answer in its card
       if (handwritten) {
         const all = el('div', '', 'stack');
