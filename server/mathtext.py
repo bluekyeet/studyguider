@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import threading
+import time
 
 import userspace
 from splitting import _words, grounded
@@ -119,7 +120,7 @@ _running = set()
 _lock = threading.Lock()
 
 
-def process(connect, vision_reply, topic_id=None, workers=3, ids=None):
+def process(connect, vision_reply, topic_id=None, workers=2, ids=None):
     from concurrent.futures import ThreadPoolExecutor
     with connect() as db:
         rows = pending(db, topic_id, ids=ids)
@@ -127,11 +128,14 @@ def process(connect, vision_reply, topic_id=None, workers=3, ids=None):
 
     def attempt(row):
         error = None
-        for _ in range(2):
+        for tries in range(3):
             try:
                 return restore_one(vision_reply, row), None
             except Exception as caught:     # noqa: BLE001 - network, unreadable PDF, or a rewrite that failed the wording check
                 error = caught
+                if isinstance(caught, ValueError) and tries:
+                    break                   # the model answered twice and neither rewrite was usable
+                time.sleep(4 * (tries + 1))   # the gateway answers 503 when it is busy; wait and try again
         return None, error
 
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="maths") as pool:
