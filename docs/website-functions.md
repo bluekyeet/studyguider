@@ -134,6 +134,24 @@ Short spaced-repetition questions made from completed lessons and wrong exam ans
 - **Switching mode:** an open exam has a "Type answers / Write on paper" switch (as in the Android app). It changes that exam's answer mode on the server and reopens it; unsaved answers prompt before being discarded.
 - **Handwritten answers:** when starting an exam the learner chooses "Type my answers" or "Write on paper, then upload photos". In the paper mode the exam page offers an upload of the whole paper (up to 10 PNG/JPEG photos in order, or one PDF, 10 MiB total) and an upload per question. The pages are read by AI (the same recognition the Android app uses); the recognised text appears in the answer box with the message that it is unsaved. It is **not saved or confirmed until the learner presses "Confirm recognised answer"** (or Save answer), and Save & mark is refused until then. Questions with no answer on the uploaded pages keep their saved answer. Marking afterwards uses the saved text, as in typed mode.
 
+## Exams hub: Rapid questions and Exam revision
+
+Exams has three sections, switched at the top of the page (`#exams`, `#exams/rapid`, `#exams/revision`) so the main
+menu stays short. The first is the page described above.
+
+**Rapid questions.** Choose a topic, where the questions come from (mix of past-paper and AI, past papers only, AI
+only) and a length (10, 20, 30, 50 or unlimited), then start. Questions flash up one at a time with their figures; you
+type an answer (maths toolbar), or photograph handwriting, then press Next (Ctrl+Enter), Skip, or End session. There is no
+Back, no score and no feedback while the session is open; the server refuses to reveal any. A session in progress is
+offered again after a reload. After End session the page shows a grade breakdown (Not achieved, Achieved, Merit, Excellence,
+plus Skipped, Unclear and Could not mark when present) as counts and a proportional bar, a note that misses were added to
+Exam revision and sent to lessons, and every question with the answer, the AI feedback and quoted evidence, and the schedule
+or AI rubric. Grades arrive as marking finishes (no spinner). AI questions are labelled unofficial. Earlier sessions can be reopened.
+
+**Exam revision.** The questions missed or skipped in rapid sessions, grouped by topic with a count on the tab, each showing
+your last answer, the feedback and the schedule. Redo starts a rapid session of just those; a question clears when you next get it
+Achieved or better. A Show cleared switch lists cleared ones.
+
 ## Library (`#library`)
 
 Where files and course structure live. Three levels.

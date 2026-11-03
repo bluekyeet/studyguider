@@ -55,6 +55,13 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Add visible warnings when model-call failures rise (usage panel, at least ten calls and 20% errors).
 - [x] Resume website study-workflow parity (done: Lessons, Review, Exams, Library, Settings on `/`, dark theme, cross-device sync; see `docs/website-functions.md` for known gaps).
 - [x] Home page with today's tasks and progress counts: `GET /study-summary` and website `#home` (3 Nov 2026); Android Home tab added (3 Nov 2026, emulator-checked in part).
+- [x] Rapid exam questions and Exam revision (4 Nov 2026), website and Android, under an Exams hub; see `docs/exam-drill.md`.
+  - [x] Real PostgreSQL check (`server/tests/rapid_check.py`, disposable schema, CI): blindfold, answer locking, skip, concurrent Next,
+    mix alternation, failed AI questions dropped, revision redo, misses not recorded until the session ends.
+  - [x] Live through the real gateway on a real topic: AI questions generated and reviewed, answers marked in the background, results correct.
+  - [ ] Not verified: quality of generated questions and rubrics; how long a 30 to 50 question session takes to mark; an authenticated
+    browser session end to end; handwriting photo upload in the rapid player; the Android layout on a small phone; whether missed
+    questions actually change live lessons (the existing open lesson-quality item).
 - [ ] Notification reminders
 
 ## Foundation, access and resources

@@ -52,3 +52,31 @@ def test_blindfold_applies_to_open_sessions_only_and_not_to_the_marking_thread()
         rapid_state.refuse_if_blind(Db(True), 5)        # the background marker may read results
     finally:
         rapid_state.bypass.on = False
+
+
+def test_routes_parse_requests_as_the_clients_send_them():
+    """No database: a valid request reaches the database layer (500 here), an invalid one is rejected up front (422)."""
+    from contextlib import contextmanager
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from rapid import rapid_router
+
+    @contextmanager
+    def no_database():
+        raise RuntimeError("no database in this test")
+        yield  # pragma: no cover
+
+    app = FastAPI()
+    app.include_router(rapid_router(no_database, lambda: None))
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"Content-Type": "application/json"}
+    assert client.post("/rapid", json={"topic_id": 1, "source": "mix", "count": None}, headers=headers).status_code == 500
+    assert client.post("/rapid", json={"topic_id": 1, "source": "everything"}, headers=headers).status_code == 422
+    assert client.post("/rapid/9/next", json={}, headers=headers).status_code == 500                  # an empty body is allowed
+    assert client.post("/rapid/9/next", json={"question_id": 5, "answer": "x", "seconds": 4, "skip": False}, headers=headers).status_code == 500
+    assert client.post("/rapid/9/next", json={"seconds": -1}, headers=headers).status_code == 422
+    assert client.post("/rapid/9/end").status_code == 500                                            # no body at all
+    assert client.get("/rapid/active").status_code == 500          # not shadowed by /rapid/{exam_id}/...
+    assert client.get("/exam-revision?topic_id=2&include_resolved=true").status_code == 500
+    assert client.get("/exam-revision/summary").status_code == 500

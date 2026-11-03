@@ -222,6 +222,22 @@ async def main():
             assert db.execute("SELECT resolved_at IS NOT NULL FROM exam_revision WHERE question_id=%s", (cur["question_id"],)).fetchone()[0]
         print("PASS revision redo serves only outstanding misses and clears one when answered correctly")
 
+        # 7. A miss is neither recorded in Exam revision nor queued for lessons until the session ends.
+        s7 = start(RapidStart(topic_id=topic, source="past", count=None))
+        first7 = s7["question"]["question_id"]
+        nxt(s7["id"], RapidMove(question_id=first7, answer="a wrong answer"))
+        with isolated() as db:
+            wait(lambda: db.execute("SELECT count(*) FROM markings WHERE exam_id=%s", (s7["id"],)).fetchone()[0] >= 1, "mid-session marking")
+            assert db.execute("SELECT count(*) FROM exam_revision WHERE last_exam_id=%s", (s7["id"],)).fetchone()[0] == 0, "revision leaked mid-session"
+            assert db.execute("SELECT count(*) FROM review_questions WHERE exam_origin=%s", (f"{s7['id']}:{first7}",)).fetchone()[0] == 0, "review queued mid-session"
+            assert db.execute("SELECT count(*) FROM rapid_pending_reviews WHERE exam_id=%s", (s7["id"],)).fetchone()[0] == 1
+        end(s7["id"])
+        with isolated() as db:
+            assert db.execute("SELECT count(*) FROM exam_revision WHERE last_exam_id=%s AND resolved_at IS NULL", (s7["id"],)).fetchone()[0] == 1
+            assert db.execute("SELECT count(*) FROM review_questions WHERE exam_origin=%s", (f"{s7['id']}:{first7}",)).fetchone()[0] == 1
+            assert db.execute("SELECT count(*) FROM rapid_pending_reviews WHERE exam_id=%s", (s7["id"],)).fetchone()[0] == 0
+        print("PASS misses stay unrecorded (no revision entry, no lesson review) until End session, then both appear")
+
         # 6. Results are refused for an open session.
         s6 = start(RapidStart(topic_id=topic, source="past", count=3))
         refuses(lambda: results(s6["id"]), "results while open")

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -236,6 +237,11 @@ private fun StudyApp() {
     var sourcePage by remember { mutableIntStateOf(1) }
     var topicSourceId by remember { mutableStateOf("") }
     var pendingTab by remember { mutableStateOf<Int?>(null) }
+    // Exam is a hub of three sections so the bottom bar stays short: 0 Classic exam papers, 1 Rapid questions, 2 Exam revision.
+    var examSection by rememberSaveable { mutableIntStateOf(0) }
+    var pendingSection by remember { mutableStateOf<Int?>(null) }
+    var rapidStart by remember { mutableStateOf<JSONObject?>(null) }
+    var revisionCount by remember { mutableIntStateOf(0) }
     var confirmExamExit by remember { mutableStateOf(false) }
     var tab by remember { mutableIntStateOf(5) }
     var subjectTitle by remember { mutableStateOf("") }
@@ -535,7 +541,24 @@ private fun StudyApp() {
                 4 -> LearningScreen(base, token, topicsReload, onManageCourses = { showTopicPicker = true }, onOpenLesson = { topic, title, lesson ->
                     selectedLesson = lesson; openTopic(topic, title); subjectTitle = findSubject(topic); tab = 1
                 })
-                else -> Column(Modifier.fillMaxSize().verticalScroll(examScroll).padding(horizontal = 16.dp)) {
+                else -> Column(Modifier.fillMaxSize()) {
+                    // Section switch. Hidden while a classic exam is open so the exam keeps the whole screen.
+                    if (examSection != 0 || examId.isEmpty()) Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(0 to "Classic exam papers", 1 to "Rapid questions", 2 to (if (revisionCount > 0) "Exam revision ($revisionCount)" else "Exam revision")).forEach { (section, label) ->
+                            FilterChip(selected = examSection == section, onClick = {
+                                if (section == examSection) return@FilterChip
+                                if (examDirty) { pendingSection = section; pendingTab = null; confirmExamExit = true } else examSection = section
+                            }, label = { Text(label) })
+                        }
+                    }
+                    LaunchedEffect(token, examSection) { if (token.isNotEmpty()) runCatching { revisionCount = fetchRevisionCount(base, token) } }
+                    when (examSection) {
+                        1 -> RapidScreen(base, token, rapidStart, onStartedWith = { rapidStart = null })
+                        2 -> RevisionScreen(base, token, onRedo = { session -> rapidStart = session; examSection = 1 })
+                        else ->                 Column(Modifier.weight(1f).verticalScroll(examScroll).padding(horizontal = 16.dp)) {
                     if (examId.isEmpty()) ExamListScreen(base, token) { examId = it.toString(); sourceId = "" }
                     else {
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -545,6 +568,8 @@ private fun StudyApp() {
                         }
                         if (sourceId.isNotEmpty()) SourceScreen(base, token, sourceId, sourcePage)
                         ExamScreen(base, token, examId.toLong(), onOpenSource = { id, page -> sourceId = id; sourcePage = page }, onDirtyChange = { examDirty = it }, onPageChange = { scope.launch { examScroll.scrollTo(0) } })
+                    }
+                }
                     }
                 }
             } }
@@ -585,11 +610,11 @@ private fun StudyApp() {
         dismissButton = { TextButton(onClick = { signOutConfirm = false }) { Text("Cancel") } },
     )
     if (confirmExamExit) AlertDialog(
-        onDismissRequest = { confirmExamExit = false },
+        onDismissRequest = { confirmExamExit = false; pendingSection = null },
         title = { Text("Discard unsaved answers?") },
         text = { Text("Changes not saved to the server will be lost.") },
-        confirmButton = { TextButton(onClick = { examDirty = false; examId = ""; sourceId = ""; pendingTab?.let { tab = it }; pendingTab = null; confirmExamExit = false }) { Text("Discard") } },
-        dismissButton = { TextButton(onClick = { confirmExamExit = false }) { Text("Keep editing") } }
+        confirmButton = { TextButton(onClick = { examDirty = false; examId = ""; sourceId = ""; pendingTab?.let { tab = it }; pendingTab = null; pendingSection?.let { examSection = it }; pendingSection = null; confirmExamExit = false }) { Text("Discard") } },
+        dismissButton = { TextButton(onClick = { confirmExamExit = false; pendingSection = null }) { Text("Keep editing") } }
     )
 }
 

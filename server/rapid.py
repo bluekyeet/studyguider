@@ -73,6 +73,11 @@ def create_rapid_tables(db):
         question_id bigint NOT NULL REFERENCES exam_questions(id) ON DELETE CASCADE,
         served boolean NOT NULL DEFAULT false)""")
     db.execute("CREATE INDEX IF NOT EXISTS rapid_queue_open_idx ON rapid_queue (exam_id) WHERE NOT served")
+    db.execute("""CREATE TABLE IF NOT EXISTS rapid_pending_reviews (
+        exam_id bigint NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+        question_id bigint NOT NULL,
+        review jsonb NOT NULL,
+        PRIMARY KEY (exam_id, question_id))""")
     db.execute("""CREATE TABLE IF NOT EXISTS exam_revision (
         question_id bigint PRIMARY KEY REFERENCES exam_questions(id) ON DELETE CASCADE,
         topic_id bigint NOT NULL REFERENCES topics(id),
@@ -186,17 +191,29 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
     router = APIRouter(dependencies=[Depends(authorised)])
 
     # ---- marking in the background -------------------------------------------------------------
+    def apply_revision(db, exam_id, only=None):
+        """Record this session's misses in Exam revision and clear ones now answered. Idempotent; only after the session ends."""
+        marks = db.execute("""SELECT DISTINCT ON (m.question_id) m.question_id, m.result->>'outcome', q.topic_id FROM markings m
+            JOIN exam_questions q ON q.id = m.question_id WHERE m.exam_id = %s AND m.kind = 'first' AND (%s::bigint IS NULL OR m.question_id = %s)
+            ORDER BY m.question_id, m.id DESC""", (exam_id, only, only)).fetchall()
+        for question_id, outcome, topic_id in marks:
+            if outcome == "not_achieved":
+                _upsert_revision(db, exam_id, question_id, topic_id)
+            elif outcome in ("achieved", "merit", "excellence"):
+                db.execute("UPDATE exam_revision SET resolved_at = now(), last_attempt_at = now() WHERE question_id = %s AND resolved_at IS NULL", (question_id,))
+
+    def flush_pending_reviews(db, exam_id):
+        for (review,) in db.execute("SELECT review FROM rapid_pending_reviews WHERE exam_id = %s", (exam_id,)).fetchall():
+            db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, exam_origin)
+                VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s, %s, %s)
+                ON CONFLICT (exam_origin) DO NOTHING""", review)
+        db.execute("DELETE FROM rapid_pending_reviews WHERE exam_id = %s", (exam_id,))
+
     def after_mark(exam_id, question_id):
         with connect() as db:
-            row = db.execute("""SELECT result->>'outcome' FROM markings WHERE exam_id = %s AND question_id = %s AND kind = 'first'
-                ORDER BY id DESC LIMIT 1""", (exam_id, question_id)).fetchone()
-            topic = db.execute("SELECT topic_id FROM exam_questions WHERE id = %s", (question_id,)).fetchone()
-            if not row or not topic:
-                return
-            if row[0] == "not_achieved":
-                _upsert_revision(db, exam_id, question_id, topic[0])
-            elif row[0] in ("achieved", "merit", "excellence"):
-                db.execute("UPDATE exam_revision SET resolved_at = now(), last_attempt_at = now() WHERE question_id = %s AND resolved_at IS NULL", (question_id,))
+            if rapid_state.is_open(db, exam_id):
+                return          # nothing is recorded, or shown, until the session ends
+            apply_revision(db, exam_id, question_id)
 
     def mark(key):
         exam_id, question_id = key
@@ -386,6 +403,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                 for (question_id,) in db.execute("SELECT question_id FROM rapid_items WHERE exam_id = %s AND skipped", (exam_id,)).fetchall():
                     _upsert_revision(db, exam_id, question_id, sess[0])
                     _queue_skipped_review(db, exam_id, question_id)
+                apply_revision(db, exam_id)
+                flush_pending_reviews(db, exam_id)
             counts = db.execute("""SELECT count(*) FILTER (WHERE NOT skipped AND answered_at IS NOT NULL), count(*) FILTER (WHERE skipped)
                 FROM rapid_items WHERE exam_id = %s""", (exam_id,)).fetchone()
             unmarked = db.execute("""SELECT r.question_id FROM rapid_items r WHERE r.exam_id = %s AND NOT r.skipped AND r.answered_at IS NOT NULL

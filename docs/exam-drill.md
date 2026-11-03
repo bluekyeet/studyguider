@@ -1,8 +1,9 @@
 # Rapid exam questions: writeup
 
-A proposal for a rapid-fire way to practise exam questions, plus an Exam revision page for the ones you
-miss. Written 4 November 2026 from the current code and question bank, and revised after the product
-description from the learner. Nothing here is built yet.
+A rapid-fire way to practise exam questions, plus an Exam revision page for the ones you miss.
+Written 4 November 2026 from the current code and question bank, and revised after the product
+description from the learner. **Status: built on the server, the website and Android (4 November 2026).**
+See section 13 for the decisions that were made and what is and is not verified.
 
 ## 1. The idea in one paragraph
 
@@ -171,11 +172,35 @@ source (past paper or AI), not yet retried. A count of outstanding questions sho
 - **Cannot be proved from code:** whether the questions are good. That needs your eyes on a sample of generated
   and imported questions.
 
-## 13. Decisions needed
+## 13. Decisions made, and what was built
 
-1. **What counts as missed:** Not achieved and skipped only, or a weak Achieved too?
-2. **Skip:** allowed (counts as missed), or every question must be attempted?
-3. **Length:** fixed sizes (10, 20, 50), or open-ended until you press End session, or both?
-4. **Default mix:** past papers first then AI, as proposed, or AI only for variety?
-5. **Overall grade:** show the rough estimate, or only the grade distribution?
-6. **Order of work:** website first, then Android, as proposed?
+Decisions (learner, 4 November 2026):
+
+1. A miss is **Not achieved**, or a skipped question. A weak Achieved does not count.
+2. **Skip is allowed** and counts as a miss.
+3. Session length is **set (10, 20, 30, 50) or unlimited** until End session.
+4. Default mix is **both**: past-paper and AI questions alternate (past papers only or AI only are also offered).
+5. Results show the **grade breakdown only**; there is no overall estimated grade.
+6. **Website and Android were built together.**
+
+Built:
+
+- Server: `server/rapid.py` and `server/rapid_state.py`. A session is a hidden exam (`kind = 'rapid'`) so marking,
+  answers and scans are reused; it is excluded from the exam list. Routes: `POST /rapid`, `GET /rapid/active`,
+  `GET /rapid/{id}/current`, `POST /rapid/{id}/next`, `POST /rapid/{id}/end`, `GET /rapid/{id}/results`,
+  `POST /rapid/{id}/remark`, `GET /rapid`, `GET /exam-revision`, `GET /exam-revision/summary`. A revision redo is
+  `POST /rapid` with `source: "revision"`.
+- **Blindfold enforced server side:** while a session is open the exam, feedback, override, schedule-grade, marks and
+  print routes refuse (409), the question payload carries no schedule or rubric, answers lock when you move on, and a
+  miss is neither recorded in Exam revision nor queued as a lesson review until the session ends (the review is held in
+  `rapid_pending_reviews` and released at the end).
+- AI questions are generated ahead (a buffer of about six, refilled in the background), each reviewed by a second model
+  before it can be served; failures are dropped. Marking runs in the background (three at a time) and is retried; results
+  fill in as marks arrive.
+- Website: Exams is a hub of **Classic exam papers / Rapid questions / Exam revision** (`#exams`, `#exams/rapid`,
+  `#exams/revision`), with the count of outstanding misses on the revision tab.
+- Android: the same three sections as chips at the top of the Exam tab.
+
+Differences from the plan: handwriting photo upload is on the website player only, not in the Android player; the
+Android topic list shows every topic rather than only the ones you are learning; Android shows figures through the
+existing authorised image component.

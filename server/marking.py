@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import io
+import rapid_state
 from rapid_state import refuse_if_blind
 from PIL import Image, UnidentifiedImageError
 from typing import Literal
@@ -218,12 +219,17 @@ def queue_exam_review(connect, exam_id, question_id, row, result, schedule, scan
             return
         if db.execute("SELECT 1 FROM marking_overrides WHERE exam_id=%s AND question_id=%s", (exam_id, question_id)).fetchone():
             return
+        values = (row[16], question, schedule, json.dumps(source), row[2],
+                  (result.get("missing") or [f"Exam question {row[1]}"])[0][:200], f"{exam_id}:{question_id}")
+        if rapid_state.is_open(db, exam_id):
+            # A rapid session shows nothing about results until it ends; the review question is queued then.
+            db.execute("INSERT INTO rapid_pending_reviews (exam_id, question_id, review) VALUES (%s, %s, %s::jsonb) ON CONFLICT DO NOTHING",
+                       (exam_id, question_id, json.dumps(values)))
+            return
         db.execute("""INSERT INTO review_questions
             (topic_id,question,due_date,expected_answer,source,standard_number,concept,exam_origin)
             VALUES (%s,%s,(CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date,%s,%s::jsonb,%s,%s,%s)
-            ON CONFLICT (exam_origin) DO NOTHING""",
-            (row[16], question, schedule, json.dumps(source), row[2],
-             (result.get("missing") or [f"Exam question {row[1]}"])[0][:200], f"{exam_id}:{question_id}"))
+            ON CONFLICT (exam_origin) DO NOTHING""", values)
 
 
 def marking_router(connect, authorised, model_reply, model_reply_vision=None):
