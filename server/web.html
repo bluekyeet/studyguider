@@ -22,10 +22,10 @@
 <a href="#settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>Settings</a>
 </nav>
 <div class="spacer"></div>
-<footer><div class="zone" title="Lessons, due dates and schedules use New Zealand time"><span>Pacific/Auckland</span><span>NZ</span></div><a href="/manage">Advanced tools</a><button id="logout" class="small quiet" hidden>Sign out</button></footer>
+<footer><div class="zone" title="Lessons, due dates and schedules use New Zealand time"><span>Pacific/Auckland</span><span>NZ</span></div><a id="me" href="#account" hidden></a><a id="advanced" href="/manage" hidden>Advanced tools</a><button id="logout" class="small quiet" hidden>Sign out</button></footer>
 </aside>
 <main>
-<form id="login" class="card" hidden><img src="/branding/wordmark.png" alt="StudyGuider"><h1>Welcome back</h1><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><div class="toolbar"><button class="primary">Sign in</button></div><p id="login-error" class="error" role="alert"></p></form>
+<form id="login" class="card" hidden><img src="/branding/wordmark.png" alt="StudyGuider"><h1>Welcome back</h1><label for="username">Username</label><input id="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><div class="toolbar"><button class="primary">Sign in</button></div><p id="login-error" class="error" role="alert"></p></form>
 <div id="study" hidden><p id="notice" class="error" role="alert"></p><div id="view"></div></div>
 </main>
 </div>

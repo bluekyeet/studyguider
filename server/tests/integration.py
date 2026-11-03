@@ -11,13 +11,15 @@ import pymupdf
 from docx import Document
 from pptx import Presentation
 
-from app import connect, hasher
+from app import connect_account, hasher, provision_account
 
 assert os.environ.get("DISPOSABLE_TEST_DATABASE") == "yes"
-with connect() as db:
-    db.execute("INSERT INTO settings VALUES ('password_hash', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (hasher.hash("test-password-only"),))
+USER = "integration-admin"
+with connect_account() as db:
     db.execute("DELETE FROM sessions")
-    db.execute("DELETE FROM settings WHERE key IN ('login_failures', 'locked_until')")
+    db.execute("DELETE FROM users WHERE lower(username) = %s", (USER,))
+    user_id = db.execute("INSERT INTO users (username, password_hash, is_admin) VALUES (%s, %s, true) RETURNING id", (USER, hasher.hash("test-password-only"))).fetchone()[0]
+provision_account(user_id)         # the account's own schema; the running server sees it straight away
 
 
 def request(method, path, data=None, token=None):
@@ -55,8 +57,8 @@ connection.putheader("Content-Length", str(51 * 1024 * 1024))
 connection.endheaders()
 assert connection.getresponse().status == 413
 connection.close()
-assert request("POST", "/login", {"password": "wrong"})[0] == 401
-status, result = request("POST", "/login", {"password": "test-password-only"})
+assert request("POST", "/login", {"username": USER, "password": "wrong"})[0] == 401
+status, result = request("POST", "/login", {"username": USER, "password": "test-password-only"})
 assert status == 200
 token = result["token"]
 status, subject = request("POST", "/subjects", {"name": " Physics ", "level": 2}, token)
@@ -193,6 +195,6 @@ for resource_id in exam_resources:
 assert request("POST", "/logout", token=token)[0] == 200
 assert request("GET", "/subjects", token=token)[0] == 401
 for _ in range(5):
-    assert request("POST", "/login", {"password": "wrong"})[0] == 401
-assert request("POST", "/login", {"password": "test-password-only"})[0] == 429
+    assert request("POST", "/login", {"username": USER, "password": "wrong"})[0] == 401
+assert request("POST", "/login", {"username": USER, "password": "test-password-only"})[0] == 429
 print("Integration checks passed")

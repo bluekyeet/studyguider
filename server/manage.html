@@ -209,7 +209,9 @@
     <p id="message" role="status" aria-live="polite"></p>
     <form id="login" class="card login-card">
       <div class="section-heading"><h2>Welcome back</h2></div>
-      <p class="hint">Sign in to manage your resources.</p>
+      <p class="hint">Advanced tools are for administrators. Sign in with your username and password.</p>
+      <label for="username">Username</label>
+      <input id="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
       <label for="password">Password</label>
       <input id="password" type="password" autocomplete="current-password" required>
       <button>Sign in</button>
@@ -883,7 +885,8 @@
       if (!list.children.length) { const empty = document.createElement('li'); empty.className = 'folder-empty'; empty.textContent = 'This folder is empty.'; list.append(empty); }
     }
     $('login').onsubmit = run(async () => {
-      const result = await api('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('password').value }) });
+      const result = await api('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: $('username').value.trim(), password: $('password').value }) });
+      if (!result.user?.is_admin) { await api('/logout', { method: 'POST' }); $('password').value = ''; throw new Error('The advanced tools are for administrators. Your study pages are at the main site.'); }
       token = 'cookie-session'; $('password').value = ''; $('login').hidden = true; $('manager').hidden = false;
       await loadSubjects(); await loadStandards(); await loadExamQuestions();
     });
@@ -893,6 +896,7 @@
         const response = await fetch('/session', {credentials:'same-origin'});
         if (response.status === 401) return;
         if (!response.ok) throw new Error('Could not restore your session');
+        if (!(await response.json()).user?.is_admin) { message('The advanced tools are for administrators. Sign in with an administrator account.'); return; }
         token = 'cookie-session'; $('login').hidden = true; $('manager').hidden = false;
         await loadSubjects(); await loadStandards(); await loadExamQuestions();
       } catch (error) { message(error.message); }

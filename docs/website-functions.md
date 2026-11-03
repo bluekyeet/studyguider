@@ -32,7 +32,7 @@ about how things should look. Written 3 November 2026 from the code in `server/w
 
 ## Global shell
 
-- **Sign-in screen** shown when there is no session: password field, Sign in button, error text.
+- **Sign-in screen** shown when there is no session: username and password fields, Sign in button, error text.
   The sidebar is hidden until sign-in.
 - **Navigation**, always visible after sign-in: Home, Lessons, Review, Exams, Library, Settings. The
   current page is marked. Sign out is separate. On wide screens it is a left sidebar; on phones a
@@ -152,6 +152,16 @@ or AI rubric. Grades arrive as marking finishes (no spinner). AI questions are l
 A pack (`#exams/revision?pack=ID`) is built from your mistakes in that topic (rapid questions and parts, marked exams, daily review): for
 each weak concept a short re-teach and several questions. Check answer marks it straight away with feedback and a worked answer, and a wrong
 answer returns tomorrow. A pack is AI-written and unofficial. Earlier packs are reached from the Latest pack link on each topic.
+
+## Account (`#account`)
+
+Opened from your name at the bottom of the sidebar. **Profile:** your picture (JPEG, PNG, WebP or GIF up to 5 MB, shown as a
+small round JPEG; the first letter of your username when there is none), change or remove it. **Username:** needs your current
+password. **Password:** current, new (at least 12 characters) and repeat; it signs you out on other devices. **Accounts**
+(administrators only): everyone with their role, Edit (username, a new password, administrator or not) and Remove (type the
+username to confirm; it permanently deletes that account's subjects, files, lessons, reviews, exams and teaching style), and
+Add an account (username, starting password, administrator or not). The last administrator cannot be demoted or removed, and
+you cannot remove yourself. Normal users do not see Advanced tools, the AI usage card in Settings, or the Accounts section.
 
 ## Library (`#library`)
 

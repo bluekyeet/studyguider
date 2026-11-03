@@ -6,6 +6,10 @@ from contextlib import contextmanager
 from app import connect
 from exams import StartExam, exam_router
 
+import app as application
+
+ACCOUNT = 900002                      # a throwaway account whose empty tables are the template for the temp tables
+application.provision_account(ACCOUNT)
 db = connect()
 
 
@@ -16,7 +20,7 @@ def connection():
 
 try:
     for table in ('topics', 'exam_questions', 'exams', 'exam_items'):
-        db.execute(f'CREATE TEMP TABLE {table} (LIKE public.{table} INCLUDING ALL) ON COMMIT DROP')
+        db.execute(f'CREATE TEMP TABLE {table} (LIKE u900002.{table} INCLUDING ALL) ON COMMIT DROP')
     db.execute("INSERT INTO topics(id,subject_id,name) OVERRIDING SYSTEM VALUE VALUES (1,1,'Synthetic selection')")
     for ident in range(1, 5):
         db.execute("""INSERT INTO exam_questions(id,topic_id,standard_number,year,question_number,paper_page,schedule_page,marks,source)
@@ -31,4 +35,6 @@ try:
 finally:
     db.rollback()
     db.close()
+    with application.connect_account() as account_db:
+        account_db.execute(f'DROP SCHEMA IF EXISTS u{ACCOUNT} CASCADE')
     print('ROLLBACK: temporary selection tables removed; sequence gaps possible')

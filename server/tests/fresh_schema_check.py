@@ -1,4 +1,4 @@
-"""Verify actual lifespan migrations on an empty isolated PostgreSQL schema.
+"""Verify the real table-creation code (init_schema, run for every account at start-up) on an empty isolated PostgreSQL schema.
 
 Run with current source mounted: python - < server/tests/fresh_schema_check.py
 Background workers are stubbed, not started. Public study tables are untouched.
@@ -26,7 +26,10 @@ class StoppedThread:
 
 
 async def check():
-    async with app.lifespan(app.app):
+    with isolated() as db:
+        app.init_schema(db)
+        app.init_schema(db)         # and again: upgrading an existing account must be harmless
+    if True:
         with isolated() as db:
             for table in ('subjects', 'topics', 'topic_style_profiles', 'lessons', 'exams', 'review_questions'):
                 assert db.execute('SELECT to_regclass(%s)', (schema + '.' + table,)).fetchone()[0], table

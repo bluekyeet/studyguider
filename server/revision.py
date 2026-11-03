@@ -7,6 +7,7 @@ back through spaced repetition. Everything here is AI-written and unofficial; it
 """
 import json
 import logging
+import userspace
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -282,7 +283,7 @@ def revision_router(connect, authorised, model_reply, search_resources):
             pack_id = db.execute("INSERT INTO revision_packs (topic_id) VALUES (%s) RETURNING id", (body.topic_id,)).fetchone()[0]
         with _lock:
             _running.add(pack_id)
-        GENERATORS.submit(generate, pack_id)
+        userspace.submit(GENERATORS, generate, pack_id)
         return {"id": pack_id, "status": "generating"}
 
     @router.get("/revision/packs")

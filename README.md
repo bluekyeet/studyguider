@@ -37,7 +37,7 @@ Install Docker and Docker Compose, then:
 ```sh
 cp .env.example .env          # set POSTGRES_PASSWORD and POSTGRES_PASSWORD_URLENCODED
 docker compose up --build
-docker compose exec api python set_password.py    # login password, at least 12 characters
+docker compose exec api python set_password.py    # first administrator (or reset any account's password), at least 12 characters
 ```
 
 Open http://localhost:8000. `/health` only checks that the API process is up.
@@ -59,7 +59,7 @@ cd android
 ./gradlew assembleDebug      # gradlew.bat on Windows
 ```
 
-Sign in with the server address and password. On the Android emulator the host machine is
+Sign in with the server address, your username and your password. On the Android emulator the host machine is
 `http://10.0.2.2:8000`. The login token is kept in the Android Keystore. Debug builds allow cleartext
 HTTP for local testing; do not use real passwords over HTTP, and use HTTPS for anything else.
 
@@ -78,13 +78,21 @@ Without Docker, install `server/requirements.txt`, `pytest` and `httpx`, then
 `PYTHONPATH=server python -m pytest server/tests -q`. CI (`.github/workflows/ci.yml`) also builds the debug
 APK and runs integration checks against a disposable Compose stack.
 
+**Accounts.** The server supports several accounts. Each has its own subjects, files, lessons, reviews, exams, teaching style
+and AI usage, kept in its own PostgreSQL schema (`u1`, `u2`, ...) and its own upload folder, so one account cannot read
+another's data. Accounts are managed in the app or on the website under Account: everyone can change their own username,
+password and profile picture; only administrators can add or remove accounts, reset someone's username or password, and
+open the advanced tools (`/manage`, AI usage, question parsing). There is no self-sign-up. The first start after upgrading
+from the single-password version turns the existing installation into an administrator account named `admin` (same password)
+and moves all of its data into that account; rename it under Account. Removing an account permanently deletes everything it owns.
+
 **Getting the APK from GitHub:** the *Build Android APK* workflow (`.github/workflows/android-apk.yml`) builds the debug APK on
 every push to `main` that touches `android/`, and on demand from the Actions tab (Run workflow). Download it from the run's
 Artifacts (kept 30 days). Pushing a tag such as `v0.2` also attaches it to a GitHub release. It is signed with the shared debug
 key, so it is for your own devices, not a store release.
 
 Scripts in `server/tests/` named `live_*` call the real model gateway and are opt-in (they cost model
-calls). `server/tests/integration.py` replaces the login password and must only be pointed at a
+calls). `server/tests/integration.py` creates its own account and must only be pointed at a
 disposable database.
 
 ## Layout

@@ -215,6 +215,7 @@ private fun StudyApp() {
     val activity = androidx.activity.compose.LocalActivity.current as? android.app.Activity
     val leaveApp: () -> Unit = { activity?.finish() }
     var base by remember { mutableStateOf("https://") }
+    var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
     var subjects by remember { mutableStateOf(JSONArray()) }
@@ -297,6 +298,7 @@ private fun StudyApp() {
             val savedBase = prefs.getString("base", null) ?: run { restoring = false; return@LaunchedEffect }
             base = savedBase; token = restored
             val loaded = JSONArray(request(savedBase, "/subjects", restored))
+            CurrentUser.json = JSONObject(request(savedBase, "/session", restored)).getJSONObject("user")
             subjects = loaded
         } catch (e: Exception) {
             error = "Could not restore your session. Sign in again."
@@ -418,6 +420,9 @@ private fun StudyApp() {
                         }
                         if (error.isNotEmpty()) Text("!", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(end = 8.dp))
                         if (token.isNotEmpty()) {
+                            Box(Modifier.padding(end = 6.dp).clip(RoundedCornerShape(50)).clickable(role = androidx.compose.ui.semantics.Role.Button) { showSettings = true }) {
+                                AvatarView(base, token, CurrentUser.json, 30.dp)
+                            }
                             val tint = if (showSettings) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                             Box(
                                 Modifier.size(40.dp).clip(RoundedCornerShape(50))
@@ -458,14 +463,16 @@ private fun StudyApp() {
                     Text("Sign in to pick up your lessons, reviews and exams.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(base, { base = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Server URL") }, singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Username") }, singleLine = true, shape = RoundedCornerShape(12.dp))
                     OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, shape = RoundedCornerShape(12.dp))
                     Button(modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(50), enabled = !busy, onClick = { run {
-                        val result = JSONObject(request(base, "/login", body = JSONObject().put("password", password)))
+                        val result = JSONObject(request(base, "/login", body = JSONObject().put("username", username.trim()).put("password", password)))
                         val newToken = result.getString("token")
                         val loaded = JSONArray(request(base, "/subjects", newToken))
                         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                         cipher.init(Cipher.ENCRYPT_MODE, sessionCipher())
                         prefs.edit().putString("base", base).putString("token", Base64.encodeToString(cipher.iv + cipher.doFinal(newToken.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)).apply()
+                        CurrentUser.json = result.getJSONObject("user")
                         token = newToken; password = ""; subjects = loaded
                     } }) { Text("Sign in") }
                 }
@@ -603,7 +610,7 @@ private fun StudyApp() {
         text = { Text("You will need the password to sign in again on this device.") },
         confirmButton = { TextButton(onClick = {
             signOutConfirm = false
-            run { request(base, "/logout", token, JSONObject()); prefs.edit().clear().apply(); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; sourceId = ""; tab = 5 }
+            run { request(base, "/logout", token, JSONObject()); prefs.edit().clear().apply(); token = ""; CurrentUser.json = null; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; sourceId = ""; tab = 5 }
         }) { Text("Sign out") } },
         dismissButton = { TextButton(onClick = { signOutConfirm = false }) { Text("Cancel") } },
     )
@@ -849,7 +856,7 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
         }
         TeachingStyleEditor(base, token)
         DailyReminderSetting()
-        AiUsageCard(base, token)
+        if (CurrentUser.isAdmin) AiUsageCard(base, token)
         LearnerSummaryCard(base, token)
         Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
             Column {
@@ -1361,16 +1368,17 @@ private fun SettingsSheet(
                 Text("App", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 8.dp, start = 16.dp))
                 Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
                     Column {
-                        listOf("Account" to "Sign-in and server", "Appearance & library" to "System theme and your resources", "About" to "About StudyGuider").forEachIndexed { index, (title, detail) ->
+                        listOf("Account" to "Profile, password and accounts", "Appearance & library" to "System theme and your resources", "About" to "About StudyGuider").forEachIndexed { index, (title, detail) ->
                             if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                             ListItem(headlineContent = { Text(title) }, supportingContent = { Text(detail) }, trailingContent = { Text("›", style = MaterialTheme.typography.titleLarge) }, modifier = Modifier.clickable { page = title }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                         }
                     }
                 }
             }
+            if (page == "Account" && signedIn) AccountPage(base, token)
             if (page == "Account") {
             StudyCard(tone = CardTone.Container) {
-                SectionLabel("Account", if (signedIn) "SIGNED IN" else "SIGNED OUT")
+                SectionLabel("Server", if (signedIn) "SIGNED IN" else "SIGNED OUT")
                 Text(if (signedIn) "You are signed in to this server." else "Sign in to load your own resources.", style = MaterialTheme.typography.bodyMedium)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (signedIn) StatusDot(LocalStudyColours.current.teal, "Session encrypted on this device")

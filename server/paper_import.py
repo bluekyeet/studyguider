@@ -1,4 +1,5 @@
 """Automatic source-paired PDF imports; ambiguous layouts remain visibly flagged."""
+import userspace
 import json
 import os
 from pathlib import Path
@@ -40,7 +41,7 @@ def import_topic_papers(connect, topic_id):
             if not db.execute("SELECT 1 FROM topic_standards WHERE topic_id=%s AND standard_number=%s", (topic_id, standard)).fetchone():
                 results.append({"standard": standard, "year": year, "status": "waiting", "detail": "Standard is not linked to this topic"})
                 continue
-            root = Path(os.environ.get('UPLOAD_DIR', '/data/uploads'))
+            root = userspace.upload_root()
             try:
                 parsed = parse_pair(root / str(paper_id), root / str(schedule_id), ocr=True, filenames=(paper_name, schedule_name))
                 warnings = parsed['warnings']
@@ -85,7 +86,7 @@ def backfill_cut_scores(connect):
     Returns a list of {standard, year, status} dicts.
     """
     import fitz
-    root = Path(os.environ.get('UPLOAD_DIR', '/data/uploads'))
+    root = userspace.upload_root()
     with connect() as db:
         rows = db.execute("""
             SELECT DISTINCT q.standard_number, q.year, q.schedule_resource_id, r.filename

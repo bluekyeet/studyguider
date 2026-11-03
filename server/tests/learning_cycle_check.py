@@ -19,7 +19,13 @@ from fastapi import HTTPException
 from scheduler import run_due
 
 
+import userspace
+
+ACCOUNT = 900001                      # a throwaway account (its own schema) so the real accounts' data is never touched
+application.provision_account(ACCOUNT)
+userspace.current_user.set(ACCOUNT)
 db = connect()
+db.execute("INSERT INTO standards(number, title) VALUES (91170, 'Synthetic standard') ON CONFLICT DO NOTHING")
 
 
 @contextmanager
@@ -179,7 +185,7 @@ try:
     # Shadow scheduling tables for this connection only. Never disable or claim
     # existing users' schedules, even transiently inside the rollback transaction.
     for table in ('lesson_schedules', 'lesson_schedule_runs', 'courses'):
-        db.execute(f'CREATE TEMP TABLE {table} (LIKE public.{table} INCLUDING ALL) ON COMMIT DROP')
+        db.execute(f'CREATE TEMP TABLE {table} (LIKE u{ACCOUNT}.{table} INCLUDING ALL) ON COMMIT DROP')
     db.execute("""INSERT INTO lesson_schedules(topic_id,query,hour_utc,enabled,timezone)
         VALUES (%s,'Frequency',2,true,'Pacific/Auckland'),
                (%s,'Concentration',2,true,'Pacific/Auckland')""", (topic, chemistry_topic))
@@ -333,4 +339,7 @@ try:
 finally:
     db.rollback()
     db.close()
+    userspace.current_user.set(None)
+    with application.connect_account() as account_db:
+        account_db.execute(f'DROP SCHEMA IF EXISTS u{ACCOUNT} CASCADE')
     print('ROLLBACK: synthetic records discarded; identity sequence gaps may remain')

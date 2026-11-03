@@ -1,4 +1,5 @@
 """Persistent AI lesson drafts. Neither generation nor review verifies accuracy."""
+import userspace
 import json
 import queue
 import re
@@ -271,7 +272,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             except Exception:
                 events.put({"error": "Lesson generation failed; please retry.", "status": 500})
 
-        threading.Thread(target=work, daemon=True).start()
+        userspace.spawn(work)
 
         def event_gen():
             while True:

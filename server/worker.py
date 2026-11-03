@@ -2,6 +2,8 @@
 
 import logging
 import threading
+
+import userspace
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -74,7 +76,7 @@ def recover_interrupted(connect, resource_ids=None):
         return db.execute("UPDATE resources SET status = 'pending' WHERE status = 'extracting'").rowcount
 
 
-def start_worker(connect, extract, interval=5):
+def start_worker(connect, extract, interval=5, user_ids=None):
     """Start a polling worker; caller stops it with stop.set() and thread.join()."""
     if interval <= 0:
         raise ValueError("interval must be positive")
@@ -83,7 +85,11 @@ def start_worker(connect, extract, interval=5):
     def run():
         while not stop.is_set():
             try:
-                if process_one(connect, extract):
+                if user_ids is not None:
+                    progressed = userspace.each_user(user_ids, lambda: process_one(connect, extract))
+                else:
+                    progressed = process_one(connect, extract)
+                if progressed:
                     continue
             except Exception:
                 logger.exception("Extraction worker database error")

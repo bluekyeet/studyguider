@@ -10,9 +10,9 @@ def test_cookie_session_and_cross_site_protection():
         def __enter__(self): return self
         def __exit__(self, *args): pass
         def execute(self, sql, params=()): return self
-        def fetchone(self): return (1,)
+        def fetchone(self): return (1, 'admin', True, 0, False)
 
-    with patch('app.connect', Database):
+    with patch('app.connect_account', Database):
         client = TestClient(app)
         assert client.get('/session').status_code == 401
         client.cookies.set('studyguider_session', 'sample-test-session', domain='testserver.local', path='/')

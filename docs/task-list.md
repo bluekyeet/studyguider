@@ -65,6 +65,10 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Exam revision packs (3 Nov 2026), website and Android: pick a topic, get a re-teach and questions built from your mistakes (rapid parts, marked exams, daily review); see `docs/exam-drill.md` section 8.
   - [x] Real PostgreSQL check (`rapid_check.py` section 9) and a live pack through the gateway (6 s, 2 sections, 6 questions, quoted the learner's own answers); answering checked on the emulator and in a headless browser.
   - [ ] Not verified: quality of packs over many topics and larger mistake sets; whether pack questions are repeated across packs; the effect of unanswered pack questions on topic mastery.
+- [x] Accounts (3 Nov 2026): usernames and passwords, user and administrator roles, every account's data and files separate, profile pictures, website and Android; see README "Accounts".
+  - [x] Real PostgreSQL check (`server/tests/accounts_check.py`, CI): migration of the single-password layout, separation of subjects, files, search and teaching style, roles, username and password changes, pictures, sign-in locking per account, removal.
+  - [x] Your existing installation was migrated on 3 Nov 2026 after a database backup; every table's row count matched and all 402 resource files were present in the first account.
+  - [ ] Not verified: signing in as a second real user on a phone and in a real browser (checked with a test client, a mock-server browser run and the emulator signed in as the migrated admin); the Android sign-in form on a device; sending lesson, review or exam traffic from two accounts at once; the overnight lesson run covering every account.
 - [ ] Notification reminders
 
 ## Foundation, access and resources

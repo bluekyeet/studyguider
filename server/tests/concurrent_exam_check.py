@@ -12,10 +12,12 @@ from uuid import uuid4
 from fastapi import HTTPException
 from psycopg import sql
 
-from app import connect
+from app import connect, connect_account, provision_account
 from exams import ExamAnswer, exam_router
 
 schema = 'exam_check_' + uuid4().hex
+TEMPLATE = 900003                     # a throwaway account whose empty tables the check copies
+provision_account(TEMPLATE)
 barrier = Barrier(2, timeout=15)
 competing = True
 
@@ -46,7 +48,7 @@ try:
     with connect() as db:
         db.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
         for table in ('exam_items', 'exam_answer_scans', 'rapid_sessions'):
-            db.execute(sql.SQL('CREATE TABLE {}.{} (LIKE public.{} INCLUDING ALL)').format(sql.Identifier(schema), sql.Identifier(table), sql.Identifier(table)))
+            db.execute(sql.SQL('CREATE TABLE {}.{} (LIKE {}.{} INCLUDING ALL)').format(sql.Identifier(schema), sql.Identifier(table), sql.Identifier(f'u{TEMPLATE}'), sql.Identifier(table)))
         db.execute(sql.SQL("INSERT INTO {}.exam_items(exam_id,question_id,position,answer) VALUES (7,2,1,'Original')").format(sql.Identifier(schema)))
     with ThreadPoolExecutor(max_workers=2) as workers:
         futures = [workers.submit(edit, answer) for answer in ('Client A', 'Client B')]
@@ -67,4 +69,5 @@ finally:
         for table in ('exam_answer_scans', 'exam_items', 'rapid_sessions'):
             db.execute(sql.SQL('DROP TABLE IF EXISTS {}.{}').format(sql.Identifier(schema), sql.Identifier(table)))
         db.execute(sql.SQL('DROP SCHEMA IF EXISTS {}').format(sql.Identifier(schema)))
+        db.execute(sql.SQL('DROP SCHEMA IF EXISTS {} CASCADE').format(sql.Identifier(f'u{TEMPLATE}')))
     print('CLEANUP: disposable exam tables/schema removed')

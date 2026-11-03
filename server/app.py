@@ -40,71 +40,122 @@ from review_generation import review_generation_router
 from styles import create_style_tables, style_router
 from pages import page_router, safe_dpi
 import ocr
+import logging
+import userspace
+from accounts import accounts_router, create_account_tables, make_auth, migrate_legacy, move_legacy_files
 
 
-def connect():
+log = logging.getLogger("uvicorn.error")
+
+
+def _open(schema):
     # Timeouts prevent one stalled request (for example while extracting a large
     # file) from blocking the worker or the next request on the same row forever.
+    # The search_path is a start-up parameter, so it holds for the whole connection (a rollback cannot undo it).
     return psycopg.connect(
         os.environ["DATABASE_URL"],
-        options="-c statement_timeout=1800000 -c lock_timeout=60000 -c idle_in_transaction_session_timeout=900000",
+        options=f"-c search_path={schema} -c statement_timeout=1800000 -c lock_timeout=60000 -c idle_in_transaction_session_timeout=900000",
         connect_timeout=15,
     )
 
 
+def connect():
+    """A connection to the signed-in account's own schema (see userspace.py)."""
+    return _open(userspace.search_path())
+
+
+def connect_account():
+    """A connection to the shared accounts schema, whoever is signed in."""
+    return _open("public")
+
+
+def all_user_ids():
+    with connect_account() as db:
+        return [r[0] for r in db.execute("SELECT id FROM users ORDER BY id").fetchall()]
+
+
+def init_schema(db):
+    """Create or upgrade every study table in the schema this connection points at."""
+    db.execute("SET client_encoding = 'UTF8'")
+    db.execute("CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS subjects (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name text NOT NULL, level integer NOT NULL CHECK (level BETWEEN 1 AND 3))")
+    db.execute("CREATE TABLE IF NOT EXISTS topics (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, subject_id bigint NOT NULL REFERENCES subjects(id) ON DELETE CASCADE, name text NOT NULL)")
+    create_style_tables(db)
+    db.execute("CREATE TABLE IF NOT EXISTS resources (id uuid PRIMARY KEY, topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT, filename text NOT NULL, size bigint NOT NULL, status text NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS resource_text (resource_id uuid PRIMARY KEY REFERENCES resources(id) ON DELETE CASCADE, content text NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS resource_pages (resource_id uuid NOT NULL REFERENCES resources(id) ON DELETE CASCADE, page integer NOT NULL, content text NOT NULL, PRIMARY KEY (resource_id, page))")
+    db.execute("CREATE TABLE IF NOT EXISTS standards (number integer PRIMARY KEY CHECK (number > 0), title text NOT NULL, description text NOT NULL DEFAULT '')")
+    db.execute("CREATE TABLE IF NOT EXISTS topic_standards (topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE CASCADE, standard_number integer NOT NULL REFERENCES standards(number) ON DELETE RESTRICT, PRIMARY KEY (topic_id, standard_number))")
+    db.execute("CREATE TABLE IF NOT EXISTS notes (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT, content text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())")
+    # Additive migrations keep existing prototype databases usable.
+    db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'extra'")
+    db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS sha256 text")
+    db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS page_count integer NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS error text")
+    db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS mime text")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS resources_topic_sha_idx ON resources(topic_id, sha256) WHERE sha256 IS NOT NULL")
+    db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS mastery real NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'not_started'")
+    db.execute("""CREATE TABLE IF NOT EXISTS resource_chunks (
+        id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        resource_id uuid NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT,
+        standard_number integer REFERENCES standards(number) ON DELETE SET NULL,
+        page integer NOT NULL CHECK (page > 0),
+        ordinal integer NOT NULL CHECK (ordinal > 0),
+        content text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (resource_id, page, ordinal)
+    )""")
+    db.execute("CREATE INDEX IF NOT EXISTS resource_chunks_topic_idx ON resource_chunks(topic_id)")
+    db.execute("CREATE INDEX IF NOT EXISTS resource_chunks_fts_idx ON resource_chunks USING gin(to_tsvector('english', content))")
+    create_usage_tables(db)
+    create_review_tables(db)
+    create_lesson_tables(db)
+    from paper_import import create_import_tables
+    create_import_tables(db)
+    create_exam_tables(db)
+    create_parsing_tables(db)
+    create_diagram_tables(db)
+    create_marking_tables(db)
+    create_rapid_tables(db)
+    create_revision_tables(db)
+    create_scheduler_tables(db)
+
+
+def provision_account(user_id):
+    """Give an account its own schema and tables (idempotent)."""
+    schema = userspace.schema_name(user_id)
+    with connect_account() as db:
+        db.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    with userspace.as_user(user_id), connect() as db:
+        init_schema(db)
+
+
+def deprovision_account(user_id):
+    """Delete everything an account owns: its schema and its uploaded files. Irreversible."""
+    import shutil
+    schema = userspace.schema_name(user_id)
+    with connect_account() as db:
+        db.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+    shutil.rmtree(userspace.upload_base() / schema, ignore_errors=True)
+
+
 @asynccontextmanager
 async def lifespan(app):
-    with connect() as db:
+    with connect_account() as db:
         db.execute("SET client_encoding = 'UTF8'")
-        db.execute("SET client_encoding = 'UTF8'")
-        db.execute("CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text NOT NULL)")
-        db.execute("CREATE TABLE IF NOT EXISTS sessions (token_hash text PRIMARY KEY, expires timestamptz NOT NULL)")
-        db.execute("CREATE TABLE IF NOT EXISTS subjects (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name text NOT NULL, level integer NOT NULL CHECK (level BETWEEN 1 AND 3))")
-        db.execute("CREATE TABLE IF NOT EXISTS topics (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, subject_id bigint NOT NULL REFERENCES subjects(id) ON DELETE CASCADE, name text NOT NULL)")
-        create_style_tables(db)
-        db.execute("CREATE TABLE IF NOT EXISTS resources (id uuid PRIMARY KEY, topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT, filename text NOT NULL, size bigint NOT NULL, status text NOT NULL)")
-        db.execute("CREATE TABLE IF NOT EXISTS resource_text (resource_id uuid PRIMARY KEY REFERENCES resources(id) ON DELETE CASCADE, content text NOT NULL)")
-        db.execute("CREATE TABLE IF NOT EXISTS resource_pages (resource_id uuid NOT NULL REFERENCES resources(id) ON DELETE CASCADE, page integer NOT NULL, content text NOT NULL, PRIMARY KEY (resource_id, page))")
-        db.execute("CREATE TABLE IF NOT EXISTS standards (number integer PRIMARY KEY CHECK (number > 0), title text NOT NULL, description text NOT NULL DEFAULT '')")
-        db.execute("CREATE TABLE IF NOT EXISTS topic_standards (topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE CASCADE, standard_number integer NOT NULL REFERENCES standards(number) ON DELETE RESTRICT, PRIMARY KEY (topic_id, standard_number))")
-        db.execute("CREATE TABLE IF NOT EXISTS notes (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT, content text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())")
-        # Additive migrations keep existing prototype databases usable.
-        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'extra'")
-        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS sha256 text")
-        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS page_count integer NOT NULL DEFAULT 0")
-        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS error text")
-        db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS mime text")
-        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS resources_topic_sha_idx ON resources(topic_id, sha256) WHERE sha256 IS NOT NULL")
-        db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0")
-        db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS mastery real NOT NULL DEFAULT 0")
-        db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'not_started'")
-        db.execute("""CREATE TABLE IF NOT EXISTS resource_chunks (
-            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            resource_id uuid NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
-            topic_id bigint NOT NULL REFERENCES topics(id) ON DELETE RESTRICT,
-            standard_number integer REFERENCES standards(number) ON DELETE SET NULL,
-            page integer NOT NULL CHECK (page > 0),
-            ordinal integer NOT NULL CHECK (ordinal > 0),
-            content text NOT NULL,
-            created_at timestamptz NOT NULL DEFAULT now(),
-            UNIQUE (resource_id, page, ordinal)
-        )""")
-        db.execute("CREATE INDEX IF NOT EXISTS resource_chunks_topic_idx ON resource_chunks(topic_id)")
-        db.execute("CREATE INDEX IF NOT EXISTS resource_chunks_fts_idx ON resource_chunks USING gin(to_tsvector('english', content))")
-        create_usage_tables(db)
-        create_review_tables(db)
-        create_lesson_tables(db)
-        from paper_import import create_import_tables
-        create_import_tables(db)
-        create_exam_tables(db)
-        create_parsing_tables(db)
-        create_diagram_tables(db)
-        create_marking_tables(db)
-        create_rapid_tables(db)
-        create_revision_tables(db)
-        create_scheduler_tables(db)
-    stop, thread = start_scheduler(connect, scheduled_generate, prepare_reviews=prepare_daily_reviews)
-    extraction_stop, extraction_thread = start_worker(connect, extract_resource)
+        create_account_tables(db)
+        migrate_legacy(db, hasher)
+    try:
+        move_legacy_files(userspace.upload_base())
+    except OSError:
+        log.exception("Could not move the existing uploads into the first account's folder")
+    for user_id in all_user_ids():
+        provision_account(user_id)
+    stop, thread = start_scheduler(connect, scheduled_generate, prepare_reviews=prepare_daily_reviews, user_ids=all_user_ids)
+    extraction_stop, extraction_thread = start_worker(connect, extract_resource, user_ids=all_user_ids)
     try:
         yield
     finally:
@@ -134,10 +185,6 @@ async def limit_request_size(request, call_next):
         if int(length) > (MAX_BATCH_BYTES if path.endswith("/batch") else 50 * 1024 * 1024) + 65536:
             return JSONResponse({"detail": "Request too large"}, status_code=413)
     return await call_next(request)
-
-
-class Login(BaseModel):
-    password: str = Field(min_length=1, max_length=1024)
 
 
 class Subject(BaseModel):
@@ -303,29 +350,19 @@ def model_reply_vision(model, prompt, image_bytes, mime="image/png", task="visio
 
 
 
-def authorised(request: Request, authorization: str = Header(default="")):
-    token = authorization[7:] if authorization.startswith("Bearer ") else request.cookies.get("studyguider_session", "")
-    if not token:
-        raise HTTPException(401, "Authentication required")
-    if not authorization.startswith("Bearer ") and request.method not in {"GET", "HEAD", "OPTIONS"}:
-        from urllib.parse import urlsplit
-        origin = request.headers.get("origin")
-        if request.headers.get("sec-fetch-site") == "cross-site" or (origin and urlsplit(origin).netloc != request.headers.get("host")):
-            raise HTTPException(403, "Cross-site request rejected")
-    with connect() as db:
-        session = db.execute("SELECT 1 FROM sessions WHERE token_hash = %s AND expires > now()", (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
-    if not session:
-        raise HTTPException(401, "Invalid or expired session")
+accounts_db = lambda: connect_account()      # looked up on each call, so tests can replace connect_account
+authorised, admin_only = make_auth(accounts_db)
+app.include_router(accounts_router(accounts_db, authorised, admin_only, hasher, provision_account, deprovision_account))
 
 
 app.include_router(review_router(connect, authorised, model_reply))
-app.include_router(exam_router(connect, authorised, model_reply, lambda topic, query: search_resources(topic, query)))
-app.include_router(parsing_router(connect, authorised, model_reply_reliable))
+app.include_router(exam_router(connect, authorised, model_reply, lambda topic, query: search_resources(topic, query), admin_only))
+app.include_router(parsing_router(connect, admin_only, model_reply_reliable))
 app.include_router(scheduler_router(connect, authorised))
 app.include_router(worker_router(connect, authorised))
 app.include_router(style_router(connect, authorised, model_reply))
 app.include_router(page_router(connect, authorised))
-app.include_router(usage_router(connect, authorised, model_reply, model_reply_vision))
+app.include_router(usage_router(connect, admin_only, model_reply, model_reply_vision))
 app.include_router(diagram_router(connect, authorised, model_reply, model_reply_vision))
 
 
@@ -393,62 +430,9 @@ def study_styles():
 
 @app.get('/{module_name}.js', include_in_schema=False)
 def study_module(module_name: str):
-    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-library', 'web-settings'}:
+    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings'}:
         raise HTTPException(404, 'Module not found')
     return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript')
-
-
-@app.post("/login")
-def login(body: Login, response: Response = None, request: Request = None):
-    if request is not None:
-        from urllib.parse import urlsplit
-        origin = request.headers.get("origin")
-        if request.headers.get("sec-fetch-site") == "cross-site" or (origin and urlsplit(origin).netloc != request.headers.get("host")):
-            raise HTTPException(403, "Cross-site login rejected")
-    # Database lock serialises login attempts across API processes.
-    with connect() as db:
-        db.execute("SELECT pg_advisory_xact_lock(834729)")
-        # Hold the password row until the session is committed, so password
-        # resets cannot revoke sessions before an old-password login finishes.
-        password_row = db.execute("SELECT value FROM settings WHERE key = 'password_hash' FOR SHARE").fetchone()
-        rows = dict(db.execute("SELECT key, value FROM settings WHERE key IN ('login_failures', 'locked_until')").fetchall())
-        now = datetime.now(timezone.utc)
-        if rows.get("locked_until") and datetime.fromisoformat(rows["locked_until"]) > now:
-            raise HTTPException(429, "Login temporarily locked")
-        try:
-            valid = hasher.verify(password_row[0] if password_row else "", body.password)
-        except (VerifyMismatchError, InvalidHashError):
-            valid = False
-        if not valid:
-            failures = int(rows.get("login_failures", "0")) + 1
-            if failures >= 5:
-                db.execute("INSERT INTO settings VALUES ('locked_until', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", ((now + timedelta(minutes=15)).isoformat(),))
-                failures = 0
-            db.execute("INSERT INTO settings VALUES ('login_failures', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (str(failures),))
-            db.commit()
-            raise HTTPException(401, "Invalid credentials")
-        db.execute("DELETE FROM settings WHERE key IN ('login_failures', 'locked_until')")
-        db.execute("DELETE FROM sessions WHERE expires <= now()")
-        token = secrets.token_urlsafe(32)
-        db.execute("INSERT INTO sessions VALUES (%s, %s)", (hashlib.sha256(token.encode()).hexdigest(), now + timedelta(days=30)))
-    if response is not None:
-        response.set_cookie("studyguider_session", token, max_age=30 * 86400, httponly=True,
-                            secure=request is not None and request.url.scheme == "https", samesite="strict", path="/")
-    return {"token": token, "expires_in": 30 * 86400}
-
-
-@app.post("/logout", dependencies=[Depends(authorised)])
-def logout(request: Request, response: Response, authorization: str = Header(default="")):
-    token = authorization[7:] if authorization.startswith("Bearer ") else request.cookies.get("studyguider_session", "")
-    with connect() as db:
-        db.execute("DELETE FROM sessions WHERE token_hash = %s", (hashlib.sha256(token.encode()).hexdigest(),))
-    response.delete_cookie("studyguider_session", path="/", httponly=True, samesite="strict")
-    return {"status": "ok"}
-
-
-@app.get("/session", dependencies=[Depends(authorised)])
-def browser_session():
-    return {"authenticated": True}
 
 
 @app.get("/subjects", dependencies=[Depends(authorised)])
@@ -650,7 +634,7 @@ def upload_resources_batch(topic_id: int, files: list[UploadFile] = File(...), c
     """
     if category not in {"auto", "exam_paper", "exam_answers", "slides", "extra"}:
         raise HTTPException(400, "Invalid resource category")
-    directory = Path(os.environ.get("UPLOAD_DIR", "/data/uploads"))
+    directory = userspace.upload_root()
     directory.mkdir(parents=True, exist_ok=True)
     accepted, skipped, duplicates = [], [], 0
     if len(files) > MAX_BATCH_FILES:
@@ -720,7 +704,7 @@ def upload_resource(topic_id: int, file: UploadFile = File(...), category: str =
         category = filename_resource_category(filename) or category
     if not filename or len(filename) > 255 or Path(filename).suffix.lower() not in {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".txt", ".md", ".html", ".png", ".jpg", ".jpeg"}:
         raise HTTPException(400, "Unsupported or invalid filename")
-    directory = Path(os.environ.get("UPLOAD_DIR", "/data/uploads"))
+    directory = userspace.upload_root()
     directory.mkdir(parents=True, exist_ok=True)
     resource_id = uuid.uuid4()
     path = directory / str(resource_id)
@@ -866,7 +850,7 @@ def download_resource(resource_id: uuid.UUID):
         row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting'", (resource_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Resource not found")
-    path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
+    path = userspace.upload_root() / str(resource_id)
     if not path.is_file():
         raise HTTPException(500, "Stored file missing; restore from backup")
     return FileResponse(path, filename=row[0], media_type="application/octet-stream")
@@ -1075,7 +1059,7 @@ def _extract_into_database(resource_id: uuid.UUID):
         suffix = Path(row[0]).suffix.lower()
         if suffix not in {".txt", ".md", ".csv", ".pdf", ".pptx", ".docx", ".html", ".xlsx", ".png", ".jpg", ".jpeg"}:
             raise HTTPException(422, "Extraction is not available for this file type")
-        path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
+        path = userspace.upload_root() / str(resource_id)
         warnings = []
         try:
             if suffix in {".pptx", ".docx"}:
@@ -1187,7 +1171,7 @@ def get_page_image(resource_id: uuid.UUID, page: int):
         row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting'", (resource_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Resource not found")
-    path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
+    path = userspace.upload_root() / str(resource_id)
     if not path.is_file():
         raise HTTPException(500, "Stored file missing; restore from backup")
     suffix = Path(row[0]).suffix.lower()
@@ -1328,7 +1312,7 @@ def delete_resource(resource_id: uuid.UUID):
         if db.execute("SELECT 1 FROM lessons WHERE sources @> %s::jsonb LIMIT 1", (json.dumps([{"resource_id": str(resource_id)}]),)).fetchone():
             raise HTTPException(409, "Resource is used by a saved lesson. Delete the dependent lesson in Lesson manager before removing its source.")
         db.execute("UPDATE resources SET status = 'deleting' WHERE id = %s", (resource_id,))
-    path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / str(resource_id)
+    path = userspace.upload_root() / str(resource_id)
     try:
         path.unlink(missing_ok=True)
     except OSError:

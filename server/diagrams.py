@@ -3,6 +3,7 @@
 Only sanitised SVG is accepted. A diagram that cannot be rendered or reviewed is
 stored as flagged; the app never shows it as checked.
 """
+import userspace
 import json
 import math
 import os
@@ -145,7 +146,7 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
             raise HTTPException(409, "Only flagged diagrams can be re-reviewed")
         if not row[1]:
             raise HTTPException(422, "Diagram has no rendered image; generate a replacement")
-        path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / row[1]
+        path = userspace.upload_root() / row[1]
         if not path.is_file():
             raise HTTPException(404, "Diagram image missing")
         if row[3] is not None and not row[4]:
@@ -257,12 +258,12 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
                 # Provider outages are not evidence of a drawing fault; preserve
                 # this draft rather than spend two more generation calls.
                 break
-        directory = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / "diagrams"
+        directory = userspace.upload_root() / "diagrams"
         directory.mkdir(parents=True, exist_ok=True)
         image_path = None
         if png:
             image_path = f"diagrams/{uuid.uuid4()}.png"
-            (Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / image_path).write_bytes(png)
+            (userspace.upload_root() / image_path).write_bytes(png)
         with connect() as db:
             row = db.execute("""INSERT INTO diagrams (topic_id, lesson_id, description, source, image_path, status, review)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -290,7 +291,7 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
             if not row:
                 raise HTTPException(404, "Diagram not found")
             if row[0]:
-                root = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")).resolve()
+                root = userspace.upload_root().resolve()
                 path = (root / row[0]).resolve()
                 if not path.is_relative_to(root / 'diagrams'):
                     raise HTTPException(500, "Unsafe stored diagram path; no file removed")
@@ -307,7 +308,7 @@ def diagram_router(connect, authorised, model_reply, model_reply_vision):
             row = db.execute("SELECT image_path FROM diagrams WHERE id = %s", (diagram_id,)).fetchone()
         if not row or not row[0]:
             raise HTTPException(404, "Diagram image not found")
-        path = Path(os.environ.get("UPLOAD_DIR", "/data/uploads")) / row[0]
+        path = userspace.upload_root() / row[0]
         if not path.is_file():
             raise HTTPException(404, "Diagram image missing")
         return Response(path.read_bytes(), media_type="image/png")

@@ -4,6 +4,8 @@ import {renderReviews} from './web-reviews.js';
 import {renderExams} from './web-exams.js';
 import {renderLibrary} from './web-library.js';
 import {renderSettings} from './web-settings.js';
+import {renderAccount} from './web-account.js';
+import {session, avatar} from './web-common.js';
 
 const $ = id => document.getElementById(id);
 async function api(path, options={}) {
@@ -47,20 +49,21 @@ async function route() {
   }
   activePage = location.hash.slice(1) || page;
   if (cleanup) { cleanup(); cleanup=null; }
+  $('me').classList.toggle('active', page === 'account');
   document.querySelectorAll('nav a').forEach(link => {
     if (link.hash.slice(1) === page) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current');
   });
   placePill();
   $('notice').textContent = '';
   const container = document.createElement('section'); $('view').replaceChildren(container);
-  try { const result = await ({home:renderHome,lessons:renderLessons,reviews:renderReviews,exams:renderExams,library:renderLibrary,settings:renderSettings}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
+  try { const result = await ({home:renderHome,lessons:renderLessons,reviews:renderReviews,exams:renderExams,library:renderLibrary,settings:renderSettings,account:renderAccount}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
   catch(error) { if (container.isConnected) $('notice').textContent = error.message; }
 }
 $('login').onsubmit = async event => {
   event.preventDefault(); $('login-error').textContent='';
   const button = $('login').querySelector('button'); button.disabled=true;
   try {
-    await api('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('password').value})});
+    await api('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('username').value.trim(),password:$('password').value})}).then(result => session.set(result.user));
     $('password').value=''; ready=true; $('login').hidden=true; $('study').hidden=false; $('logout').hidden=false; document.body.classList.remove('signed-out'); await route();
   } catch(error) { $('login-error').textContent=error.message; }
   finally { button.disabled=false; }
@@ -68,9 +71,16 @@ $('login').onsubmit = async event => {
 $('logout').onclick = async () => {
   try { await api('/logout',{method:'POST'}); location.reload(); } catch(error) { $('notice').textContent=error.message; }
 };
+// The sidebar shows who is signed in; administrators also get the advanced tools.
+session.listeners.push(user => {
+  const me = $('me'); me.hidden = !user; me.replaceChildren();
+  if (user) { me.append(avatar(user, 28), Object.assign(document.createElement('span'), { textContent: user.username })); me.title = 'Your account'; }
+  $('advanced').hidden = !user?.is_admin;
+  me.classList.toggle('active', activePage === 'account');
+});
 window.addEventListener('hashchange',route);
 window.addEventListener('beforeunload', event => {
   if ($('view').querySelector('[data-dirty="true"], [data-busy="true"]')) { event.preventDefault(); event.returnValue=''; }
 });
-try { await api('/session'); ready=true; $('study').hidden=false; $('logout').hidden=false; document.body.classList.remove('signed-out'); await route(); }
+try { session.set((await api('/session')).user); ready=true; $('study').hidden=false; $('logout').hidden=false; document.body.classList.remove('signed-out'); await route(); }
 catch { $('login').hidden=false; }

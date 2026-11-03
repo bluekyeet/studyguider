@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 import rapid_state
+import userspace
 import splitting
 from exams import PRACTICE_SYSTEM, parse_practice_paper
 
@@ -246,7 +247,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             if key in _inflight or _attempts.get(key, 0) >= MARK_RETRIES:
                 return
             _inflight.add(key)
-        MARKERS.submit(mark, key)
+        userspace.submit(MARKERS, mark, key)
 
     # ---- AI questions prepared ahead ----------------------------------------------------------
     def generate_batch(exam_id, topic_id, topic_name, want):
@@ -311,7 +312,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             if exam_id in _generating:
                 return
             _generating.add(exam_id)
-        GENERATORS.submit(fill_buffer, exam_id)
+        userspace.submit(GENERATORS, fill_buffer, exam_id)
 
     # ---- locking an answer ---------------------------------------------------------------------
     def lock_current(db, exam_id, body, final=False):
@@ -364,7 +365,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             finally:
                 with _lock:
                     _splitting.discard(key)
-        SPLITTERS.submit(run)
+        userspace.submit(SPLITTERS, run)
         return True
 
     @router.post("/rapid/split", status_code=202)

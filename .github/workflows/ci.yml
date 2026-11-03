@@ -65,6 +65,8 @@ jobs:
         run: docker compose -f compose.yaml exec -T api python - < server/tests/concurrent_note_check.py
       - name: Check concurrent exam saves
         run: docker compose -f compose.yaml exec -T api python - < server/tests/concurrent_exam_check.py
+      - name: Check accounts, migration and separation of every account's data
+        run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/accounts_check.py
       - name: Check rapid exam sessions
         run: docker compose -f compose.yaml exec -T api python - < server/tests/rapid_check.py
       - name: Check unprivileged font rendering

@@ -209,10 +209,11 @@ def parse_practice_paper(reply, count):
     return paper
 
 
-def exam_router(connect, authorised, model_reply=None, search_resources=None):
+def exam_router(connect, authorised, model_reply=None, search_resources=None, admin=None):
     router = APIRouter(dependencies=[Depends(authorised)])
+    guard = admin or authorised         # registering questions and schedule boundaries by hand is an advanced tool
 
-    @router.put("/exam-grade-rules")
+    @router.put("/exam-grade-rules", dependencies=[Depends(guard)])
     def save_grade_rules(body: ScheduleBoundaries):
         with connect() as db:
             page = db.execute("SELECT content FROM resource_pages WHERE resource_id = %s AND page = %s", (body.schedule_resource_id, body.page)).fetchone()
@@ -356,7 +357,7 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None):
         document.close()
         return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="exam-{exam_id}.pdf"'})
 
-    @router.post("/exam-questions", status_code=201)
+    @router.post("/exam-questions", status_code=201, dependencies=[Depends(guard)])
     def add_question(body: VerifiedQuestion):
         with connect() as db:
             # Lock referenced rows so deletion cannot race the insert. Page counts and

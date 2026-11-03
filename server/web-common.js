@@ -288,3 +288,23 @@ export function countUp(node, to, { format = n => String(Math.round(n)), duratio
   };
   requestAnimationFrame(frame);
 }
+
+
+// ---- the signed-in account ---------------------------------------------------------------------
+export const session = {
+  user: null,
+  listeners: [],
+  set(user) { this.user = user; for (const listener of this.listeners) listener(user); },
+};
+
+// A round profile picture, or the first letter of the username when there is none.
+export function avatar(user, size = 32, src = '/me/avatar') {
+  const box = el('span', '', 'avatar'); box.style.setProperty('--size', `${size}px`);
+  const initial = (user.username || '?').trim()[0]?.toUpperCase() || '?';
+  if (user.has_avatar) {
+    const image = document.createElement('img'); image.alt = ''; image.src = `${src}?v=${user.avatar_version}`;
+    image.onerror = () => { image.remove(); box.textContent = initial; };
+    box.append(image);
+  } else box.textContent = initial;
+  return box;
+}

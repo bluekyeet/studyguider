@@ -120,7 +120,9 @@ def endpoint(router, path, method):
 
 
 async def main():
-    async with app.lifespan(app.app):
+    with isolated() as schema_db:
+        app.init_schema(schema_db)
+    if True:
         topic, bank = seed()
         marking = marking_router(isolated, lambda: None, model)
         mark_answer = endpoint(marking, "/exams/{exam_id}/answers/{question_id}/feedback", "POST")

@@ -189,7 +189,9 @@ def check_manual_idempotency(topics, resource):
 
 
 async def main():
-    async with app.lifespan(app.app):
+    with isolated() as schema_db:
+        app.init_schema(schema_db)
+    if True:
         topics, resource = seed()
         check_concurrent_claims(topics)
         stuck = check_killed_worker(topics)

@@ -6,6 +6,8 @@ after a crash rather than retrying a potentially already-created lesson.
 """
 import logging
 import threading
+
+import userspace
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 from typing import Literal
@@ -174,7 +176,7 @@ def run_due(connect, generate, now=None):
                 (lesson_id, topic_id, local.date()))
 
 
-def start_scheduler(connect, generate, interval=60, prepare_reviews=None):
+def start_scheduler(connect, generate, interval=60, prepare_reviews=None, user_ids=None):
     """Start a daemon worker; return (stop event, thread) for clean shutdown."""
     if interval <= 0:
         raise ValueError("interval must be positive")
@@ -182,13 +184,18 @@ def start_scheduler(connect, generate, interval=60, prepare_reviews=None):
 
     def worker():
         while not stop.is_set():
-            try:
+            def tick():
                 if prepare_reviews is not None:
                     try:
                         prepare_reviews()
                     except Exception:
                         log.exception("Automatic review preparation failed; continuing lesson schedules")
                 run_due(connect, generate)
+            try:
+                if user_ids is not None:
+                    userspace.each_user(user_ids, tick)        # every account gets its own lessons and reviews
+                else:
+                    tick()
             except Exception:
                 log.exception("Lesson scheduler tick failed")
             stop.wait(interval)
