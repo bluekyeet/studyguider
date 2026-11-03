@@ -376,7 +376,7 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
     }
 
     Box(Modifier.weight(1f)) {
-    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 80.dp)) {
+    Column(Modifier.fillMaxSize().sectionTransition(openIndex).verticalScroll(scroll).padding(bottom = 80.dp)) {
     chunks.forEachIndexed { index, chunk ->
         if (index != openIndex) return@forEachIndexed
         val expanded = openIndex == index

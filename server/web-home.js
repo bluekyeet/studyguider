@@ -1,3 +1,5 @@
+import { countUp } from './web-common.js';
+
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -13,9 +15,12 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const percent = value => `${Math.round(value * 100)}%`;
 const day = value => new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date(value));
 
-function stat(value, label) {
+// `count` animates the figure up to its value; `format` shows it (for example as a percentage or a fraction).
+function stat(value, label, count = null) {
   const box = element('div', '', 'stat');
-  box.append(element('b', String(value)), element('span', label));
+  const figure = element('b', String(value));
+  if (count) countUp(figure, count.to, { format: count.format });
+  box.append(figure, element('span', label));
   return box;
 }
 
@@ -63,10 +68,10 @@ export async function renderHome(container, api) {
   // Headline numbers
   const estimated = topics.filter(topic => topic.estimated_grade).length;
   const strip = element('div', '', 'stat-row');
-  strip.append(stat(percent(summary.overall_mastery), 'Overall mastery'),
-    stat(`${todays.length - todo.length} / ${todays.length}`, 'Lessons done today'),
-    stat(reviews.due, 'Reviews due'),
-    stat(`${estimated} / ${topics.length}`, 'Topics with a grade estimate'));
+  strip.append(stat(percent(summary.overall_mastery), 'Overall mastery', { to: summary.overall_mastery * 100, format: n => `${Math.round(n)}%` }),
+    stat(`${todays.length - todo.length} / ${todays.length}`, 'Lessons done today', { to: todays.length - todo.length, format: n => `${Math.round(n)} / ${todays.length}` }),
+    stat(reviews.due, 'Reviews due', { to: reviews.due, format: n => String(Math.round(n)) }),
+    stat(`${estimated} / ${topics.length}`, 'Topics with a grade estimate', { to: estimated, format: n => `${Math.round(n)} / ${topics.length}` }));
   container.append(strip);
 
   // Lessons to do
@@ -89,8 +94,9 @@ export async function renderHome(container, api) {
   container.append(element('h2', 'Topics'));
   if (topics.length) {
     container.append(table(['Topic', 'Mastery', '', 'Estimated grade'], topics.map(topic => {
-      const meter = element('progress'); meter.max = 100; meter.value = Math.round(topic.mastery * 100);
-      meter.setAttribute('aria-label', `${topic.topic} mastery`);
+      const meter = element('div', '', 'bar'); const fill = element('i'); fill.style.setProperty('--v', String(Math.min(1, Math.max(0, topic.mastery)))); meter.append(fill);
+      meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-label', `${topic.topic} mastery`);
+      meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100'); meter.setAttribute('aria-valuenow', String(Math.round(topic.mastery * 100)));
       return [`${topic.subject} · ${topic.topic}`, percent(topic.mastery), meter,
         topic.estimated_grade ? gradeChip(topic.estimated_grade) : element('span', `Needs ${5 - Math.min(topic.review_answers, 5)} more review answers`, 'muted')];
     }), 'Mastery and estimated grade by topic'));

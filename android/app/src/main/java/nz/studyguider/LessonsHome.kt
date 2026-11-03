@@ -103,7 +103,7 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
             }
             if (current.isNotEmpty()) {
                 Text(if (latest == today) "Today · ${current.size} to do" else "Latest available · $latest", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                current.forEach { item -> LessonRow(item, onOpenLesson) }
+                current.forEachIndexed { index, item -> LessonRow(item, onOpenLesson, Modifier.staggeredEnter(index, item.optLong("id"))) }
             }
             if (lessons.isNotEmpty() && current.isEmpty()) Text("No lessons to do right now.")
         }
@@ -133,8 +133,9 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
 }
 
 @Composable
-private fun LessonRow(item: JSONObject, open: (Long, String, Long) -> Unit) {
-    Surface(onClick = { open(item.getLong("topic_id"), item.optString("topic"), item.getLong("id")) }, shape = RoundedCornerShape(14.dp), color = LocalStudyColours.current.container, modifier = Modifier.fillMaxWidth()) {
+private fun LessonRow(item: JSONObject, open: (Long, String, Long) -> Unit, modifier: Modifier = Modifier) {
+    val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Surface(onClick = { open(item.getLong("topic_id"), item.optString("topic"), item.getLong("id")) }, interactionSource = source, shape = RoundedCornerShape(14.dp), color = LocalStudyColours.current.container, modifier = modifier.fillMaxWidth().pressScale(source)) {
         Column(Modifier.padding(16.dp)) {
             Text("${item.optString("subject")} · ${item.optString("topic")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             Text(item.optString("query"), style = MaterialTheme.typography.titleMedium)

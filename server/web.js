@@ -19,6 +19,22 @@ async function api(path, options={}) {
 let ready = false;
 let activePage = '';
 let cleanup = null;
+// One indicator glides between nav links instead of each link lighting up on its own.
+function placePill() {
+  const nav = document.querySelector('.sidebar nav');
+  const current = nav?.querySelector('a[aria-current=page]');
+  if (!nav || !current || !current.offsetWidth) return;
+  let pill = nav.querySelector('.nav-pill');
+  const first = !pill;
+  if (first) {
+    pill = document.createElement('span'); pill.className = 'nav-pill'; pill.setAttribute('aria-hidden', 'true');
+    pill.style.transition = 'none'; nav.prepend(pill); nav.classList.add('has-pill');
+  }
+  pill.style.width = current.offsetWidth + 'px'; pill.style.height = current.offsetHeight + 'px';
+  pill.style.transform = `translate(${current.offsetLeft}px,${current.offsetTop}px)`;
+  if (first) requestAnimationFrame(() => requestAnimationFrame(() => { pill.style.transition = ''; }));
+}
+window.addEventListener('resize', placePill);
 async function route() {
   if (!ready) return;
   const [page, query = ''] = (location.hash.slice(1) || 'home').split('?');
@@ -32,6 +48,7 @@ async function route() {
   document.querySelectorAll('nav a').forEach(link => {
     if (link.hash.slice(1) === page) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current');
   });
+  placePill();
   $('notice').textContent = '';
   const container = document.createElement('section'); $('view').replaceChildren(container);
   try { const result = await ({home:renderHome,lessons:renderLessons,reviews:renderReviews,exams:renderExams,library:renderLibrary,settings:renderSettings}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }

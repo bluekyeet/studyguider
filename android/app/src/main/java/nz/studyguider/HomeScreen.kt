@@ -1,6 +1,8 @@
 package nz.studyguider
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -75,18 +77,21 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
         // Headline numbers
         val estimated = topics.count { !it.isNull("estimated_grade") }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Stat(percent(data.optDouble("overall_mastery")), "Overall mastery", Modifier.weight(1f))
-            Stat("${todayCount - todo.size}/$todayCount", "Lessons done today", Modifier.weight(1f))
-            Stat("$due", "Reviews due", Modifier.weight(1f))
+            Stat((data.optDouble("overall_mastery") * 100).toFloat(), { "${Math.round(it)}%" }, "Overall mastery", Modifier.weight(1f).staggeredEnter(0, data))
+            Stat((todayCount - todo.size).toFloat(), { "${Math.round(it)}/$todayCount" }, "Lessons done today", Modifier.weight(1f).staggeredEnter(1, data))
+            Stat(due.toFloat(), { "${Math.round(it)}" }, "Reviews due", Modifier.weight(1f).staggeredEnter(2, data))
         }
 
         // Lessons to do: a plain list, not cards
-        Section("Lessons to do") {
+        Section("Lessons to do", Modifier.staggeredEnter(3, data)) {
             if (todo.isEmpty()) Text(if (todayCount > 0) "All of today’s lessons are done. Well done." else "No lessons were prepared today. A new one is made overnight for each topic you are learning.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             todo.forEachIndexed { index, (lesson, started) ->
                 if (index > 0) HorizontalDivider()
+                val source = remember { MutableInteractionSource() }
                 Row(
-                    Modifier.fillMaxWidth().clickable { onOpenLesson(lesson.getLong("topic_id"), lesson.optString("topic"), lesson.getLong("id")) }.padding(vertical = 10.dp),
+                    Modifier.fillMaxWidth().pressScale(source, 0.985f)
+                        .clickable(interactionSource = source, indication = LocalIndication.current) { onOpenLesson(lesson.getLong("topic_id"), lesson.optString("topic"), lesson.getLong("id")) }
+                        .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -100,17 +105,18 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
         }
 
         // Topics, progress and estimated grade
-        Section("Topics") {
+        Section("Topics", Modifier.staggeredEnter(4, data)) {
             if (topics.isEmpty()) Text("Choose topics in Settings to see them here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             topics.forEachIndexed { index, topic ->
                 if (index > 0) HorizontalDivider()
                 val mastery = topic.optDouble("mastery")
+                val fill = animatedFill(mastery.toFloat().coerceIn(0f, 1f))
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${topic.optString("subject")} · ${topic.optString("topic")}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                         Text(percent(mastery), style = MaterialTheme.typography.bodyMedium)
                     }
-                    LinearProgressIndicator(progress = { mastery.toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(progress = { fill }, modifier = Modifier.fillMaxWidth())
                     val grade = if (topic.isNull("estimated_grade")) null else topic.getString("estimated_grade")
                     Text(
                         grade?.let { "Estimated: $it" } ?: "Needs ${5 - minOf(topic.optInt("review_answers"), 5)} more review answers for an estimate",
@@ -124,14 +130,14 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
 
         // Weak concepts
         val weak = data.getJSONArray("weak_concepts").objects()
-        Section("Weak concepts") {
+        Section("Weak concepts", Modifier.staggeredEnter(5, data)) {
             Text("Tomorrow’s lesson will revisit these.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (weak.isEmpty()) Text("None yet. These appear after review answers.", style = MaterialTheme.typography.bodyMedium)
             weak.forEach { Text("• ${it.optString("concept")} (${it.optString("topic")})", style = MaterialTheme.typography.bodyMedium) }
         }
 
         // Reviews
-        Section("Reviews") {
+        Section("Reviews", Modifier.staggeredEnter(6, data)) {
             val answers = reviews.optJSONObject("answers_last_30_days") ?: JSONObject()
             val correct = answers.optInt("correct"); val incorrect = answers.optInt("incorrect")
             var total = 0; answers.keys().forEach { total += answers.optInt(it) }
@@ -142,7 +148,7 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
 
         // Recent exams, with the unfinished one first as a way back in
         val exams = data.getJSONArray("exams").objects()
-        Section("Recent exams") {
+        Section("Recent exams", Modifier.staggeredEnter(7, data)) {
             Text("Marks are AI-marked practice, unofficial, and not an NZQA grade.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (exams.isEmpty()) Text("No exams yet.")
             exams.forEachIndexed { index, exam ->
@@ -164,16 +170,17 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
 }
 
 @Composable
-private fun Stat(value: String, label: String, modifier: Modifier) {
+private fun Stat(target: Float, format: (Float) -> String, label: String, modifier: Modifier) {
+    val shown = animatedCount(target)
     StudyCard(modifier = modifier, tone = CardTone.Low) {
-        Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(format(shown), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun Section(title: String, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium)
         content()
     }

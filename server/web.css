@@ -149,7 +149,6 @@ pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:
 .state[data-state=saving]::before{width:10px;height:10px;background:none;border:2px solid var(--faint);border-top-color:transparent;animation:spin 0.8s linear infinite}
 .state[data-state=error],.state[data-state=conflict]{color:var(--warn);text-transform:none;font-size:12px}.state[data-state=error]::before,.state[data-state=conflict]::before{background:var(--warn)}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.state[data-state=saving]::before{animation:none}button{transition:none}}
 
 /* reading and practice widths: comfortable line length on large screens */
 .narrow{width:100%;max-width:780px;margin-inline:auto}
@@ -247,7 +246,6 @@ body.signed-out .sidebar{display:none}
   .card{padding:16px}
   .fields{grid-template-columns:1fr}
 }
-@media(prefers-reduced-motion:no-preference){.tile,button{transition:background .15s,border-color .15s}}
 
 /* Home: plain tables and lists instead of cards */
 .table{width:100%;border-collapse:collapse;margin:8px 0 4px}
@@ -262,3 +260,79 @@ body.signed-out .sidebar{display:none}
 .math-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .schedule-text{max-height:320px;overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:18px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin:6px 0}
 .scan-thumb{max-height:120px;max-width:160px;border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff}
+
+/* ---- Motion --------------------------------------------------------------------------------
+   Fluid, interruptible transitions only: transforms and opacity on the compositor, eased or spring
+   curves, short durations. No spinners, skeletons or loading screens. Everything is switched off
+   for people who ask the system to reduce motion (block at the end). */
+:root{--ease-out:cubic-bezier(.22,1,.36,1);--ease-spring:cubic-bezier(.34,1.45,.5,1);--ease-inout:cubic-bezier(.65,0,.35,1)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
+@keyframes grow{from{transform:scaleX(0)}}
+
+/* Pages: each top-level block eases up in turn, so a screen builds from the top down. */
+#view>section>*{animation:rise .55s var(--ease-out) both}
+#view>section>:nth-child(2){animation-delay:.05s}
+#view>section>:nth-child(3){animation-delay:.1s}
+#view>section>:nth-child(4){animation-delay:.15s}
+#view>section>:nth-child(5){animation-delay:.2s}
+#view>section>:nth-child(6){animation-delay:.25s}
+#view>section>:nth-child(n+7){animation-delay:.3s}
+/* Grids and tables: items follow one another instead of arriving together. */
+.card-grid>*{animation:rise .5s var(--ease-out) both}
+.card-grid>:nth-child(2){animation-delay:.06s}.card-grid>:nth-child(3){animation-delay:.12s}
+.card-grid>:nth-child(4){animation-delay:.18s}.card-grid>:nth-child(5){animation-delay:.24s}
+.card-grid>:nth-child(n+6){animation-delay:.3s}
+.table tbody tr{animation:rise .45s var(--ease-out) both}
+.table tbody tr:nth-child(2){animation-delay:.05s}.table tbody tr:nth-child(3){animation-delay:.1s}
+.table tbody tr:nth-child(4){animation-delay:.15s}.table tbody tr:nth-child(5){animation-delay:.2s}
+.table tbody tr:nth-child(6){animation-delay:.25s}.table tbody tr:nth-child(n+7){animation-delay:.3s}
+.stat-row>*{animation:pop .5s var(--ease-spring) both}
+.stat-row>:nth-child(2){animation-delay:.06s}.stat-row>:nth-child(3){animation-delay:.12s}
+.stat-row>:nth-child(4){animation-delay:.18s}.stat-row>:nth-child(5){animation-delay:.24s}
+
+/* Reader and exams: the next section or question slides in rather than snapping. */
+.reader-main>*{animation:rise .42s var(--ease-out) both}
+.reader-main>:nth-child(2){animation-delay:.04s}.reader-main>:nth-child(3){animation-delay:.08s}
+.reader-main>:nth-child(n+4){animation-delay:.12s}
+.exam-layout article.card{animation:rise .42s var(--ease-out) both}
+.exam-part{animation:fade .5s var(--ease-out) both}
+.ai-box,.exam-figure,.math-preview:not([hidden]){animation:pop .4s var(--ease-out) both}
+.empty,.card[data-new]{animation:pop .45s var(--ease-out) both}
+
+/* Navigation: one pill glides to the current page. */
+.sidebar nav{position:relative}
+.sidebar nav a{position:relative;z-index:1;transition:color .25s var(--ease-out),background .25s var(--ease-out)}
+.sidebar nav.has-pill a[aria-current=page]{background:transparent}
+.nav-pill{position:absolute;left:0;top:0;z-index:0;border-radius:var(--radius-sm);background:var(--brand-soft);pointer-events:none;
+  transition:transform .45s var(--ease-spring),width .35s var(--ease-out),height .35s var(--ease-out),opacity .2s}
+.sidebar nav svg{transition:transform .35s var(--ease-spring)}
+.sidebar nav a:hover svg,.sidebar nav a[aria-current=page] svg{transform:scale(1.12)}
+
+/* Press and hover feedback: a quick spring, never a delay. */
+button,a.button,.chip,summary{transition:background .2s var(--ease-out),border-color .2s var(--ease-out),color .2s var(--ease-out),transform .35s var(--ease-spring),box-shadow .25s var(--ease-out)}
+button:hover:not(:disabled),a.button:hover{transform:translateY(-1px)}
+button:active:not(:disabled),a.button:active{transform:scale(.96);transition-duration:.08s}
+.qnav button,.reader-outline button{transition:background .25s var(--ease-out),color .25s var(--ease-out),border-color .25s var(--ease-out),transform .3s var(--ease-spring)}
+.qnav button[aria-current=step]{transform:scale(1.08)}
+.card{transition:border-color .3s var(--ease-out),box-shadow .3s var(--ease-out)}
+.lesson-card:hover,.card-grid>.card:hover{border-color:rgba(157,178,255,.35)}
+
+/* Growing bars (Home mastery). */
+.bar{height:8px;min-width:100px;width:100%;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;width:100%;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--accent));transform-origin:left;transform:scaleX(var(--v,0));animation:grow 1.1s var(--ease-out) .25s both}
+
+/* Expanders open smoothly (browsers without interpolate-size just open instantly). */
+details{interpolate-size:allow-keywords}
+details::details-content{block-size:0;overflow:clip;opacity:0;transition:block-size .4s var(--ease-out),opacity .3s var(--ease-out),content-visibility .4s allow-discrete}
+details[open]::details-content{block-size:auto;opacity:1}
+summary::marker{transition:transform .3s var(--ease-spring)}
+
+/* Status text changes fade rather than flicker. */
+.state{transition:color .3s var(--ease-out)}
+.state::before{transition:background .3s var(--ease-out)}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important;scroll-behavior:auto!important}
+}

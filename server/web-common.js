@@ -275,3 +275,16 @@ export async function sha256Hex(text) {
   }
   return h.map(v => v.toString(16).padStart(8, '0')).join('');
 }
+
+// Numbers count up to their value with an ease-out curve (no spinner, no placeholder).
+export function countUp(node, to, { format = n => String(Math.round(n)), duration = 800 } = {}) {
+  if (!Number.isFinite(to) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { node.textContent = format(to); return; }
+  const begin = performance.now();
+  node.textContent = format(0);
+  const frame = now => {
+    const t = Math.min(1, (now - begin) / duration);
+    node.textContent = format(to * (1 - Math.pow(1 - t, 3)));
+    if (t < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}

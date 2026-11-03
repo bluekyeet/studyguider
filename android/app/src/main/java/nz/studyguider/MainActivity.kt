@@ -14,7 +14,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -457,7 +464,17 @@ private fun StudyApp() {
                         token = newToken; password = ""; subjects = loaded
                     } }) { Text("Sign in") }
                 }
-            } else when (tab) {
+            } else AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    // Slide towards the tab being opened, in bottom-bar order, while the old one eases away.
+                    val order = listOf(5, 1, 2, 3, 0, 4)
+                    val direction = if (order.indexOf(targetState) > order.indexOf(initialState)) 1 else -1
+                    (fadeIn(tween(300, delayMillis = 70, easing = Motion.easeOut)) + slideInHorizontally(tween(380, easing = Motion.easeOut)) { it / 9 * direction })
+                        .togetherWith(fadeOut(tween(160)) + slideOutHorizontally(tween(300, easing = Motion.easeOut)) { -it / 9 * direction })
+                },
+                label = "tab",
+            ) { shownTab -> when (shownTab) {
                 0 -> ResourceHub(
                     base, token, subjects, topics, resources, selected, selectedTopic,
                     subjectTitle, topicTitle, topicSourceId, resourceRefreshError, busy,
@@ -530,7 +547,7 @@ private fun StudyApp() {
                         ExamScreen(base, token, examId.toLong(), onOpenSource = { id, page -> sourceId = id; sourcePage = page }, onDirtyChange = { examDirty = it }, onPageChange = { scope.launch { examScroll.scrollTo(0) } })
                     }
                 }
-            }
+            } }
         }
     }
     // App-wide errors stay visible in a single line under the header.

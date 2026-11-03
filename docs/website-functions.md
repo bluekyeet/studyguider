@@ -189,6 +189,8 @@ run history, review-draft generation, mastery view. Its look is independent.
 8. **Disabled and busy states** are real: buttons disable during requests; the router relies on
    `data-dirty` and `data-busy`.
 
+9. **Motion is fluid and never a loading screen.** Transitions are eased or spring movements of position and opacity (pages and cards rise in turn, the nav pill glides, bars grow, numbers count up, expanders open smoothly, buttons spring on press). No spinners, skeletons or placeholder animations for waiting. All of it switches off when the system asks for reduced motion.
+
 ## Known gaps a designer can plan around
 
 - Lesson history and deleting lessons are not on the website.

@@ -2,6 +2,11 @@ package nz.studyguider
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,30 +47,42 @@ enum class Destination(val label: String, val tab: Int) {
  */
 @Composable
 fun StudyNavBar(current: Int, onSelect: (Int) -> Unit) {
-    val colours = LocalStudyColours.current
+    val index = Destination.entries.indexOfFirst { it.tab == current }.coerceAtLeast(0)
+    // One pill glides, with a little spring, to the selected destination instead of each tab lighting up alone.
+    val position by animateFloatAsState(index.toFloat(), spring(dampingRatio = 0.7f, stiffness = 380f), label = "nav pill")
+    val pillColour = MaterialTheme.colorScheme.primaryContainer
     Column(Modifier.fillMaxWidth()) {
         androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         Row(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding().heightIn(min = 64.dp).padding(horizontal = 4.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding()
+                .drawBehind {
+                    val item = (size.width - 8.dp.toPx()) / Destination.entries.size
+                    drawRoundRect(
+                        pillColour,
+                        topLeft = Offset(4.dp.toPx() + position * item + 2.dp.toPx(), 6.dp.toPx()),
+                        size = Size(item - 4.dp.toPx(), size.height - 12.dp.toPx()),
+                        cornerRadius = CornerRadius(size.height / 2),
+                    )
+                }
+                .heightIn(min = 64.dp).padding(horizontal = 4.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Destination.entries.forEach { destination ->
                 val selected = destination.tab == current
-                val container by animateColorAsState(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, label = "nav pill")
                 val tint by animateColorAsState(if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, label = "nav tint")
+                val lift by animateFloatAsState(if (selected) 1.14f else 1f, spring(dampingRatio = 0.45f, stiffness = 520f), label = "nav icon")
                 // Each destination takes an equal share of the bar so the row spans the full width.
                 Box(Modifier.weight(1f).padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
                     Column(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(50))
-                            .background(container)
                             .clickable(role = Role.Tab) { onSelect(destination.tab) }
                             .padding(vertical = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        DestinationIcon(destination, tint, Modifier.size(22.dp))
+                        DestinationIcon(destination, tint, Modifier.size(22.dp).graphicsLayer { scaleX = lift; scaleY = lift })
                         Text(
                             destination.label,
                             color = tint,
