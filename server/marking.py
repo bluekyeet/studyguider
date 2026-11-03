@@ -7,6 +7,7 @@ second marker is advisory and disagreements are shown to the learner.
 import hashlib
 import json
 import re
+import unicodedata
 import io
 import rapid_state
 from rapid_state import refuse_if_blind
@@ -84,6 +85,11 @@ _QUOTE_DASH_MAP = str.maketrans({
 def _norm(text):
     text = (text or "").translate(_QUOTE_DASH_MAP)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _squash(text):
+    """Letters and digits only, so line breaks, bullets, spacing and punctuation in a PDF's text layer do not matter."""
+    return "".join(ch for ch in unicodedata.normalize("NFKC", _norm(text)).casefold() if ch.isalnum())
 
 
 def grade_for(marks, available):
@@ -164,9 +170,10 @@ def _validate(raw, schedule_text, available):
         raise HTTPException(502, "Model awarded more marks than are available")
     if result.marks_awarded > 0 and not result.evidence:
         raise HTTPException(502, "Model awarded marks without quoting the schedule")
-    normal_schedule = _norm(schedule_text)
+    normal_schedule = _squash(schedule_text)
     for item in result.evidence:
-        if _norm(item.quote) not in normal_schedule:
+        quote = _squash(item.quote)
+        if not quote or quote not in normal_schedule:
             raise HTTPException(502, "Model evidence is not an exact schedule quotation")
     computed = schedule_score_outcome(result.marks_awarded) if available == 8 and uses_ncea_question_scale(schedule_text) else grade_for(result.marks_awarded, available)
     if result.outcome != computed and result.outcome != "uncertain":
