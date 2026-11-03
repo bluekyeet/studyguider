@@ -1,5 +1,5 @@
 import { mathText, mathInput, autosave, aiBox } from './web-common.js';
-import { el, field, option, json, reflow, withoutLabel, displayLabel, scanForm } from './web-exam-shared.js';
+import { el, field, option, json, reflow, withoutLabel, displayLabel, scanForm, mathsNote } from './web-exam-shared.js';
 import { renderRapid } from './web-rapid.js';
 import { renderRevision } from './web-revision.js';
 
@@ -230,6 +230,7 @@ async function renderClassicExams(container, api) {
         const raw = el('textarea'); raw.rows = 7; raw.maxLength = 100000; raw.value = q.answer || '';
         const rawField = mathField(handwritten ? 'Recognised answer (check it against your page)' : 'Answer text / JSON (preserved exactly unless edited)', raw);
         const partsBox = el('div', '', 'stack');
+        if (q.maths_restored) partsBox.append(mathsNote());
         let parsed;
         try { parsed = JSON.parse(raw.value); } catch { /* Plain text stays plain text. */ }
         const structured = parsed && typeof parsed === 'object' && !Array.isArray(parsed)

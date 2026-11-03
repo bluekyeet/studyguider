@@ -356,7 +356,7 @@ app.include_router(accounts_router(accounts_db, authorised, admin_only, hasher, 
 
 
 app.include_router(review_router(connect, authorised, model_reply))
-app.include_router(exam_router(connect, authorised, model_reply, lambda topic, query: search_resources(topic, query), admin_only))
+app.include_router(exam_router(connect, authorised, model_reply, lambda topic, query: search_resources(topic, query), admin_only, model_reply_vision))
 app.include_router(parsing_router(connect, admin_only, model_reply_reliable))
 app.include_router(scheduler_router(connect, authorised))
 app.include_router(worker_router(connect, authorised))
@@ -1030,6 +1030,8 @@ def extract_resource(resource_id: uuid.UUID):
             if any(r.get("status") == "imported" for r in import_topic_papers(connect, topic[0]) or []):
                 import splitting
                 splitting.kick(connect, model_reply_reliable, topic[0])      # so rapid practice is ready when the learner opens it
+                import mathtext
+                mathtext.kick(connect, model_reply_vision, topic[0])          # equations the PDF text lost, read from the page images
         except Exception:
             import logging
             logging.getLogger(__name__).exception("Automatic paper import failed after extraction")

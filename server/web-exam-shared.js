@@ -56,10 +56,13 @@ export function scanForm(files, listOnly = false) {
   return form;
 }
 
+export const mathsNote = () => el('p', 'Equations were read from the original page by AI. Check them against the paper.', 'muted');
+
 // A question as the learner reads it: wording split into labelled parts, with the paper's figures under them.
 // Works from the payload the rapid endpoints return (parts, question_text, paper_resource_id).
 export function questionView(q) {
   const box = el('div', '', 'stack');
+  if (q.maths_restored) box.append(mathsNote());
   const parts = (q.parts || []).filter(p => p && typeof p.text === 'string');
   const shown = new Set();
   const figures = p => (p.diagrams || []).filter(d => {

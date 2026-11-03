@@ -5,6 +5,7 @@ answers, scans, marking and the wrong-answer review hand-off all reuse the exist
 session is open the server refuses every route that would reveal marks, schedules or feedback for it
 (see rapid_state.py), so no client can leak results early. Answers lock when the learner moves on.
 """
+import mathtext
 import json
 import logging
 import threading
@@ -104,11 +105,11 @@ def _payload(db, exam_id, question_id):
     if not row:
         raise HTTPException(404, "Question not found")
     ai = row[2] == "ai"
-    return {"question_id": row[0], "position": row[1], "source": "ai" if ai else "past",
+    return mathtext.overlay(db, [{"question_id": row[0], "position": row[1], "source": "ai" if ai else "past",
             "standard_number": row[3], "year": None if ai else row[4], "parts": row[5],
             "question_text": row[6][:30000], "figure_pages": row[7],
             "paper_resource_id": None if ai or not row[8] else str(row[8]), "paper_page": None if ai else row[9],
-            "label": row[11] if row[10] else None}
+            "label": row[11] if row[10] else None}])[0]
 
 
 def _current(db, exam_id):
@@ -508,6 +509,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                 item.update(status="failed" if failed else "pending", outcome=None, missed=False)
                 breakdown["failed" if failed else "pending"] += 1
             items.append(item)
+        with connect() as db:
+            mathtext.overlay(db, items)
         return {"id": exam_id, "topic": sess[3], "source": sess[2], "started_at": sess[4], "ended_at": sess[0],
                 "questions": len(items), "answered": sum(1 for i in items if i["status"] != "skipped"),
                 "seconds": sum(i["seconds"] or 0 for i in items), "breakdown": breakdown, "revision_added": added,
@@ -566,6 +569,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                         paper_resource_id=None if ai or not item["paper_resource_id"] else str(item["paper_resource_id"]),
                         rubric_type="AI-written rubric, unofficial" if ai else "registered schedule (machine-extracted)")
             out.append(item)
+        with connect() as db:
+            mathtext.overlay(db, out)
         return out
 
     @router.get("/exam-revision/summary")

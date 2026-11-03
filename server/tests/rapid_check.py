@@ -48,7 +48,7 @@ pack_inputs = []
 
 def model(name, messages, task="general"):
     """Stub gateway: marks by keyword, writes AI questions, and fails any question containing BAD."""
-    if task == "exam-mark":
+    if task in ("exam-mark", "exam-second-mark"):
         payload = json.loads(messages[1]["content"])
         right = "RIGHT" in payload["answer"]
         return json.dumps({"marks_awarded": 1 if right else 0, "marks_available": 1, "outcome": "achieved" if right else "not_achieved",

@@ -6,6 +6,7 @@ Original uploads remain the authoritative source for wording, figures and schedu
 from uuid import UUID
 from typing import Literal
 
+import mathtext
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -148,6 +149,8 @@ def create_exam_tables(db):
     # Rapid practice splits a paper question into its lettered parts; each part is its own row pointing at the whole question.
     db.execute("ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS parent_id bigint REFERENCES exam_questions(id) ON DELETE CASCADE")
     db.execute("ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS split_state text NOT NULL DEFAULT ''")
+    db.execute("ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS math_state text NOT NULL DEFAULT ''")
+    db.execute("ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS math_display jsonb")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS exam_questions_part_idx ON exam_questions (parent_id, question_number) WHERE parent_id IS NOT NULL")
     db.execute("ALTER TABLE exam_answer_scans ADD COLUMN IF NOT EXISTS revision integer NOT NULL DEFAULT 1")
 
@@ -209,7 +212,7 @@ def parse_practice_paper(reply, count):
     return paper
 
 
-def exam_router(connect, authorised, model_reply=None, search_resources=None, admin=None):
+def exam_router(connect, authorised, model_reply=None, search_resources=None, admin=None, vision=None):
     router = APIRouter(dependencies=[Depends(authorised)])
     guard = admin or authorised         # registering questions and schedule boundaries by hand is an advanced tool
 
@@ -503,7 +506,12 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
                 FROM exam_items i JOIN exam_questions q ON q.id = i.question_id
                 WHERE i.exam_id = %s ORDER BY i.position""", (exam_id,)).fetchall()
         keys = ("id", "topic_id", "standard_number", "year", "question_number", "paper_resource_id", "paper_page", "schedule_resource_id", "schedule_page", "verified_at", "position", "answer", "marks", "parts", "question_text", "schedule_text", "figure_pages", "answer_revision", "scan_revision")
+        questions = [dict(zip(keys, row)) for row in rows]
+        with connect() as db:
+            mathtext.overlay(db, questions, "id")
+        if vision is not None:
+            mathtext.kick(connect, vision)      # questions not yet restored get their maths from the page image; shown on the next open
         return {"id": exam[0], "created_at": exam[1], "subject_id": exam[2], "kind": exam[3],
-                "total_marks": exam[4], "questions": [dict(zip(keys, row)) for row in rows]}
+                "total_marks": exam[4], "questions": questions}
 
     return router
