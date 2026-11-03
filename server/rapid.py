@@ -120,11 +120,12 @@ def _current(db, exam_id):
 def _bank_pick(db, exam_id, topic_id):
     # One part at a time: lettered parts of a split question, or a question that has no parts. A question that is still
     # waiting to be split is skipped, and so is the whole of one that was split (its parts stand in for it).
-    # Least recently seen first; the order inside that is stable for a session but differs between sessions.
+    # Least recently seen first, then questions whose equations are already restored (see mathtext.py), then an order that is
+    # stable for a session but differs between sessions.
     row = db.execute("""SELECT q.id FROM exam_questions q WHERE q.topic_id = %s AND q.source <> 'ai'
         AND (q.parent_id IS NOT NULL OR q.split_state IN ('single', 'failed'))
         AND NOT EXISTS (SELECT 1 FROM exam_items i WHERE i.exam_id = %s AND i.question_id = q.id)
-        ORDER BY COALESCE((SELECT max(i.exam_id) FROM exam_items i WHERE i.question_id = q.id), 0), md5(q.id::text || %s::text)
+        ORDER BY COALESCE((SELECT max(i.exam_id) FROM exam_items i WHERE i.question_id = q.id), 0), (q.math_state = ''), md5(q.id::text || %s::text)
         LIMIT 1""", (topic_id, exam_id, str(exam_id))).fetchone()
     return row[0] if row else None
 
@@ -386,6 +387,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             if body.source != "ai":
                 kick_split(body.topic_id)     # questions added since the last run become available shortly
                 if vision is not None:
+                    if isinstance(first, int):
+                        mathtext.process(connect, vision, ids=[first])     # the question on screen first; one page image, so a few seconds
                     mathtext.kick(connect, vision, body.topic_id)
             if isinstance(first, str):
                 if body.source != "revision" and body.source != "ai" and splitting.pending(db, body.topic_id, 1):
