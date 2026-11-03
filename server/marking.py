@@ -5,6 +5,7 @@ same answer return the stored first mark, so consistency can be checked. The
 second marker is advisory and disagreements are shown to the learner.
 """
 import hashlib
+import logging
 import json
 import re
 import unicodedata
@@ -171,10 +172,17 @@ def _validate(raw, schedule_text, available):
     if result.marks_awarded > 0 and not result.evidence:
         raise HTTPException(502, "Model awarded marks without quoting the schedule")
     normal_schedule = _squash(schedule_text)
+    # A quotation that is not in the schedule is never shown as evidence. Marks still need at least one that is.
+    verified = [item for item in result.evidence if _squash(item.quote) and _squash(item.quote) in normal_schedule]
     for item in result.evidence:
-        quote = _squash(item.quote)
-        if not quote or quote not in normal_schedule:
-            raise HTTPException(502, "Model evidence is not an exact schedule quotation")
+        if item not in verified:
+            logging.getLogger("uvicorn.error").warning("Marking evidence not found in schedule: %r", item.quote[:200])
+    if result.marks_awarded > 0 and not verified:
+        raise HTTPException(502, "Model evidence is not an exact schedule quotation")
+    dropped = len(result.evidence) - len(verified)
+    result.evidence = verified
+    if dropped:
+        result.missing.append(f"{dropped} quoted line{'s' if dropped != 1 else ''} from the AI could not be found in the schedule and {'were' if dropped != 1 else 'was'} removed; check the marks against the schedule yourself.")
     computed = schedule_score_outcome(result.marks_awarded) if available == 8 and uses_ncea_question_scale(schedule_text) else grade_for(result.marks_awarded, available)
     if result.outcome != computed and result.outcome != "uncertain":
         # Keep the mark-derived outcome so the same marks always give the same grade.
