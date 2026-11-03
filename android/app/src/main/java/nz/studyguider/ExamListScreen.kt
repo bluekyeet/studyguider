@@ -128,7 +128,7 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
         }
         if (mode == "ai") Text("AI-written practice uses an unofficial rubric.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (mode == "original") {
-            if (topic != null && papers.isEmpty()) Text("No registered papers for this topic.")
+            if (topic != null && papers.isEmpty()) Text("No past papers are registered for this topic yet. Upload an NZQA exam paper and its marking schedule in Resources (named like 91577-exm-2023.pdf and 91577-ass-2023.pdf) and they are added automatically. Until then, use AI-written practice, which needs notes or files uploaded for the topic.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (papers.isNotEmpty()) Box(Modifier.fillMaxWidth()) {
                 OutlinedButton(enabled = !busy, onClick = { paperMenu = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(paper?.let { "${it.optInt("year")} · AS ${it.optInt("standard_number")}" } ?: "Choose a year", modifier = Modifier.weight(1f))

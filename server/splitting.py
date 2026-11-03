@@ -8,9 +8,13 @@ The model only chooses where to cut. Everything it returns must be wording that 
 (checked word by word); a split that invents or rewrites text is rejected and the whole question is
 served as before. The learner is never shown text that is not on the original paper.
 """
+import contextvars
 import json
 import logging
 import re
+import threading
+
+import userspace
 
 log = logging.getLogger("uvicorn.error")
 
@@ -169,6 +173,30 @@ def _units_for(model_reply, row):
     return None, error
 
 
+_running = set()
+_running_lock = threading.Lock()
+
+
+def kick(connect, model_reply, topic_id=None):
+    """Split a topic's new paper questions in the background, once at a time per account and topic. Returns whether it started."""
+    key = (userspace.current_user.get(), topic_id or 0)
+    with _running_lock:
+        if key in _running or (key[0], 0) in _running:
+            return False
+        _running.add(key)
+
+    def run():
+        try:
+            log.info("Rapid split finished: %s", split_pending(connect, model_reply, topic_id))
+        except Exception as error:      # noqa: BLE001 - background work must never take the caller down
+            log.warning("Rapid split failed: %s", getattr(error, "detail", error))
+        finally:
+            with _running_lock:
+                _running.discard(key)
+    userspace.spawn(run)
+    return True
+
+
 def split_pending(connect, model_reply, topic_id=None, limit=500, workers=4):
     """Split every unsplit paper question (of one topic, or all). A question that fails twice is marked 'failed' and
     served whole instead; it never blocks the others. The model calls run in parallel; the database writes do not."""
@@ -178,7 +206,9 @@ def split_pending(connect, model_reply, topic_id=None, limit=500, workers=4):
     done = failed = single = retry = 0
     reasons = []
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="split") as pool:
-        for row, (units, error) in zip(rows, pool.map(lambda r: _units_for(model_reply, r), rows)):
+        # each call keeps the caller's account, so the model-usage log lands in the right schema
+        contexts = [contextvars.copy_context() for _ in rows]
+        for row, (units, error) in zip(rows, pool.map(lambda pair: pair[1].run(_units_for, model_reply, pair[0]), zip(rows, contexts))):
             question_id = row[0]
             with connect() as db:
                 if units is None and not isinstance(error, ValueError):

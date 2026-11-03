@@ -4,6 +4,7 @@ import logging
 import os
 
 import psycopg
+import userspace
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -35,7 +36,7 @@ def create_usage_tables(db):
 def log_run(task, model, prompt_chars, response_chars, outcome, error=None, prompt_tokens=None, completion_tokens=None):
     """Best-effort accounting; a logging failure must never break a model call."""
     try:
-        with psycopg.connect(os.environ.get("DATABASE_URL", "")) as db:
+        with psycopg.connect(os.environ.get("DATABASE_URL", ""), options=f"-c search_path={userspace.search_path()}") as db:     # the signed-in account's own schema
             db.execute("""INSERT INTO ai_runs
                 (task, model, prompt_chars, response_chars, outcome, error, prompt_tokens, completion_tokens)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",

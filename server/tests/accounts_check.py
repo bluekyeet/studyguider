@@ -138,6 +138,14 @@ try:
         check("searching only finds your own text", [r["filename"] for r in client.get(f"/topics/{bob_topic}/search?q=acids", headers=bob).json()] == ["bob.txt"]
               and client.get(f"/topics/{bob_topic}/search?q=forces", headers=bob).json() == [])
 
+        # ---- AI usage is recorded per account ----
+        with userspace.as_user(2):
+            study.log_run("accounts-check", "model", 1, 1, "ok")
+        with study.connect_account() as db:
+            mine_n = db.execute("SELECT count(*) FROM u2.ai_runs WHERE task = 'accounts-check'").fetchone()[0]
+            theirs_n = db.execute("SELECT count(*) FROM u1.ai_runs WHERE task = 'accounts-check'").fetchone()[0]
+        check("AI usage is recorded in the account's own schema", (mine_n, theirs_n) == (1, 0), (mine_n, theirs_n))
+
         # ---- teaching style is separate ----
         client.put("/style-profile", headers=admin, json={"content": "Admin style: short bullet points."})
         client.put("/style-profile", headers=bob, json={"content": "Bob style: long stories."})

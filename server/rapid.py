@@ -28,8 +28,6 @@ MARK_RETRIES = 3
 
 MARKERS = ThreadPoolExecutor(max_workers=3, thread_name_prefix="rapid-mark")
 GENERATORS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rapid-gen")
-SPLITTERS = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rapid-split")
-_splitting = set()      # topic ids (0 = all) with a split run going
 _lock = threading.Lock()
 _inflight = set()       # (exam_id, question_id) being marked
 _attempts = {}          # (exam_id, question_id) -> failed marking attempts
@@ -349,24 +347,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
     # ---- sessions ------------------------------------------------------------------------------
     def kick_split(topic_id=None):
         """Split paper questions into parts in the background; one run per topic at a time."""
-        if model_reply is None:
-            return False
-        key = topic_id or 0
-        with _lock:
-            if key in _splitting or 0 in _splitting:
-                return False
-            _splitting.add(key)
-
-        def run():
-            try:
-                log.info("Rapid split finished: %s", splitting.split_pending(connect, model_reply, topic_id))
-            except Exception as error:
-                log.warning("Rapid split failed: %s", getattr(error, "detail", error))
-            finally:
-                with _lock:
-                    _splitting.discard(key)
-        userspace.submit(SPLITTERS, run)
-        return True
+        return model_reply is not None and splitting.kick(connect, model_reply, topic_id)
 
     @router.post("/rapid/split", status_code=202)
     def split_questions(topic_id: int | None = None):
@@ -381,7 +362,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             rows = db.execute("""SELECT split_state, count(*) FROM exam_questions WHERE parent_id IS NULL AND source <> 'ai' GROUP BY 1""").fetchall()
             parts = db.execute("SELECT count(*) FROM exam_questions WHERE parent_id IS NOT NULL").fetchone()[0]
         names = {"": "waiting", "done": "split", "single": "single", "failed": "failed"}
-        return {**{names.get(r[0], r[0]): r[1] for r in rows}, "parts": parts, "running": bool(_splitting)}
+        return {**{names.get(r[0], r[0]): r[1] for r in rows}, "parts": parts, "running": bool(splitting._running)}
 
     @router.post("/rapid", status_code=201)
     def start(body: RapidStart):
@@ -404,6 +385,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             if body.source != "ai":
                 kick_split(body.topic_id)     # questions added since the last run become available shortly
             if isinstance(first, str):
+                if body.source != "revision" and body.source != "ai" and splitting.pending(db, body.topic_id, 1):
+                    raise HTTPException(409, "Your past papers are being prepared for rapid practice. Try again in a minute.")
                 raise HTTPException(409, "There are no questions for this topic yet" if body.source != "revision" else "Nothing to revise for this topic")
             question = _payload(db, exam_id, first)
         ensure_buffer(exam_id)

@@ -56,9 +56,14 @@ async function renderClassicExams(container, api) {
     countField.hidden = mode.value === 'original';
     count.disabled = mode.value === 'original';
     start.disabled = !topic.value || (mode.value === 'original' && !papers[paper.value]);
-    modeNotice.textContent = mode.value === 'ai'
-      ? 'Starting generates an AI practice paper, not official NZQA material.'
-      : 'Registered questions may not cover a complete paper. Check original wording, diagrams and schedule; bank human review may be outstanding.';
+    modeNotice.replaceChildren();
+    if (mode.value === 'ai') modeNotice.textContent = 'Starting generates an AI practice paper from the files you have uploaded for this topic, not official NZQA material.';
+    else if (topic.value && !papers.length) {
+      // A new account has no past papers yet: say how to add them and what works in the meantime.
+      const library = el('a', 'Library'); library.href = '#library';
+      modeNotice.append('No past papers are registered for this topic yet. Upload an NZQA exam paper and its marking schedule in the ', library,
+        ' (named like 91577-exm-2023.pdf and 91577-ass-2023.pdf); they are paired and added automatically. Until then, choose AI practice, which writes questions from the notes and files you have uploaded for this topic.');
+    } else modeNotice.textContent = 'Registered questions may not cover a complete paper. Check original wording, diagrams and schedule; bank human review may be outstanding.';
   };
   mode.addEventListener('change', updateMode);
   paper.addEventListener('change', updateMode);

@@ -1785,3 +1785,10 @@ From the pasted source review (not a penetration test):
 - Checked: unit suite (241 passed), the disposable-stack CI sequence including a new accounts check (45 assertions), headless browser against a mock server, and the emulator with the migrated real data. Real data: a database backup was taken first; after the migration every table's row count matched and all 402 resource files were present.
 - Bugs found on the way: the shared `json()` helper takes `(method, body)` (my first account page called it the other way); older CI checks assumed study tables in `public`; the CI image has no HTTP test client (the check installs one).
 - Not verified: see docs/task-list.md.
+
+## 3 Nov 2026: fixes found with the first second account
+
+- A new account's Exams page said "No registered original papers" with a disabled Start button and no hint. It now explains how past papers are added (upload an NZQA paper and schedule named like `91577-exm-2023.pdf` and `91577-ass-2023.pdf` in Library; they are paired and imported automatically) and what to do meanwhile (AI practice). Android has the same wording.
+- The `test` account's 13 uploaded papers were imported automatically but slowly (PDF layout parsing): 7 papers registered, 6 older ones needed attention because their schedule headings could not be read. Rapid practice needs those questions split into parts, so a new account's first rapid session failed until a manual split. Import now starts the split in the background (`splitting.kick`), and a start that finds papers still being prepared says so instead of "no questions".
+- Bug: AI-usage logging opened its own connection without the account's schema, so after the move to accounts no usage was recorded for anyone ("relation ai_runs does not exist" in the logs). Fixed, with a regression assertion in `accounts_check.py`. Usage between the migration and this fix was not recorded.
+- Not verified: why 6 of the 13 Complex Numbers schedules are not recognised; a rapid session on the test account's split questions on a device.

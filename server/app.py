@@ -1027,7 +1027,9 @@ def extract_resource(resource_id: uuid.UUID):
         topic = db.execute("SELECT topic_id FROM resources WHERE id=%s", (resource_id,)).fetchone()
     if topic:
         try:
-            import_topic_papers(connect, topic[0])
+            if any(r.get("status") == "imported" for r in import_topic_papers(connect, topic[0]) or []):
+                import splitting
+                splitting.kick(connect, model_reply_reliable, topic[0])      # so rapid practice is ready when the learner opens it
         except Exception:
             import logging
             logging.getLogger(__name__).exception("Automatic paper import failed after extraction")
