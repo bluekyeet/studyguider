@@ -1,4 +1,4 @@
-import { mathText, mathInput, autosave, stash, sha256Hex, aiBox, readable } from './web-common.js';
+import { mathText, mathInput, autosave, stash, sha256Hex, aiBox, readable, inlineMath } from './web-common.js';
 
 const element = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -258,7 +258,7 @@ export async function renderLessons(container, api, params) {
     const items = element('ol');
     lesson.chunks.forEach((section, index) => {
       const li = element('li'); const go = element('button'); go.type = 'button';
-      go.append(element('span', String(index + 1), 'num'), element('span', readable(section.title)));
+      go.append(element('span', String(index + 1), 'num'), inlineMath(readable(section.title)));
       if (index === current) go.setAttribute('aria-current', 'step');
       go.onclick = () => goTo(index);
       li.append(go); items.append(li);
@@ -267,7 +267,7 @@ export async function renderLessons(container, api, params) {
 
     const main = element('div', '', 'reader-main stack');
     const card = element('article', '', 'card stack');
-    card.append(element('h2', readable(chunk.title)), rendered(chunk.body));
+    card.append(inlineMath(readable(chunk.title), 'h2'), rendered(chunk.body));
     const banner = element('div', '', 'toolbar');
     banner.append(element('span', 'AI generated · verify with sources', 'ai-badge'),
       element('span', lesson.warning || 'Check this lesson against the original sources.', 'muted'));

@@ -49,6 +49,9 @@ function withInline(parent, text) {
   return markdown(text.slice(index), parent);
 }
 
+// One line of text with its $...$ maths drawn, for titles and labels (mathText makes whole blocks).
+export const inlineMath = (text, tag = 'span') => withInline(el(tag), String(text || ''));
+
 const isTableRow = line => /^\s*\|.*\|\s*$/.test(line);
 const isTableRule = line => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line) && line.includes('-');
 const cells = line => line.trim().replace(/^\||\|$/g, '').split('|').map(cell => cell.trim());
