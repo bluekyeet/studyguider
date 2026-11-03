@@ -53,7 +53,7 @@ does not mean its end-to-end acceptance checks have passed.
     one success, one 409; winning content preserved. Disposable schema cleaned up.
 - [x] Add visible warnings when model-call failures rise (usage panel, at least ten calls and 20% errors).
 - [x] Resume website study-workflow parity (done: Lessons, Review, Exams, Library, Settings on `/`, dark theme, cross-device sync; see `docs/website-functions.md` for known gaps).
-- [x] Home page with today's tasks and progress counts: `GET /study-summary` and website `#home` (3 Nov 2026); the Android Home is not built.
+- [x] Home page with today's tasks and progress counts: `GET /study-summary` and website `#home` (3 Nov 2026); Android Home tab added (3 Nov 2026, emulator-checked in part).
 - [ ] Notification reminders
 
 ## Foundation, access and resources

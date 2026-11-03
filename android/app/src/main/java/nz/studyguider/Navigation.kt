@@ -25,8 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The four destinations, matching the supplied Stitch navigation order. */
+/** The bottom-bar destinations, Home first, then the supplied Stitch navigation order. */
 enum class Destination(val label: String, val tab: Int) {
+    Home("Home", 5),
     Lesson("Lesson", 1),
     Review("Review", 2),
     Exam("Exam", 3),
@@ -87,6 +88,22 @@ fun DestinationIcon(destination: Destination, tint: Color, modifier: Modifier = 
         val h = size.height
         val stroke = Stroke(width = w * 0.09f, cap = StrokeCap.Round)
         when (destination) {
+            Destination.Home -> {
+                // House: roof and walls with a door.
+                val house = Path().apply {
+                    moveTo(w * 0.08f, h * 0.48f)
+                    lineTo(w * 0.5f, h * 0.12f)
+                    lineTo(w * 0.92f, h * 0.48f)
+                    moveTo(w * 0.18f, h * 0.42f)
+                    lineTo(w * 0.18f, h * 0.88f)
+                    lineTo(w * 0.82f, h * 0.88f)
+                    lineTo(w * 0.82f, h * 0.42f)
+                }
+                drawPath(house, tint, style = stroke)
+                drawLine(tint, Offset(w * 0.44f, h * 0.88f), Offset(w * 0.44f, h * 0.6f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.44f, h * 0.6f), Offset(w * 0.62f, h * 0.6f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.62f, h * 0.6f), Offset(w * 0.62f, h * 0.88f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
+            }
             Destination.Learning -> {
                 drawCircle(tint, radius = w * 0.14f, center = Offset(w * 0.5f, h * 0.25f), style = stroke)
                 drawArc(tint, 180f, 180f, false, Offset(w * 0.18f, h * 0.5f), Size(w * 0.64f, h * 0.55f), style = stroke)

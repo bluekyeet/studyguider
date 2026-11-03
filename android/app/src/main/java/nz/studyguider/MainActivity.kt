@@ -230,7 +230,7 @@ private fun StudyApp() {
     var topicSourceId by remember { mutableStateOf("") }
     var pendingTab by remember { mutableStateOf<Int?>(null) }
     var confirmExamExit by remember { mutableStateOf(false) }
-    var tab by remember { mutableIntStateOf(1) }
+    var tab by remember { mutableIntStateOf(5) }
     var subjectTitle by remember { mutableStateOf("") }
     var topicTitle by remember { mutableStateOf("") }
     var showAddSubject by remember { mutableStateOf(false) }
@@ -268,7 +268,7 @@ private fun StudyApp() {
         if (topicSourceId.isNotEmpty()) { topicSourceId = ""; return true }
         if (selectedTopic != 0L) { selectedTopic = 0; selectedLesson = 0; topicTitle = ""; resources = JSONArray(); return true }
         if (selected != 0L) { selected = 0; subjectTitle = ""; topics = JSONArray(); return true }
-        if (tab != 0) { tab = 0; return true }
+        if (tab != 5) { tab = 5; return true }
         return false
     }
     BackHandler(enabled = token.isNotEmpty()) {
@@ -389,6 +389,7 @@ private fun StudyApp() {
                         2 -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else "Daily review"
                         3 -> null
                         4 -> null
+                        5 -> null
                         else -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else "Resources"
                     }
                     Row(
@@ -397,7 +398,7 @@ private fun StudyApp() {
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                when (tab) { 1 -> "Your lessons"; 2 -> "Daily review"; 3 -> "Exam"; 4 -> "Learning"; else -> "Resources" },
+                                when (tab) { 1 -> "Your lessons"; 2 -> "Daily review"; 3 -> "Exam"; 4 -> "Learning"; 5 -> "Home"; else -> "Resources" },
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
@@ -510,6 +511,10 @@ private fun StudyApp() {
                 2 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                     ReviewScreen(base, token)
                 }
+                5 -> HomeScreen(base, token,
+                    onOpenLesson = { topic, title, lesson -> selectedLesson = lesson; openTopic(topic, title); subjectTitle = findSubject(topic); tab = 1 },
+                    onGoTo = { destination -> if (examDirty && destination != tab) { pendingTab = destination; confirmExamExit = true } else tab = destination },
+                )
                 4 -> LearningScreen(base, token, topicsReload, onManageCourses = { showTopicPicker = true }, onOpenLesson = { topic, title, lesson ->
                     selectedLesson = lesson; openTopic(topic, title); subjectTitle = findSubject(topic); tab = 1
                 })
@@ -558,7 +563,7 @@ private fun StudyApp() {
         text = { Text("You will need the password to sign in again on this device.") },
         confirmButton = { TextButton(onClick = {
             signOutConfirm = false
-            run { request(base, "/logout", token, JSONObject()); prefs.edit().clear().apply(); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; sourceId = ""; tab = 1 }
+            run { request(base, "/logout", token, JSONObject()); prefs.edit().clear().apply(); token = ""; subjects = JSONArray(); topics = JSONArray(); resources = JSONArray(); selected = 0; selectedTopic = 0; subjectTitle = ""; topicTitle = ""; examId = ""; sourceId = ""; tab = 5 }
         }) { Text("Sign out") } },
         dismissButton = { TextButton(onClick = { signOutConfirm = false }) { Text("Cancel") } },
     )
