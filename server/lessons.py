@@ -137,12 +137,14 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
     @router.get("/lessons")
     def lesson_feed():
         with connect() as db:
-            rows = db.execute("""SELECT l.id, l.topic_id, l.query, l.created_at, t.name, s.name, l.completed_at
+            rows = db.execute("""SELECT l.id, l.topic_id, l.query, l.created_at, t.name, s.name, l.completed_at,
+                (EXISTS (SELECT 1 FROM lesson_progress p WHERE p.lesson_id = l.id AND p.section > 0)
+                 OR EXISTS (SELECT 1 FROM lesson_answers a WHERE a.lesson_id = l.id)) AS started
                 FROM lessons l JOIN topics t ON t.id = l.topic_id
                 JOIN subjects s ON s.id = t.subject_id
                 WHERE l.review_status IN ('passed', 'completed')
                 ORDER BY l.created_at DESC, l.id DESC LIMIT 200""").fetchall()
-        return [dict(zip(("id", "topic_id", "query", "created_at", "topic", "subject", "completed_at"), row)) for row in rows]
+        return [dict(zip(("id", "topic_id", "query", "created_at", "topic", "subject", "completed_at", "started"), row)) for row in rows]
 
     @router.post("/lessons/{lesson_id}/complete")
     def complete_lesson(lesson_id: int):

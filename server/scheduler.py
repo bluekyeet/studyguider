@@ -124,6 +124,32 @@ def create_scheduler_tables(db):
     db.execute("ALTER TABLE lesson_schedules ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'UTC'")
 
 
+MAX_FLAGGED_PER_DAY = 3
+
+
+def waiting_lesson(db, topic_id, zone, today):
+    """An earlier, reviewed lesson of this topic that was never opened (no reading position, no answers).
+    Lessons that were started but not finished are not carried: the topic gets a fresh lesson instead."""
+    return db.execute("""SELECT 1 FROM lessons l WHERE l.topic_id = %s AND l.review_status IN ('passed', 'completed')
+        AND l.completed_at IS NULL AND (l.created_at AT TIME ZONE %s)::date < %s
+        AND NOT EXISTS (SELECT 1 FROM lesson_progress p WHERE p.lesson_id = l.id AND p.section > 0)
+        AND NOT EXISTS (SELECT 1 FROM lesson_answers a WHERE a.lesson_id = l.id) LIMIT 1""",
+                      (topic_id, zone, today)).fetchone()
+
+
+def reopen_flagged(db, topic_id, zone, today):
+    """Today's lesson failed its review and is hidden, so the topic would show nothing: claim the run again to write
+    a replacement, at most MAX_FLAGGED_PER_DAY times a day. Returns the run's query, or None."""
+    row = db.execute("""UPDATE lesson_schedule_runs r SET status = 'running', lesson_id = NULL, error = NULL,
+        finished_at = NULL, started_at = now() FROM lessons l
+        WHERE r.topic_id = %s AND r.run_date = %s AND r.status = 'completed' AND l.id = r.lesson_id
+        AND l.review_status = 'flagged'
+        AND (SELECT count(*) FROM lessons x WHERE x.topic_id = r.topic_id AND x.review_status = 'flagged'
+             AND (x.created_at AT TIME ZONE %s)::date = r.run_date) < %s
+        RETURNING r.query""", (topic_id, today, zone, MAX_FLAGGED_PER_DAY)).fetchone()
+    return row
+
+
 def run_due(connect, generate, now=None):
     """Run today's due schedules once; no catch-up for previous UTC days."""
     now = now or datetime.now(timezone.utc)
@@ -145,11 +171,15 @@ def run_due(connect, generate, now=None):
         # Commit the claim before calling external services. The primary key also
         # prevents duplicate work across processes and concurrent scheduler ticks.
         with connect() as db:
+            if waiting_lesson(db, topic_id, zone, local.date()):
+                continue        # a lesson nobody opened is still waiting; it moves to today instead of piling up another
             claim = db.execute("""INSERT INTO lesson_schedule_runs (topic_id, run_date, query, status)
                 SELECT topic_id, %s, query, 'running' FROM lesson_schedules
                 WHERE topic_id = %s AND enabled AND hour_utc <= %s
                 ON CONFLICT (topic_id, run_date) DO NOTHING RETURNING query""",
                 (local.date(), topic_id, local.hour)).fetchone()
+            if not claim:
+                claim = reopen_flagged(db, topic_id, zone, local.date())
         if not claim:
             continue
         body = LessonGeneration(query=claim[0])

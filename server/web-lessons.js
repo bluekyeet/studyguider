@@ -94,7 +94,15 @@ export async function renderLessons(container, api, params) {
       // Lessons belong to the day they were prepared, in New Zealand time.
       const day = value => new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date(value));
       const today = day(new Date());
-      const todays = lessons.filter(lesson => lesson.created_at && day(lesson.created_at) === today);
+      const fresh = lessons.filter(lesson => lesson.created_at && day(lesson.created_at) === today);
+      // A lesson nobody opened moves on to the next day (one per topic, the newest). One that was started but not
+      // finished stays in Earlier lessons; its topic gets a new lesson instead.
+      const carried = new Map();
+      for (const lesson of lessons) {
+        if (lesson.completed_at || lesson.started || fresh.some(f => f.topic_id === lesson.topic_id) || carried.has(lesson.topic_id)) continue;
+        carried.set(lesson.topic_id, lesson);
+      }
+      const todays = [...fresh, ...carried.values()];
       const head = element('div', '', 'page-head'); const title = element('div');
       title.append(element('h1', 'Today’s lessons'),
         element('p', new Intl.DateTimeFormat('en-NZ', { timeZone: 'Pacific/Auckland', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()), 'muted'));
@@ -137,6 +145,7 @@ export async function renderLessons(container, api, params) {
         const done = Boolean(lesson.completed_at);
         const tags = element('div', '', 'toolbar');
         tags.append(element('span', `${lesson.subject} · ${lesson.topic}`, 'chip'), element('span', done ? 'Completed' : started ? 'In progress' : 'To do', `chip ${done ? 'ok' : 'warn'}`));
+        if (carried.get(lesson.topic_id) === lesson) tags.append(element('span', `From ${day(lesson.created_at)}`, 'chip'));
         card.append(tags, element('h2', readable(lesson.query)),
           button(done ? 'Review lesson' : started ? 'Continue lesson' : 'Start lesson', () => open(lesson), done ? '' : 'primary'));
         grid.append(card);

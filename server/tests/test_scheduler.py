@@ -40,6 +40,7 @@ class Database:
         self.schedules = {1: ("algebra", 2, True), 2: ("geometry", 2, True),
                           3: ("disabled", 2, False)}
         self.runs = {}
+        self.waiting = set()
 
     def __enter__(self):
         return self
@@ -49,6 +50,17 @@ class Database:
 
     def execute(self, sql, params=()):
         if "INSERT INTO lesson_schedules" in sql:
+            return self
+        if "FROM lessons l WHERE l.topic_id" in sql:
+            self.result = (1,) if params[0] in self.waiting else None
+            return self
+        if "UPDATE lesson_schedule_runs r SET" in sql:
+            topic, day = params[0], params[1]
+            run = self.runs.get((topic, day))
+            self.result = None
+            if run and run["status"] == "completed" and run.get("flagged"):
+                run.update(status="running", lesson_id=None, flagged=False)
+                self.result = (run["query"],)
             return self
         if "SELECT topic_id, timezone FROM lesson_schedules" in sql:
             self.result = [(topic, "UTC") for topic, (_, hour, enabled) in self.schedules.items() if enabled]
@@ -100,6 +112,25 @@ def test_due_runs_are_at_most_once_and_failures_visible():
     assert db.runs[2, due.date()]["status"] == "failed"
     run_due(lambda: db, generate, due.replace(day=2))
     assert len(calls) == 4
+
+
+def test_a_topic_with_an_unopened_lesson_waiting_gets_no_new_one():
+    db = Database()
+    db.waiting = {1}
+    calls = []
+    run_due(lambda: db, lambda topic, body: calls.append(topic) or {"id": 42}, datetime(2026, 1, 1, 2, tzinfo=timezone.utc))
+    assert calls == [2] and (1, datetime(2026, 1, 1).date()) not in db.runs
+
+
+def test_a_lesson_that_failed_its_review_is_written_again_the_same_day():
+    db = Database()
+    due = datetime(2026, 1, 1, 2, tzinfo=timezone.utc)
+    db.runs[1, due.date()] = {"status": "completed", "query": "algebra", "lesson_id": 7, "flagged": True}
+    calls = []
+    run_due(lambda: db, lambda topic, body: calls.append(topic) or {"id": 8}, due)
+    run_due(lambda: db, lambda topic, body: calls.append(topic) or {"id": 9}, due)
+    assert calls == [1, 2]                      # topic 1 once more, not twice; topic 2 for the first time
+    assert db.runs[1, due.date()]["lesson_id"] == 8
 
 
 def test_auckland_daylight_saving_uses_local_date_and_hour():
