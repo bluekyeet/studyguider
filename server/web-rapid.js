@@ -67,7 +67,7 @@ export async function renderRapid(container, api) {
     const fields = el('div', '', 'fields');
     fields.append(field('Subject', subject), field('Topic', topic), field('Questions from', source), field('Session length', length));
     const start = el('button', 'Start session', 'primary'); start.type = 'submit'; start.disabled = true;
-    form.append(el('h2', 'Start a rapid session'),
+    form.append(el('h1', 'Start a rapid session', 'as-h2'),
       el('p', 'Questions flash up one after another and you cannot go back. You will not see any marks or feedback until you end the session; answers are marked quietly as you go. AI-written questions are unofficial practice.', 'muted'),
       fields, start);
     const history = el('section', '', 'card stack');

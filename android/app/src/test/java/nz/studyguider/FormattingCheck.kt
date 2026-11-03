@@ -21,4 +21,8 @@ fun main() {
     check("&quot;" in hostile)
     check(withoutSourceMarkers("review [5d374a3f-74f2-412a-8f6a-b582963eb2e0, learner_answers].") == "review.")
     check(withoutSourceMarkers("review [S1, learner_answers].") == "review.")
+    check(withoutSourceMarkers("carbon (, p. 1). series (, p. 1;, p. 2).") == "carbon. series.")
+    check(withoutSourceMarkers("see (Data booklet, p. 4) ok") == "see (Data booklet, p. 4) ok")
+    check(scienceText("Ca(OH)2 and Fe2O3 and 91164 Q1") == "Ca(OH)₂ and Fe₂O₃ and 91164 Q1")
+    check(scienceText("keep ${'$'}H2O${'$'} as is") == "keep ${'$'}H2O${'$'} as is")
 }

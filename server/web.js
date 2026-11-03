@@ -55,9 +55,11 @@ async function route() {
   });
   placePill();
   $('notice').textContent = '';
-  const container = document.createElement('section'); $('view').replaceChildren(container);
+  const container = document.createElement('section'); container.className = 'entering'; $('view').replaceChildren(container);
   try { const result = await ({home:renderHome,lessons:renderLessons,reviews:renderReviews,exams:renderExams,library:renderLibrary,settings:renderSettings,account:renderAccount}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
   catch(error) { if (container.isConnected) $('notice').textContent = error.message; }
+  // The entrance animation belongs to arriving on a page; later refreshes of its lists must not replay it.
+  setTimeout(() => container.classList.remove('entering'), 1000);
 }
 $('login').onsubmit = async event => {
   event.preventDefault(); $('login-error').textContent='';

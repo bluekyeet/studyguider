@@ -282,10 +282,11 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                                 }
                             }
                         }
+                        if (question.optBoolean("maths_restored")) Text("Equations were read from the original page by AI. Check them against the paper.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (text.isNotBlank()) parts.forEachIndexed { partIndex, (label, wording) ->
                             if (wording.isNotBlank() && !wording.trim().matches(Regex("QUESTION\\s+(ONE|TWO|THREE|[0-9]+)", RegexOption.IGNORE_CASE))) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 if (label.isNotEmpty()) Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.widthIn(min = 36.dp))
-                                MathText(wording, modifier = Modifier.weight(1f))
+                                MathText(reflow(wording), modifier = Modifier.weight(1f))
                             }
                             structuredParts.getOrNull(partIndex)?.optJSONArray("diagrams")?.let { diagrams ->
                                 if (paperId != null) for (d in 0 until diagrams.length()) {

@@ -181,7 +181,7 @@ function files(body, { api, subject, topic, params }) {
   let items = [], timer = null, alive = true, filter = '';
 
   const upload = el('form', '', 'card stack');
-  const input = el('input'); input.type = 'file'; input.multiple = true;
+  const input = el('input'); input.type = 'file'; input.multiple = true; input.setAttribute('aria-label', 'Choose files to upload');
   input.accept = '.zip,.pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.png,.jpg,.jpeg';
   const category = el('select');
   for (const [value, label] of [['auto', 'Detect automatically'], ['exam_paper', 'Exam paper'], ['exam_answers', 'Exam answers or schedule'], ['slides', 'Slides'], ['extra', 'Extra resource']]) category.add(new Option(label, value));

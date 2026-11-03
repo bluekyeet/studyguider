@@ -795,7 +795,7 @@ private fun TutorText(text: String, draft: JSONObject) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         markdownBlocks(cleaned).forEach { (kind, runs) ->
             val content = runs.joinToString("") { it.text }
-            if (kind == "heading") Text(content, style = MaterialTheme.typography.titleSmall)
+            if (kind == "heading") MathText("**$content**")
             else MathText(content)
         }
     }

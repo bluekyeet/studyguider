@@ -342,9 +342,10 @@ private fun StudyApp() {
         scope.launch { busy = true; error = ""; try { block() } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false } }
     }
     var uploadNotice by remember { mutableStateOf("") }
+    var uploadCategory by remember { mutableStateOf("auto") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty() && selectedTopic != 0L) run {
-            val reply = uploadMany(context, base, token, selectedTopic, uris)
+            val reply = uploadMany(context, base, token, selectedTopic, uris, uploadCategory)
             resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
             val result = JSONObject(reply)
             uploadNotice = buildString {
@@ -510,7 +511,7 @@ private fun StudyApp() {
                         request(base, "/subjects/$selected/topics", token, JSONObject().put("name", topicName))
                         topicName = ""; topics = JSONArray(request(base, "/subjects/$selected/topics", token))
                     } },
-                    onUpload = { uploadNotice = ""; picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/zip", "text/*", "image/*")) },
+                    onUpload = { category -> uploadCategory = category; uploadNotice = ""; picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/zip", "text/*", "image/*")) },
                     uploadNotice = uploadNotice,
                     onRefresh = { run { resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token)); resourceRefreshError = "" } },
                     onExtract = { id, retry -> run {
@@ -518,6 +519,15 @@ private fun StudyApp() {
                         resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
                     } },
                     onOpenPdf = { topicSourceId = it }, onClosePdf = { topicSourceId = "" },
+                    onDelete = { doomed -> run {
+                        val failed = mutableListOf<String>()
+                        for (file in doomed) {
+                            try { request(base, "/resources/${file.getString("id")}", token, JSONObject(), "DELETE") }
+                            catch (e: CancellationException) { throw e } catch (e: Exception) { failed.add("${file.optString("filename")}: ${e.message ?: "could not delete"}") }
+                        }
+                        resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token))
+                        resourceRefreshError = failed.joinToString("\n")
+                    } },
                 )
                 1 -> when {
                     selectedTopic != 0L -> Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -1048,7 +1058,7 @@ internal fun TopicNotes(base: String, token: String) {
             val text = withoutSourceMarkers(shortCitations(note.optString("content"), emptyList()))
             markdownBlocks(text).forEach { (kind, runs) ->
                 val content = runs.joinToString("") { it.text }
-                if (kind == "heading") Text(content, style = MaterialTheme.typography.titleSmall)
+                if (kind == "heading") MathText("**$content**")
                 else MathText(content)
             }
         }
@@ -1421,8 +1431,8 @@ private fun ResourceHub(
     subjectName: String, onSubjectName: (String) -> Unit, subjectLevel: String, onSubjectLevel: (String) -> Unit,
     topicName: String, onTopicName: (String) -> Unit, showAddSubject: Boolean, onToggleAddSubject: () -> Unit,
     onOpenSubject: (Long, String) -> Unit, onOpenTopic: (Long, String) -> Unit, onBack: () -> Unit,
-    onAddSubject: () -> Unit, onAddTopic: () -> Unit, onUpload: () -> Unit, uploadNotice: String, onRefresh: () -> Unit,
-    onExtract: (String, Boolean) -> Unit, onOpenPdf: (String) -> Unit, onClosePdf: () -> Unit,
+    onAddSubject: () -> Unit, onAddTopic: () -> Unit, onUpload: (String) -> Unit, uploadNotice: String, onRefresh: () -> Unit,
+    onExtract: (String, Boolean) -> Unit, onOpenPdf: (String) -> Unit, onClosePdf: () -> Unit, onDelete: (List<JSONObject>) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (selected != 0L) TextButton(enabled = !busy, onClick = onBack) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
@@ -1481,28 +1491,7 @@ private fun ResourceHub(
                     SourceScreen(base, token, topicSourceId)
                 }
                 if (refreshError.isNotEmpty()) Text(refreshError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                if (uploadNotice.isNotEmpty()) StudyChip(uploadNotice, MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(enabled = !busy, onClick = onUpload, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text("Upload files") }
-                    OutlinedButton(enabled = !busy, onClick = onRefresh, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text("Refresh") }
-                }
-                if (resources.length() == 0) StudyCard(tone = CardTone.Low) { Text("No resources yet. Upload a PDF, slide deck or photo to begin.", style = MaterialTheme.typography.bodyMedium) }
-                for (i in 0 until resources.length()) {
-                    val item = resources.getJSONObject(i)
-                    val status = item.optString("display_status", item.getString("status"))
-                    StudyCard(tone = CardTone.Container) {
-                        Text(item.getString("filename"), style = MaterialTheme.typography.titleMedium, maxLines = 2)
-                        StatusDot(when (item.optString("status")) {
-                            "extracted" -> LocalStudyColours.current.achieved
-                            "failed" -> MaterialTheme.colorScheme.error
-                            "pending", "extracting" -> LocalStudyColours.current.amber
-                            else -> LocalStudyColours.current.outline
-                        }, status)
-                        if (item.getString("filename").substringAfterLast('.').lowercase() in listOf("pdf", "png", "jpg", "jpeg")) OutlinedButton(shape = RoundedCornerShape(50), onClick = { onOpenPdf(item.getString("id")) }) { Text("Open document / image") }
-                        if (item.optString("status") == "failed") Text("Extraction failed. Retry to see the error.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        TextButton(enabled = !busy, onClick = { onExtract(item.getString("id"), item.optString("status") == "failed") }) { Text(if (item.optString("status") == "failed") "Retry extraction" else "Extract text") }
-                    }
-                }
+                TopicFiles(resources, busy, uploadNotice, onUpload, onRefresh, onExtract, onOpenPdf, onDelete)
             }
         }
     }

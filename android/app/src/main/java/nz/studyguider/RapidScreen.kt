@@ -80,7 +80,6 @@ private fun displayLabel(label: String): String = when {
     else -> "(" + label.replace("(", ")(") + (if (label.endsWith(")")) "" else ")")
 }
 
-private fun reflow(text: String) = text.replace(Regex("[ \\t]*\\n(?!\\s*\\n)(?!\\s*(?:Source|\\([a-hivx]+\\)))", RegexOption.IGNORE_CASE), " ").trim()
 
 /** The question as the learner reads it: labelled parts with the paper's figures under them. */
 @Composable
@@ -89,6 +88,7 @@ private fun QuestionView(base: String, token: String, q: JSONObject) {
     val paper = q.text("paper_resource_id")
     val shown = remember(q.optInt("question_id")) { mutableSetOf<String>() }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (q.optBoolean("maths_restored")) Text("Equations were read from the original page by AI. Check them against the paper.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (parts.isEmpty()) MathText(reflow(q.text("question_text").ifBlank { "Question text unavailable." }))
         parts.forEach { part ->
             val label = displayLabel(part.text("label"))

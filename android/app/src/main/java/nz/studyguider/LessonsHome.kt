@@ -87,12 +87,17 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load lessons" }
         finally { loading = false }
     }
-    // ponytail: creation date is the available-day proxy; add completion tracking when supported.
     fun date(item: JSONObject): LocalDate? = runCatching { Instant.parse(item.getString("created_at")).atZone(ZoneId.of("Pacific/Auckland")).toLocalDate() }.getOrNull()
     val today = LocalDate.now(ZoneId.of("Pacific/Auckland"))
-    val pending = lessons.filter { it.isNull("completed_at") }
-    val latest = pending.mapNotNull { date(it) }.filter { !it.isAfter(today) }.maxOrNull()
-    val current = pending.filter { latest != null && date(it) == latest }
+    // Same rule as the website: today's lessons, plus the newest lesson nobody opened from an earlier day for each topic that
+    // has none today. A lesson that was started but not finished is not carried; its topic gets a fresh lesson instead.
+    val fresh = lessons.filter { date(it) == today }
+    val carried = lessons.filter { it.isNull("completed_at") && !it.optBoolean("started") && date(it)?.isBefore(today) == true }
+        .filter { lesson -> fresh.none { it.optLong("topic_id") == lesson.optLong("topic_id") } }
+        .distinctBy { it.optLong("topic_id") }
+    val toDo = fresh.filter { it.isNull("completed_at") } + carried
+    val earlier = lessons.filter { it !in fresh && it !in carried }
+    var showEarlier by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (loading || generating) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (generating) stage.ifBlank { "Generating your lesson…" } else "Loading lessons…") }
@@ -101,11 +106,18 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
                 Text("No lessons available yet.", style = MaterialTheme.typography.titleMedium)
                 Text(if (courses.isEmpty()) "Choose your topics in Settings to get started." else "Use New lesson to create one from your resources.")
             }
-            if (current.isNotEmpty()) {
-                Text(if (latest == today) "Today · ${current.size} to do" else "Latest available · $latest", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                current.forEachIndexed { index, item -> LessonRow(item, onOpenLesson, Modifier.staggeredEnter(index, item.optLong("id"))) }
+            if (toDo.isNotEmpty()) {
+                Text("Today · ${toDo.size} to do", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                toDo.forEachIndexed { index, item ->
+                    LessonRow(item, onOpenLesson, Modifier.staggeredEnter(index, item.optLong("id")),
+                        note = if (item in carried) "From ${date(item)}" else if (item.optBoolean("started")) "In progress" else "To do")
+                }
             }
-            if (lessons.isNotEmpty() && current.isEmpty()) Text("No lessons to do right now.")
+            if (lessons.isNotEmpty() && toDo.isEmpty()) Text(if (fresh.isNotEmpty()) "All of today’s lessons are done. Well done." else "No lessons to do right now.")
+            if (earlier.isNotEmpty()) {
+                TextButton(onClick = { showEarlier = !showEarlier }) { Text(if (showEarlier) "Hide earlier lessons" else "Earlier lessons (${earlier.size})") }
+                if (showEarlier) earlier.forEach { item -> LessonRow(item, onOpenLesson, note = if (item.isNull("completed_at")) "Not finished" else "Completed") }
+            }
         }
         if (courses.isNotEmpty()) ExtendedFloatingActionButton(onClick = { picker = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp), text = { Text("New lesson") }, icon = { Text("+") })
     }
@@ -133,13 +145,14 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
 }
 
 @Composable
-private fun LessonRow(item: JSONObject, open: (Long, String, Long) -> Unit, modifier: Modifier = Modifier) {
+private fun LessonRow(item: JSONObject, open: (Long, String, Long) -> Unit, modifier: Modifier = Modifier, note: String = "") {
     val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Surface(onClick = { open(item.getLong("topic_id"), item.optString("topic"), item.getLong("id")) }, interactionSource = source, shape = RoundedCornerShape(14.dp), color = LocalStudyColours.current.container, modifier = modifier.fillMaxWidth().pressScale(source)) {
         Column(Modifier.padding(16.dp)) {
             Text("${item.optString("subject")} · ${item.optString("topic")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             Text(item.optString("query"), style = MaterialTheme.typography.titleMedium)
-            Text(runCatching { Instant.parse(item.getString("created_at")).atZone(ZoneId.of("Pacific/Auckland")).toLocalDate().toString() }.getOrDefault(""), style = MaterialTheme.typography.bodySmall)
+            val created = runCatching { Instant.parse(item.getString("created_at")).atZone(ZoneId.of("Pacific/Auckland")).toLocalDate().toString() }.getOrDefault("")
+            Text(listOf(created, note).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
