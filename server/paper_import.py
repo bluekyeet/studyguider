@@ -34,7 +34,7 @@ def import_topic_papers(connect, topic_id):
         with connect() as db:
             if not db.execute("SELECT pg_try_advisory_xact_lock(hashtext(%s))", (str(paper_id),)).fetchone()[0]:
                 continue
-            prior = db.execute("SELECT status, detail FROM paper_import_runs WHERE paper_id=%s AND schedule_id=%s AND parser_version=5", (paper_id, schedule_id)).fetchone()
+            prior = db.execute("SELECT status, detail FROM paper_import_runs WHERE paper_id=%s AND schedule_id=%s AND parser_version=6", (paper_id, schedule_id)).fetchone()
             if prior and prior[0] == 'imported':
                 results.append({"standard": standard, "year": year, "status": prior[0], "detail": prior[1]})
                 continue
@@ -79,9 +79,9 @@ def import_topic_papers(connect, topic_id):
                              json.dumps(q['pages']), paper_id, q['question_number']))
             except (OSError, RuntimeError, ValueError) as exc:
                 status, detail = 'needs_attention', type(exc).__name__ + ': PDF could not be parsed safely'
-            db.execute("""INSERT INTO paper_import_runs (paper_id,schedule_id,status,detail,parser_version) VALUES (%s,%s,%s,%s,5)
+            db.execute("""INSERT INTO paper_import_runs (paper_id,schedule_id,status,detail,parser_version) VALUES (%s,%s,%s,%s,6)
                 ON CONFLICT (paper_id) DO UPDATE SET schedule_id=EXCLUDED.schedule_id,status=EXCLUDED.status,
-                detail=EXCLUDED.detail,parser_version=5,updated_at=now()""", (paper_id, schedule_id, status, detail))
+                detail=EXCLUDED.detail,parser_version=6,updated_at=now()""", (paper_id, schedule_id, status, detail))
             results.append({"standard": standard, "year": year, "status": status, "detail": detail})
     return results
 

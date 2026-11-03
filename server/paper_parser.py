@@ -143,6 +143,9 @@ def schedule_sections(document):
     return sections
 
 
+ANSWER_AREA = re.compile(r"continues\s+on\s+the\s+next\s+page|extra\s+space|if\s+you\s+need\s+to\s+redraw|write\s+your\s+answer", re.I)
+
+
 def drawing_regions(page):
     """Boxes around the vector drawings on a page (graphs, diagrams), without the page's own furniture.
 
@@ -162,7 +165,15 @@ def drawing_regions(page):
         if drawing.get("type") == "f" and len(drawing.get("items", ())) >= 20:
             continue    # the decorative edge pattern is made of large many-segment filled shapes that cross into the page
         kept.append(drawing)
-    return list(page.cluster_drawings(drawings=kept, x_tolerance=20, y_tolerance=20))
+    regions = []
+    for region in page.cluster_drawings(drawings=kept, x_tolerance=20, y_tolerance=20):
+        inside = [d for d in kept if region.contains(d["rect"]) or d["rect"].intersects(region)]
+        if inside and all(d["rect"].height <= 1.5 for d in inside):
+            continue    # only ruled answer lines
+        if ANSWER_AREA.search(page.get_text("text", clip=region)):
+            continue    # the answer area with its "Question Three continues on the next page" box
+        regions.append(region)
+    return regions
 
 
 def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):

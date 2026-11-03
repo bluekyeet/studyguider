@@ -31,7 +31,9 @@ MATHS_SYSTEM = (
     "single dollar signs, for example $3x^4 + px^3 - 4x + 5$, $\\text{CH}_3\\text{CH}_2\\text{OH}$, $-1370\\text{ kJ mol}^{-1}$. "
     "Use the page image to recover what the text lost, such as an equation shown only as symbols or spaces.\n"
     "3. Do not put ordinary sentences inside dollar signs. Use \\text{...} only for units and chemical symbols.\n"
-    "4. If you cannot read an expression on the page, leave that stretch of text as it was; do not guess."
+    "4. Keep the original line breaks. When equations are stacked on the page, for example a pair of simultaneous equations, "
+    "put each equation on its own line, each in its own dollar signs.\n"
+    "5. If you cannot read an expression on the page, leave that stretch of text as it was; do not guess."
 )
 
 BLOCK = re.compile(r"(?ms)^=== (\w+) ===[ \t]*\n(.*?)(?=^=== \w+ ===|\Z)")
