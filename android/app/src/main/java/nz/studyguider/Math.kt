@@ -33,6 +33,11 @@ import java.net.URL
  * is bundled in the APK, so lesson text never leaves the device and rendering
  * works with no network.
  */
+/** Repair provider double-escaping only for known commands/spacing, not \\\\ rows. */
+internal fun normaliseFormulaEscapes(formula: String): String = formula.replace(
+    Regex("\\\\\\\\(?=(?:text|mathrm|mathbf|vec|frac|tfrac|sqrt|ce)\\b|[,;!])"),
+) { "\\" }
+
 object KaTeX {
     const val AVAILABLE = true
 
@@ -100,7 +105,7 @@ object KaTeX {
             val start = if (display) dollar + 2 else dollar + 1
             val closing = text.indexOf(if (display) "$$" else "$", start)
             if (closing < 0) { builder.append(escape(text.substring(dollar))); break }
-            val formula = text.substring(start, closing)
+            val formula = normaliseFormulaEscapes(text.substring(start, closing))
             // Emit the formula as plain text; the script reads it back and never runs it as JavaScript.
             builder.append("<span data-tex=\"").append(escape(formula)).append("\" data-display=\"").append(if (display) "1" else "0").append("\"></span>")
             index = closing + if (display) 2 else 1

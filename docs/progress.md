@@ -8,6 +8,13 @@ on `writeup.md` and the existing prototype, not a claim of completed features.
 
 ## Active scope: writeup completion (user exclusions)
 
+- Unit-rendering screenshot traced to lesson83 doubled LaTeX escapes (\\\\, and
+  \\\\text), interpreted as row breaks/literal text. Android now normalises doubled
+  slashes only before a small known command/spacing allowlist for display; genuine
+  aligned row breaks preserved. Stored lessons unchanged; security review findings
+  deliberately NOT fixed. Regression cases added, debug/test APK builds passed,
+  normal emulator install Success. No connected tests or visual verification.
+
 - User clarified wrapping, not shrinking: maths outer HTML now allows breaks between
   intact KaTeX base groups; individual text/subscript/fraction internals keep nowrap.
   Explicit quad/qquad and space-before-Delta-H clauses render as independent inline

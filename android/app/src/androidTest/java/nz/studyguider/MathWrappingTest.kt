@@ -1,9 +1,15 @@
 package nz.studyguider
 
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MathWrappingTest {
+    @Test fun repairsDoubledUnitCommandsWithoutRemovingMatrixRows() {
+        assertEquals("\\text{m}\\,\\text{s}^{-1}", normaliseFormulaEscapes("\\text{m}\\\\,\\\\text{s}^{-1}"))
+        val aligned = "\\begin{aligned}a&=1\\\\b&=2\\end{aligned}"
+        assertEquals(aligned, normaliseFormulaEscapes(aligned))
+    }
     @Test fun rendererAllowsTextWrappingAndHandlesProseOnlyMath() {
         assertTrue(KaTeX.head().contains("white-space:nowrap; overflow-wrap:normal; word-break:normal"))
         assertTrue(!KaTeX.head().contains(".base:has(.text)"))
