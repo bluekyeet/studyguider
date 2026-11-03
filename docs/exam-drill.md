@@ -1,177 +1,181 @@
-# Exam question drill: writeup
+# Rapid exam questions: writeup
 
-A proposal for a rapid-fire way to practise real exam questions: one question at a time, answer it,
-see how you did, and press Next, as many times as you like. Written 4 November 2026 from the current
-code and the question bank in the database. Nothing here is built yet.
+A proposal for a rapid-fire way to practise exam questions, plus an Exam revision page for the ones you
+miss. Written 4 November 2026 from the current code and question bank, and revised after the product
+description from the learner. Nothing here is built yet.
 
-## 1. The idea
+## 1. The idea in one paragraph
 
-Today a full exam is a heavyweight thing: start an exam, work through a paper, mark each answer. Most
-revision is not like that. You want to open the app, get a question on the topic you are weak at, do
-it, get feedback, and immediately do another. Ten in a row on the bus, not one paper on Sunday.
+Pick a topic and spam questions. They flash up one after another, from real past-paper questions or from
+AI-generated ones that were prepared ahead of time so there is never a wait. You answer and move on. You
+cannot go back, and you are told nothing about how you are doing. The AI marks each answer quietly in the
+background. When you press **End session** you see how you did: a grade for each question, how well the whole
+session went, and what you missed. Missed questions are sent to your lessons (so the next lesson revisits
+them) and to an **Exam revision** page where you can redo them.
 
-The **drill** is that: an endless stream of single exam questions from the question bank, with
-immediate feedback and no ceremony, tuned to what you are weak at.
+## 2. Where it lives: Exams becomes a hub of three
 
-Not in scope: replacing exams, official grading, or anything that pretends an AI mark is an NZQA result.
+To save space on the menu bars nothing is added to the main navigation. The existing **Exams** entry opens a
+page with three sections:
 
-## 2. How it feels to use
+1. **Classic exam papers**: today's Exams page, unchanged (start a paper, answer, mark).
+2. **Rapid questions**: the new feature.
+3. **Exam revision**: the new page for missed questions (built after Rapid questions).
 
-1. Choose what to drill (or accept the default): a topic, a standard, or "weakest first". Optionally a
-   year range, or only questions with a diagram, or only ones you got wrong last time.
-2. A question appears with its figure. You type an answer (maths toolbar as elsewhere) or photograph a
-   handwritten one.
-3. **Check** gives feedback in two layers:
-   - **Instant (no waiting):** the schedule excerpt or rubric is revealed next to your answer so you can
-     compare yourself, and you tap how it went (Got it / Partly / Missed). This always works and costs nothing.
-   - **AI mark (optional, a few seconds):** the existing marking runs in the background and its
-     evidence-linked feedback fills in under your answer. You do not have to wait for it to press Next.
-4. **Next** pulls another question straight away. Marking from earlier questions finishes behind the scenes
-   and its results appear when you tap the summary or go back.
-5. A session summary: how many you did, how many you rated got-it, time per question, the topics and
-   concepts you missed, and a button to turn the misses into review questions.
+Website: a segmented switch at the top of Exams, with addresses `#exams/papers`, `#exams/rapid` and
+`#exams/revision` (plain `#exams` keeps meaning Classic exam papers, so old links still work). Android: three
+chips at the top of the Exam tab. The bottom bar and the sidebar stay as they are.
 
-Keyboard on the website: Ctrl+Enter to check, N for next, S to skip. On the phone: swipe to skip.
+## 3. A session, step by step
 
-## 3. What already exists that this should reuse
+1. **Set up:** choose a topic. Choose the source of questions: **past-paper questions**, **AI-generated**, or
+   **both** (default: past papers first, then AI once the topic's real questions are used up). Optionally
+   choose how many (for example 10, 20, 50 or "until I stop").
+2. **Flash:** one question fills the screen, with its figure if it has one. You type an answer, or photograph
+   a handwritten one. The maths toolbar is available as elsewhere. Pressing **Next** locks that answer and shows
+   the next question straight away. **Skip** moves on and counts the question as unanswered.
+3. **No going back, no feedback.** There is no Previous button, no running score and no marks shown. The screen
+   shows only the question, your answer box and a small count of questions done. Marking happens out of sight.
+4. **End session** is always on screen. It ends the session after the current question.
+5. **Results:** see section 6.
 
-- **Question bank:** 241 real questions across the six topics (36 to 45 per topic, years 2012 to 2025) plus 9
-  AI-written practice questions. The real ones came from machine routes (PDF layout 187, machine import 36,
-  parsed 18); none is recorded as human-reviewed. Each carries its original paper page, schedule page and
-  schedule text.
-- **Marks are mostly missing.** Only 3 questions per topic have a recorded mark total (Organic chemistry has
-  39 of 39). Marking already copes: it uses the N0 to E8 whole-question scale when the schedule has one, else
-  the recorded marks, else 1. The drill must therefore think in "how did it go" grades, not in marks out of N.
-- **Selection logic:** the "mixed practice" start already prefers questions you have not seen, then the least
-  recently used. The drill generalises this.
-- **Marking, feedback, overrides, scan transcription and the revision conflict rules** all work per
-  (exam, question) and can be reused unchanged.
-- **Wrong answers feed review:** a marked-wrong exam answer already queues one grounded review question, with
-  de-duplication.
-- **Home, mastery and weak concepts** are computed from review answers, so a drill that feeds the review queue
-  improves Home with no new maths.
-- **Handwriting:** per-question photo upload and confirmation already exist on server, website and Android.
-- **Generation fallback:** AI practice questions with a rubric already exist and are labelled unofficial.
+Pre-generation means Next never waits for the AI to write a question, and marking never waits for you.
 
-## 4. Design
+## 4. Where the questions come from
 
-### 4.1 A session is a hidden exam
+### 4.1 Past-paper questions
 
-Reusing the existing exam machinery avoids duplicating marking, answers, overrides and scans. A **drill
-session** is an `exams` row with `kind = 'drill'` that grows as you press Next: each Next appends one
-`exam_items` row. Everything keyed on (exam_id, question_id) then works as it does today.
+The bank holds 241 real questions across the six topics (36 to 45 per topic, years 2012 to 2025), each with its
+original paper page, schedule page and schedule text. All came from machine routes (PDF layout 187, machine
+import 36, parsed 18) and none is recorded as human-reviewed, so the player shows "check against the original"
+links after the session, never "verified". Questions you have not seen come first, then the least recently seen.
 
-Consequences to handle: the Saved exams list and the Home "recent exams" must filter out `kind = 'drill'`; the
-drill has its own history view. Deleting a session deletes its answers, as exam deletion does now.
+### 4.2 AI-generated questions, prepared ahead
 
-The alternative is a new table of attempts. It would be cleaner to query but would need marking, overrides and
-scans re-plumbed. Recommendation: hidden exam now; revisit only if the exam tables become awkward.
+- When a session starts, the server begins generating questions for the topic and keeps **a buffer of about six
+  ready ahead of you**, topping it up as you go. Generation reuses the existing practice-paper generator (a
+  question, a rubric with Achievement, Merit and Excellence criteria, and marks).
+- Each generated question is reviewed by an independent second model (question and worked answer checked for
+  correctness and solvability) **before** it can be served; ones that fail are dropped. This is a safeguard, not
+  a guarantee: earlier checks showed the reviewer catches seeded errors but also rejects thin drafts, and
+  scientific correctness is never fully verified.
+- Generated questions are saved as unofficial AI practice questions, labelled that way everywhere. They have no
+  diagrams (text and numbers only), which is a limit of the generator today.
+- If generation is slow or fails, the session falls back to real questions, then retries. It never stalls on an
+  empty screen and never shows a loading spinner; the learner only sees the next question.
 
-### 4.2 Choosing the next question
+### 4.3 The pool is the real constraint
 
-`POST /drills/{session}/next` returns one question, chosen in this order, with the filters applied:
+36 to 45 real questions per topic run out quickly in a spam session. That is why "past papers first, then AI"
+is the default and why AI generation is part of the first version rather than an extra.
 
-1. Never seen by this learner (across all exams and drills), preferring topics with low mastery and concepts in
-   the weak list.
-2. Questions last answered wrong or "partly", oldest first, after a cool-down so a miss does not repeat
-   straight away (suggest: not within the last 8 questions).
-3. Least recently seen.
-4. If the pool is exhausted (the real constraint, see 6) the session says so and offers an unofficial AI
-   practice question on the same topic, clearly labelled, or a lower-effort restart of the oldest ones.
+## 5. Marking in the background
 
-Never the same question twice within one session unless the pool is smaller than the session.
+- When you press Next, your answer is saved and a marking job is queued for that question. The existing marking
+  is reused: evidence-linked, checked against the schedule (or the AI rubric for generated questions), with a
+  second independent mark when the first is uncertain.
+- Several marking jobs run at once, so a 30-question session finishes marking within a minute or two of the last
+  answer, not 30 times a few seconds afterwards.
+- A marking failure never interrupts the session. Failed answers are retried and, if they still fail, shown at
+  the end as "could not be marked, try again" with your answer kept.
+- **The server enforces the blindfold:** while a rapid session is open, the feedback, marks and override
+  endpoints for its questions refuse to answer, so no client can leak results early. They open when you press
+  End session.
+- Answers cannot be edited after you have moved on (the server rejects changes to a question that already has a
+  later question in the session).
 
-### 4.3 What is stored
+## 6. Results after End session
 
-One row per question per session is already `exam_items` (answer, revision, scan revision). Added:
+Results appear as soon as they are known and fill in smoothly as late marks arrive (cards and numbers easing in,
+never a loading screen).
 
-- `drill_self_grade` per item: got_it, partly, missed, or skipped.
-- `seconds_spent` per item (measured in the client, sent with the answer).
-- No new marking tables.
+- **Per question:** the AI's grade for that question: **Not achieved, Achieved, Merit or Excellence** (finer
+  N0 to E8 steps are used where the schedule has them), your answer, the schedule or rubric excerpt with a
+  link to the original, and the AI's feedback and the evidence it quoted. Real past-paper questions say
+  "AI-marked against the schedule, not an NZQA result". Generated questions say "AI-written question and
+  rubric, unofficial".
+- **Whole session:** how many questions were Not achieved, Achieved, Merit and Excellence, how many were
+  skipped, time per question, and the topics and concepts missed.
+- **An indicative overall grade** for the session, printed with its rule: a rough band from the average of the
+  per-question grades. It is labelled as an estimate that is not an NZQA grade and is not tied to real marks
+  (the same honesty rules as the estimated grades on Home).
+- **Missed questions** are listed with a button to redo them now.
 
-Selection history comes from `exam_items`, `markings` and `drill_self_grade`.
+## 7. Where misses go
 
-### 4.4 API (new, small)
+A question is **missed** if its grade is Not achieved, or it was skipped or unanswered. (Open decision: whether
+a weak Achieved also counts.) Misses are sent two places when the session ends, automatically:
 
-| Endpoint | Purpose |
-|---|---|
-| `POST /drills` | Start a session with filters (topic, standard, year range, figures only, weak only). |
-| `POST /drills/{id}/next` | Append and return the next question, or an exhaustion notice. |
-| `PUT /drills/{id}/items/{question}/self-grade` | Record got it / partly / missed / skipped and seconds spent. |
-| `GET /drills/{id}/summary` | Counts, time, per-topic and per-concept misses, AI marks that have arrived. |
-| `POST /drills/{id}/review` | Queue review questions for the misses (reuses the existing generator and de-duplication). |
+1. **Lessons.** Each miss queues one grounded review question built from the original question and its
+   schedule or rubric, with the concept it tests. The overnight lesson generator already takes weak and due
+   review concepts and your recent answers, so tomorrow's lesson revisits them. This reuses the existing
+   wrong-answer path and its de-duplication, so redoing the same miss does not flood the queue.
+2. **Exam revision.** The miss is added to the revision list (section 8).
 
-Existing endpoints are reused as they are: answer save, feedback (AI mark), override and scan upload.
+Note: the lesson path is built and checked with a deterministic model; whether live lessons use the weaknesses
+well is still an open item on the task list.
 
-## 5. Screens
+## 8. Exam revision page (the third section)
 
-**Website:** a Drill page (or a tab inside Exams) with a slim setup row, then a single-column question card:
-wording and figures, answer box with the maths toolbar, **Check**, then the schedule excerpt appears beside it
-with the three self-grade buttons and an AI-mark panel that fills in when ready. A thin session strip shows
-progress (done, got-it count, time) and Finish opens the summary. The motion already in the site (cards easing
-in, numbers counting up) applies; nothing should look like a loading screen while marking runs in the
-background.
+Built after Rapid questions. A list of the questions you have missed, grouped by topic, newest first. For each:
+the question, your earlier answer, the AI's feedback, the schedule or rubric excerpt, how many times you have
+tried it, and **Redo**. Redo uses the same flashing player with just those questions (again with no feedback
+until the end), and a question leaves the list when you next get it to Achieved or better. Filters: topic,
+source (past paper or AI), not yet retried. A count of outstanding questions shows on the Exam revision chip.
 
-**Android:** a Drill entry on the Exam tab (or a "Quick questions" button on Home). Same flow; the AI mark
-arrives as a collapsed result you can pull up. Swipe left to skip. The handwriting camera flow is one tap.
+## 9. How it fits the existing system
 
-## 6. Constraints that decide the design
+- **A session is a hidden exam.** Reuse `exams` and `exam_items` with a new kind, `rapid`, appending one item per
+  question. Marking, answers, scans and review hand-off then work on (exam, question) as they do today. The Saved
+  exams list and the Home "recent exams" filter out rapid sessions; Rapid questions has its own session history.
+- **New small pieces:** a pre-generation buffer per session; a background marking queue that is fully
+  asynchronous; the "locked until ended" rule on feedback endpoints; an `ended_at`, a per-question grade
+  summary and the revision list.
+- **Suggested endpoints:** `POST /rapid` (start with topic, source, count), `POST /rapid/{id}/next` (lock the
+  current answer, return the next question), `POST /rapid/{id}/skip`, `POST /rapid/{id}/end`,
+  `GET /rapid/{id}/results` (blocked until ended), `GET /exam-revision`, `POST /exam-revision/redo`.
+- **Android:** reuses the question rendering, maths input and photo-answer capture; the player screen is new.
 
-- **The pool is small.** 36 to 45 real questions per topic means a keen learner exhausts a topic in one or two
-  sittings. That is why exhaustion handling, recycling by weakness and unofficial AI top-ups are part of the
-  first version, not extras.
-- **AI marking takes seconds and sometimes fails.** Spamming only feels good if it does not block. Self-grading
-  is the primary loop; AI marking is background and optional. A failed mark never blocks Next.
-- **Machine-imported questions are unverified.** Wording and figure association can be wrong. The drill must show
-  "check against the original" next to the paper and schedule links, as exams do, and never claim human review.
-  This is the open policy decision in the task list; the drill makes it more visible because it uses far more
-  questions.
-- **Schedule text is scrambled** for table-style schedules (columns lose their layout). Show the extracted text as
-  plain scrollable text with a link to the original schedule page, as exams do now. Improving the extraction would
-  help the drill most, and is a separate piece of work.
-- **Marks are missing**, so no scores out of N. Show AI outcome words (not achieved, achieved, merit, excellence)
-  labelled unofficial, plus your own got-it / partly / missed.
+## 10. Rules that must hold
 
-## 7. Rules that must hold
+1. **AI honesty.** Every AI grade, mark, question and rubric is labelled unofficial. A generated question is
+   labelled as AI-written. The overall grade is an estimate and says so.
+2. **No fabricated verification.** Machine-imported questions are not called reviewed; AI questions are not called
+   correct.
+3. **No lost work.** Each answer is saved as you move on; a lost connection must not lose the answers already
+   given. If a save fails, the session holds the answer and retries before it lets you finish.
+4. **No results until the end.** Enforced by the server, not just the screen.
+5. **Real papers stay out of Git.**
+6. **Motion is fluid, never a loading screen.** Transitions between questions ease in; waiting for marks shows
+   results arriving, not a spinner.
 
-1. **AI honesty:** AI marks and feedback are labelled unofficial and unverified everywhere, including the summary.
-   A self-grade is shown as your own judgement, never merged into an AI mark.
-2. **No fabricated verification:** AI-written questions say so. Machine imports are not called reviewed.
-3. **No lost work:** answers autosave with the existing conflict handling; leaving mid-answer is guarded.
-4. **No streak or points** until you decide what counts as a day. A plain count and time per session are enough.
-5. **Real papers stay out of Git:** nothing here adds question text to the repository.
-6. **Cost is not a constraint** (you said so), but never run more than one AI marking per question per answer, and
-   cache by answer as marking does today.
+## 11. Build order
 
-## 8. Build order
+1. **Server:** the rapid session, hidden-exam filtering, the pre-generation buffer with its independent review,
+   asynchronous marking, the blindfold rule, results and the miss hand-off to review.
+2. **Website:** the three-way Exams switch, the Rapid questions player, results.
+3. **Exam revision page:** list and redo, website first.
+4. **Android:** the same, with the three chips on the Exam tab.
 
-1. **Server:** the five endpoints, selection logic, hidden-exam filter in the exam list and Home. Tests for
-   selection order, cool-down, exhaustion, filters, and that drill sessions never appear in Saved exams.
-2. **Website:** the Drill page with self-grade, background AI mark, summary and the review hand-off.
-3. **Android:** the same flow, reusing the existing question and scan composables.
-4. **Smarter selection:** weight by weak concepts and Home mastery; optional "exam conditions" mode with a timer.
-5. **Top-ups:** unofficial AI questions when a topic is exhausted, reusing the existing generator.
+## 12. Testing
 
-Rough size: step 1 is a day of server work, steps 2 and 3 a day each, steps 4 and 5 smaller.
+- **Server:** the blindfold (feedback refused until ended, answers locked after Next), the question order and
+  exhaustion fallback, that failed generation never stalls a session, and that the miss hand-off creates at most
+  one review question per miss.
+- **Real database:** a disposable schema check that concurrent Next calls never return the same question twice
+  and that rapid sessions never appear in the exam list.
+- **Browser:** a mock-server run of setup, flash, skip, end, results and redo, with the check that no result text
+  exists in the page before End session.
+- **Live:** one real session per topic through the real gateway, to see the time to mark and how often generated
+  questions are rejected.
+- **Cannot be proved from code:** whether the questions are good. That needs your eyes on a sample of generated
+  and imported questions.
 
-## 9. How it should be tested
+## 13. Decisions needed
 
-- **Server:** unit tests for the selection order and cool-down; a real-PostgreSQL check (disposable schema, as
-  the existing concurrency checks) that two quick `next` calls never return the same question and that a drill
-  session does not appear in `GET /exams`.
-- **Browser:** a mock-server run for the flow (check, self-grade, next, skip, summary, review hand-off), a check
-  that Next is never blocked while an AI mark is pending, and that a failed AI mark shows a message without
-  losing the answer.
-- **Live:** one real session per topic through the real gateway to confirm marks arrive in the background.
-- **Not provable from the code:** whether the questions are good. That needs your eyes on the machine-imported
-  bank (the open "human review" item).
-
-## 10. Decisions needed from you
-
-1. Is "partly" worth having, or should self-grade be just got it / missed?
-2. Should a miss automatically create a review question, or only when you press the summary button? (Default
-   proposed: only on the button, to avoid flooding the review queue during a long session.)
-3. When a topic runs out, do you want AI top-up questions offered automatically, or only on request?
-4. Should the drill count towards the Home figures (mastery moves only through review answers today)?
-   Proposed: no direct effect; misses flow through reviews.
-5. Website only first, or website and Android together?
+1. **What counts as missed:** Not achieved and skipped only, or a weak Achieved too?
+2. **Skip:** allowed (counts as missed), or every question must be attempted?
+3. **Length:** fixed sizes (10, 20, 50), or open-ended until you press End session, or both?
+4. **Default mix:** past papers first then AI, as proposed, or AI only for variety?
+5. **Overall grade:** show the rough estimate, or only the grade distribution?
+6. **Order of work:** website first, then Android, as proposed?
