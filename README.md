@@ -78,6 +78,11 @@ Without Docker, install `server/requirements.txt`, `pytest` and `httpx`, then
 `PYTHONPATH=server python -m pytest server/tests -q`. CI (`.github/workflows/ci.yml`) also builds the debug
 APK and runs integration checks against a disposable Compose stack.
 
+**Getting the APK from GitHub:** the *Build Android APK* workflow (`.github/workflows/android-apk.yml`) builds the debug APK on
+every push to `main` that touches `android/`, and on demand from the Actions tab (Run workflow). Download it from the run's
+Artifacts (kept 30 days). Pushing a tag such as `v0.2` also attaches it to a GitHub release. It is signed with the shared debug
+key, so it is for your own devices, not a store release.
+
 Scripts in `server/tests/` named `live_*` call the real model gateway and are opt-in (they cost model
 calls). `server/tests/integration.py` replaces the login password and must only be pointed at a
 disposable database.
