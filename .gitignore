@@ -22,3 +22,4 @@ android/.kotlin/
 android/local.properties
 android/**/build/
 .idea/
+stitch_*.zip

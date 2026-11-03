@@ -1,6 +1,7 @@
 # StudyGuider task list
 
-Editable follow-up to `writeup.md`, based on the implementation comparison on
+Editable follow-up to the original writeup (`writeup.md`, removed from the working tree and available
+in Git history), based on the implementation comparison on
 2 November 2026. This file is the working task list: follow the user's edits to
 scope, ordering and priorities rather than automatically restoring the original
 writeup's recommendations. Check the current code before acting on an item.

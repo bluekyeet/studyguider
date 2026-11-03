@@ -2,126 +2,105 @@
 
 ![StudyGuider](server/branding/wordmark.png)
 
-A personal NCEA study companion. See `writeup.md` for the product design and
-`DESIGN.md` for the current implementation scope.
+A personal NCEA study companion for one learner (Physics and Chemistry so far). A FastAPI + PostgreSQL
+server, an Android app and a website all share the same data, so lessons, answers and reading position
+follow you between devices.
 
-## Run locally
+AI output is study help, not an official NZQA result. Lessons, marks and explanations are labelled as
+unverified, and AI-written practice is kept separate from real past papers.
 
-Install Docker and Docker Compose, copy `.env.example` to `.env`, and set
-`POSTGRES_PASSWORD` to a strong, unique password. Set
-`POSTGRES_PASSWORD_URLENCODED` to the URL-encoded version of the same password
-(for a password containing only letters and digits, the values are identical).
-Then run:
+## What it does
+
+- **Library:** upload past papers, schedules, slides and notes per topic. Files are stored as-is, text is
+  extracted in the background (including OCR for scanned pages) and searched with PostgreSQL full text.
+- **Lessons:** one lesson per topic you are learning is prepared overnight (New Zealand time) from your own
+  sources, reviewed by a second model and bounded rewrites. Practice sections save your answers and give
+  AI feedback. Explain answers questions about a section and can save the reply to topic notes.
+- **Review:** short spaced-repetition questions made from completed lessons and wrong exam answers, with
+  confidence ratings, due dates and a mastery estimate per topic.
+- **Exams:** original past-paper questions, mixed practice, or clearly unofficial AI practice. Typed or
+  scanned answers, evidence-linked AI marking checked against the schedule, and your own override.
+- **Home:** today's lessons, reviews due, mastery per topic and a rough estimated grade (from review
+  answers only, not an NZQA grade), weak concepts and recent exams.
+
+Clients: the website at `/` (Home, Lessons, Review, Exams, Library, Settings), the Android app (same
+areas), and `/manage`, a developer-style "Advanced tools" page for diagram review, question parsing and
+checks, exam assembly and schedule runs.
+
+## Run the server
+
+Install Docker and Docker Compose, then:
 
 ```sh
+cp .env.example .env          # set POSTGRES_PASSWORD and POSTGRES_PASSWORD_URLENCODED
 docker compose up --build
+docker compose exec api python set_password.py    # login password, at least 12 characters
 ```
 
-Visit http://localhost:8000/health. This initial endpoint checks that the API
-process is running; it does not check database connectivity. Stop the services
-with `docker compose down`; the database volume is retained.
+Open http://localhost:8000. `/health` only checks that the API process is up.
 
-Set the login password interactively with `docker compose exec api python
-set_password.py` (at least 12 characters). The API provides `/login`, `/logout`,
-`/subjects`, and `/subjects/{id}/topics`; use the login token as a Bearer token.
-Changing the password revokes existing sessions. Five failed logins lock login
-for 15 minutes. The health endpoint only checks the API process.
-Open `http://localhost:8000/manage` for the basic resource manager. Its token is
-held in memory and is discarded when the page is closed or refreshed.
-Subjects and topics can be created, listed, renamed and deleted through the API.
-Delete a subject's topics first; subject deletion will not silently remove them.
-Standards can be added or updated with `PUT /standards/{number}`, listed at
-`/standards`, and linked or unlinked with `PUT` or `DELETE` at
-`/topics/{id}/standards/{number}`. Official standard text is not preloaded;
-verify any entered criteria against NZQA.
-The resource manager can save standard records and link or unlink them from a
-topic. Saving an existing number replaces its title and notes.
+The AI features need an OpenAI-compatible gateway: set `ROUTER_BASE_URL` and `ROUTER_API_KEY` in `.env`.
+The server calls the model aliases `education` and `education-reviewer`; your uploaded material is sent
+to those providers when you generate or review anything.
 
-The API also supports manually created review questions and recorded answers
-with confidence-based rescheduling. Confidence is self-assessed, not AI marking;
-review history prevents topic deletion.
-The web manager and Android app can generate review-question drafts from
-matching resources. Check and approve each question before adding it to the queue;
-generation sends source excerpts to the configured model provider.
+The API is bound to `127.0.0.1` on purpose. Do not expose it to the internet without TLS, a streaming
+request-body limit at the proxy, per-client login throttling and a security review. Back up the database
+and the uploads volume together (`deploy/BACKUP.md`).
 
-## Android preview
+## Android app
 
-Open `android/` in Android Studio, or run `gradlew.bat assembleDebug` there
-with JDK 17 or 21 and Android SDK 36 installed. The debug APK supports login
-and creating and browsing subjects and topics, uploading resources, answering
-review questions and generating experimental lesson drafts. Sessions are kept
-only in memory. The debug build permits
-HTTP for local emulator testing; release builds require HTTPS. Never use real
-passwords over HTTP. On the Android emulator, `10.0.2.2` refers to the host.
-Authenticated clients can upload files (up to 50 MiB) to
-`/topics/{id}/resources`, list them there and download them at
-`/resources/{id}/download`. Files are stored in a separate Docker volume and
-are automatically processed by a background worker; `POST /resources/{id}/extract`
-can also retry processing manually. Interrupted jobs may remain `extracting`
-and need administrative recovery after all workers are stopped. Extraction
-extracts UTF-8 TXT, Markdown, CSV, HTML, XLSX, text-based PDFs, PowerPoint slide
-text and Word paragraph text; scanned or empty PDF
-pages require OCR, which is not implemented. `GET /resources/{id}/text` returns
-the text and `/resources/{id}/pages` returns page references. Extracted text is
-can be used for experimental lesson drafts. Other file formats are not implemented yet.
-`GET /topics/{id}/search?q=...` searches extracted text within one topic using
-PostgreSQL full-text search and returns up to 20 matching source pages or slides.
-The resource manager also provides a search form for the selected topic.
-Topic notes can be saved and deleted in the resource manager; topics containing
-notes cannot be deleted until those notes have been removed.
-For an experimental, unsaved lesson draft, set `ROUTER_BASE_URL` to the
-9Router OpenAI-compatible base URL and `ROUTER_API_KEY` in `.env`, then call
-`POST /topics/{id}/lesson-draft` with JSON `{"query":"..."}`. It sends up to
-five matching source excerpts and linked standards to `education` and
-`education-reviewer`. Both calls send your material to those model providers.
-The result is always a draft: citations and reviewer claims are not verified,
-and no lesson is saved. The calls can take up to 90 seconds each.
-Alternatively, `POST /topics/{id}/lessons` generates and saves a draft with
-snapshots of the supplied evidence, and `GET /topics/{id}/lessons` lists saved
-drafts. A reviewer failure is recorded; neither review nor source citations
-are automatically verified.
-
-The exam manager registers questions by verified references to uploaded paper
-and schedule pages, and assembles exams from selected questions. Experimental
-feedback requires extracted text on both referenced pages and checks that its
-quoted evidence appears in the schedule. It is not an official mark and is not
-saved; independently check the original assessment schedule.
-`POST /exams/monthly` can select verified questions for a subject, preferring
-unused questions. It does not schedule exams automatically or guarantee a
-realistic balance of standards, topics or marks.
-PowerPoint references are slide numbers; Word text is returned as one section,
-not page numbers. Images, PowerPoint tables and Word tables are not extracted.
-Delete a resource with `DELETE /resources/{id}`; if removal fails or is
-interrupted, its status remains `deleting` and the same request can be retried.
-Resources referenced by saved lessons or exam questions cannot be deleted.
-Delete a saved lesson first with `DELETE /lessons/{id}` if you no longer need
-it; deleting a lesson also removes its saved source excerpts and reviewer text.
-Back up both the database and uploads volume together.
-See `deploy/BACKUP.md` for the proposed backup and fresh-project restore
-procedure. A disposable restore drill recovered synthetic database and upload
-data; repeat the drill in your own deployment before relying on it.
-
-Nightly lesson generation is opt-in via `PUT /topics/{id}/schedule` with
-`{"query":"waves","hour_utc":14,"enabled":true}`. The hour is UTC, not
-New Zealand local time by default. For NZ local time and automatic daylight-saving
-adjustment, include `"timezone":"Pacific/Auckland"` and set `hour_utc` to the
-desired local hour (the field keeps its original name for compatibility). Generation sends
-matching source excerpts to the configured model providers. Inspect
-`GET /topics/{id}/schedule/runs` for failures or interrupted runs; interrupted
-runs are not automatically retried.
-
-The API is bound to localhost. Do not expose it to the internet yet: TLS,
-deployment hardening and a security review remain outstanding. Upload requests
-require Content-Length and have an application-level size check; enforce a
-streaming request-body limit at the proxy before any public deployment.
-
-## Test
-
-With Python, the dependencies from `server/requirements.txt`, pytest and httpx installed:
+Open `android/` in Android Studio, or build from a terminal with JDK 17 or 21 (not 25) and Android SDK 36:
 
 ```sh
-python -m pytest server/tests -q
+cd android
+./gradlew assembleDebug      # gradlew.bat on Windows
 ```
 
-`server/tests/integration.py` is an HTTP integration check for a **disposable**
-Compose database only: it replaces the configured password and revokes sessions.
+Sign in with the server address and password. On the Android emulator the host machine is
+`http://10.0.2.2:8000`. The login token is kept in the Android Keystore. Debug builds allow cleartext
+HTTP for local testing; do not use real passwords over HTTP, and use HTTPS for anything else.
+
+Do not run the connected/instrumentation tests against a device that has the app you use: the test runner
+can remove it.
+
+## Tests
+
+The server suite runs in a throwaway container and touches no running containers or data:
+
+```sh
+scripts/run-server-tests.sh
+```
+
+Without Docker, install `server/requirements.txt`, `pytest` and `httpx`, then
+`PYTHONPATH=server python -m pytest server/tests -q`. CI (`.github/workflows/ci.yml`) also builds the debug
+APK and runs integration checks against a disposable Compose stack.
+
+Scripts in `server/tests/` named `live_*` call the real model gateway and are opt-in (they cost model
+calls). `server/tests/integration.py` replaces the login password and must only be pointed at a
+disposable database.
+
+## Layout
+
+```
+server/      FastAPI app, background worker, the website (web*.html/css/js) and its tests
+android/     Android app (Kotlin, Jetpack Compose)
+docs/        task list, progress log, job-recovery notes, website functional spec
+deploy/      backup and restore procedure
+scripts/     test runner and resource import helper
+tests/       small Node checks used by CI
+assets/      branding source images
+```
+
+The website has no build step: plain ES modules and one stylesheet, served by the Python server. A new
+`web-*.js` file must be added to the allow-list in `server/app.py`.
+
+## More documentation
+
+- `docs/task-list.md`: the working task list, with what is verified and what is still open.
+- `docs/progress.md`: dated log of checks and results, including what was not tested.
+- `docs/website-functions.md`: what each website screen must do.
+- `docs/job-recovery.md`: how interrupted lesson jobs are handled.
+- `DESIGN.md` and the top of `docs/task-list.md`: scope and rules (no automatic monthly exams, no Google
+  Drive import, one app-wide teaching method, and so on).
+
+Uploaded resources, real papers, credentials and database dumps must never be committed.

@@ -1,8 +1,8 @@
 # StudyGuider design
 
-The original product design is in `writeup.md`; the user's edited working scope
-and priorities are in `docs/task-list.md`. Follow that task list, including its
-exclusions, rather than restoring superseded writeup recommendations. Recorded
+The original product writeup (`writeup.md`) was removed from the working tree; it remains in Git
+history. The user's edited working scope and priorities are in `docs/task-list.md`. Follow that
+task list, including its exclusions, rather than restoring superseded writeup recommendations. Recorded
 checks and remaining blockers are in `docs/progress.md`.
 
 The database is private to the Compose network. The API binds to localhost by
