@@ -1701,3 +1701,8 @@ From the pasted source review (not a penetration test):
 - The maths symbol bar and hint are collapsed behind a "Σ Maths" button in exam answer boxes (lessons unchanged). Checked in headless Edge against mock data: six boxes, one tap opens one bar.
 - The schedule excerpt of a real schedule is shown as scrollable plain text with a note that table layout is lost (the extraction scrambles columns); AI rubrics still render as Markdown. Not visible in my mock (no schedule text), so unverified in a browser.
 - Figures: each region is shown once per question and alt text is numbered. The four page-4 figures under (d) in AS 91171 2024 Q1 are four different regions, not duplicates.
+
+## 3 Nov 2026: exam start 422
+
+- Cause: `web-exams.js` built JSON requests without `Content-Type: application/json`, so the browser sent `text/plain` and FastAPI rejected the body with a 422 whose detail is a list, shown only as "Request failed (422)". This affected Start exam, exam answer saves and Save & mark on the website, not Android.
+- Fix: the helper now sets the header. Added a test that every website JSON body declares its type, and one that shows text/plain is rejected and application/json accepted. Deployed (the served `web-exams.js` has the header). Not re-run against a signed-in browser session.

@@ -22,7 +22,8 @@ const option = (select, value, label) => {
   node.value = String(value);
   select.append(node);
 };
-const json = (method, body) => ({ method, body: JSON.stringify(body) });
+// FastAPI only reads a JSON body when the request says it is JSON; fetch would otherwise send text/plain.
+const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 // Paper text keeps the PDF's line breaks. Join them back into sentences, but keep
 // blank lines and lines that start a new source credit or sub-part.
 const reflow = text => String(text || '').replace(/[ \t]*\n(?!\s*\n)(?!\s*(?:Source|\([a-hivx]+\)))/gi, ' ').trim();
