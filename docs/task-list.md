@@ -206,6 +206,8 @@ does not mean its end-to-end acceptance checks have passed.
 - [x] Connect incorrect exam answers to the daily review queue (reuses question/rubric; skips uncertain, disputed, overridden or stale answers).
 - [ ] Validate historical cut-score layouts not supported by current extraction; do not guess missing boundaries.
 - [ ] Validate real handwritten answers and diagrams, including scan replacement/conflicts.
+  - [x] Website handwritten-answer flow (3 Nov 2026): answer-mode choice, whole-paper and per-question upload of photos or a PDF, recognised text held unsaved until confirmed, marking blocked until then. Server checked live (rolled back) with rendered, typeset-style images: single JPEG, single PDF, two merged pages, and a whole-paper upload where only one question was on the pages. Browser behaviour checked against a mock server.
+  - [ ] Still open: genuinely handwritten pages (my test images are typed text, which is easier to read), diagrams in answers, replacing a scan after a conflict, and the full upload > confirm > mark path in a signed-in browser.
 - [ ] Run exam deletion/cascade and two-client/network-failure acceptance checks using disposable attempts.
   - [x] Real PostgreSQL rollback-only deletion: cascades items/scans/marks/overrides,
     preserves question/resource/review snapshot; repeated deletion returns 404.

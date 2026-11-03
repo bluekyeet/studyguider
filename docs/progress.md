@@ -1728,3 +1728,9 @@ From the pasted source review (not a penetration test):
 
 - "Start 8 reviews" on Home opens the Review tab showing the same 8 due questions (emulator, live server).
 - Resume exam could not be exercised: no saved exam has answers, so the button correctly does not appear. The exam-leave prompt, sign-out/in and the six-tab bar on a small phone remain unchecked.
+
+## 3 Nov 2026: handwritten exam answers on the website
+
+- The server and Android already did handwriting recognition (vision model, scan revisions, confirmation); the website had no way to use it and always started exams in typed mode. Added: "How will you answer?" at exam start; in paper mode, a whole-paper upload and a per-question upload (PNG/JPEG up to 10 pages, or one PDF), a confirmation step before the text is saved, and Save & mark refused until confirmed.
+- Server fixes found while testing live: (1) a whole-paper upload failed completely if any question had no answer on the pages (now reported per question, the rest still come through); (2) the gateway sometimes appends assistant commentary to a recognised answer, which made the whole read fail (now the trailing commentary is dropped and the answer kept, with one retry when nothing usable comes back).
+- Checked live against the real gateway and database, all rolled back: one JPEG, one PDF, two merged photos, and a whole-paper upload with one question missing. Test images were rendered typed text, not real handwriting, so recognition quality on actual handwriting is untested. The website UI was checked in headless Edge against a mock server (multipart fields, no save before confirm, marking blocked until confirm, whole-paper fill, bad file type rejected). Suite: 226 passed.

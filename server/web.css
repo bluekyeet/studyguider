@@ -261,3 +261,4 @@ body.signed-out .sidebar{display:none}
 
 .math-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .schedule-text{max-height:320px;overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:18px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin:6px 0}
+.scan-thumb{max-height:120px;max-width:160px;border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff}

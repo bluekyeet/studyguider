@@ -319,3 +319,39 @@ def test_override_is_stored_separately():
     assert response.status_code == 200
     assert db.overrides[(1, 2)] == ("merit", "Teacher checked this.")
     assert "separately" in response.json()["disclaimer"]
+
+
+def test_transcription_keeps_the_answer_and_drops_trailing_assistant_commentary():
+    from fastapi import HTTPException
+    assert clean_transcription('(a) F = 2 N\n(b) 0.50 m\n\nponytail: used a simple prompt\n-> skipped: full page OCR pipeline') == '(a) F = 2 N\n(b) 0.50 m'
+    assert clean_transcription('```text\n(a) F = 2 N\n```\nLazier alternative: manual transcription.') == '(a) F = 2 N'
+    with pytest.raises(HTTPException) as raised:
+        clean_transcription('ponytail: nothing else\n(a) F = 2 N')
+    assert raised.value.status_code == 502
+
+
+def test_whole_paper_scan_keeps_found_answers_when_a_question_is_missing_from_the_pages():
+    import io
+    from PIL import Image
+
+    page = io.BytesIO()
+    Image.new("RGB", (60, 60), "white").save(page, format="PNG")
+    replies = iter(["(a) F = 2 N", "[No answer found]"])
+
+    class ScanDB(DB):
+        def execute(self, sql, params=()):
+            if "SELECT question_id FROM exam_items" in sql:
+                return Result([(2,), (3,)])
+            if "SELECT 1 FROM exam_items" in sql:
+                return Result((1,))
+            if "INSERT INTO exam_answer_scans" in sql:
+                return Result((1,))
+            return super().execute(sql, params)
+
+    app = FastAPI()
+    app.include_router(marking_router(lambda: ScanDB(ROW), lambda: None, lambda *a, **k: None, lambda *a, **k: next(replies)))
+    response = TestClient(app).post("/exams/1/scan", files=[("files", ("p.png", page.getvalue(), "image/png"))])
+    assert response.status_code == 200, response.text
+    answers = response.json()["answers"]
+    assert [(a["question_id"], a["found"]) for a in answers] == [(2, True), (3, False)]
+    assert answers[0]["transcription"] == "(a) F = 2 N" and answers[1]["transcription"] == ""

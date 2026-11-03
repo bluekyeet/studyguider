@@ -131,7 +131,7 @@ Short spaced-repetition questions made from completed lessons and wrong exam ans
   review when the first was uncertain, with a plain "markers disagree" message; the learner's own
   separate override if set. A compare-with-schedule section shows the registered schedule, or the
   AI rubric labelled unofficial.
-- Handwritten and scanned answers are **not** supported on the website (Android only).
+- **Handwritten answers:** when starting an exam the learner chooses "Type my answers" or "Write on paper, then upload photos". In the paper mode the exam page offers an upload of the whole paper (up to 10 PNG/JPEG photos in order, or one PDF, 10 MiB total) and an upload per question. The pages are read by AI (the same recognition the Android app uses); the recognised text appears in the answer box with the message that it is unsaved. It is **not saved or confirmed until the learner presses "Confirm recognised answer"** (or Save answer), and Save & mark is refused until then. Questions with no answer on the uploaded pages keep their saved answer. Marking afterwards uses the saved text, as in typed mode.
 
 ## Library (`#library`)
 
@@ -191,7 +191,7 @@ run history, review-draft generation, mastery view. Its look is independent.
 ## Known gaps a designer can plan around
 
 - Lesson history and deleting lessons are not on the website.
-- No scanned or handwritten exam answers, and no diagram generation on the website.
+- No diagram generation on the website. Uploaded handwriting pages are not shown again after a reload (only the recognised text is kept).
 - No reminder settings on the website (reminders are Android-only).
 - The Android app asks an extra question at the end of non-practice sections; the website does not.
 - No notifications, no multi-user, no onboarding or help pages.

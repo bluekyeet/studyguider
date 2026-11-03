@@ -32,6 +32,20 @@ const withoutLabel = text => String(text || '').replace(/^\s*\([a-hivx]+\)\s*/i,
 const displayLabel = label => !label || label === 'context' ? ''
   : label.startsWith('(') ? label : `(${label.replaceAll('(', ')(')}${label.endsWith(')') ? '' : ')'}`;
 
+// One to ten pages for handwriting recognition: PNG/JPEG photos (joined in the order given) or a single PDF.
+const SCAN_LIMIT = 10 * 1024 * 1024;
+// The whole-paper route only reads a `files` list; the per-question route also accepts a single `file`.
+function scanForm(files, listOnly = false) {
+  if (!files.length || files.length > 10) throw new Error('Choose one to ten pages.');
+  const pdf = files.some(f => f.type === 'application/pdf');
+  if (pdf && files.length > 1) throw new Error('Upload one PDF on its own, or up to ten photos.');
+  if (!pdf && !files.every(f => f.type === 'image/png' || f.type === 'image/jpeg')) throw new Error('Pages must be PNG or JPEG photos, or one PDF.');
+  if (files.reduce((total, f) => total + f.size, 0) > SCAN_LIMIT) throw new Error('The pages are over 10 MiB in total. Use smaller photos.');
+  const form = new FormData();
+  if (files.length === 1 && !listOnly) form.append('file', files[0]); else files.forEach(f => form.append('files', f));
+  return form;
+}
+
 export async function renderExams(container, api) {
   const root = el('section', '', 'stack');
   container.replaceChildren(root);
@@ -44,6 +58,9 @@ export async function renderExams(container, api) {
   const subject = el('select');
   const topic = el('select');
   const mode = el('select');
+  const answerMode = el('select');
+  option(answerMode, 'digital', 'Type my answers');
+  option(answerMode, 'handwritten', 'Write on paper, then upload photos');
   const paper = el('select');
   const count = el('input');
   count.type = 'number'; count.min = '1'; count.max = '10'; count.value = '3'; count.required = true;
@@ -52,7 +69,7 @@ export async function renderExams(container, api) {
   option(mode, 'ai', 'AI practice — generated questions and rubric (unofficial)');
   const paperField = field('Original year / paper', paper);
   const countField = field('Question count (1–10)', count);
-  fields.append(field('Subject', subject), field('Topic', topic), field('Exam mode', mode), paperField, countField);
+  fields.append(field('Subject', subject), field('Topic', topic), field('Exam mode', mode), paperField, countField, field('How will you answer?', answerMode));
   const start = el('button', 'Start exam', 'primary');
   start.type = 'submit'; start.disabled = true;
   const modeNotice = el('p', '', 'muted');
@@ -143,7 +160,31 @@ export async function renderExams(container, api) {
       drafts = []; detail.replaceChildren();
       const heading = el('div', '', 'card stack');
       heading.append(el('h2', info.title || `Exam ${id}`), el('p', `${exam.kind.replaceAll('_', ' ')} · ${exam.total_marks > 0 ? `${exam.total_marks} registered marks` : 'marks not recorded'} · ${info.answer_mode} answer mode`, 'muted'), link('Download text-only practice PDF (original diagrams not included)', `/exams/${id}/print`));
-      if (info.answer_mode === 'handwritten') heading.append(el('p', 'This initial web version edits saved answer text only. Upload and handwriting recognition remain in the existing app.', 'muted'));
+      const handwritten = info.answer_mode === 'handwritten';
+      const appliers = new Map();   // question id -> function that shows a recognised answer in its card
+      if (handwritten) {
+        const all = el('div', '', 'stack');
+        all.append(el('h3', 'Upload your whole paper'),
+          el('p', 'Photograph every page in order (up to 10 pages, or one PDF). Each question is read from the same pages, so include the question numbers and part labels. You can also upload pages for one question below.', 'muted'));
+        const picker = el('input'); picker.type = 'file'; picker.multiple = true; picker.accept = 'image/png,image/jpeg,application/pdf';
+        picker.setAttribute('aria-label', 'Pages of your whole paper');
+        const go = el('button', 'Read my handwriting', 'primary'); go.type = 'button';
+        const note = el('p', '', 'muted'); note.setAttribute('role', 'status');
+        go.onclick = async () => {
+          if (busy) return;
+          try {
+            const form = scanForm([...picker.files], true);
+            busy = true; go.disabled = true; container.dataset.busy = 'true'; note.textContent = 'Reading your handwriting. This can take a minute or two…';
+            const result = await api(`/exams/${id}/scan`, { method: 'POST', body: form });
+            let applied = 0;
+            for (const item of result.answers || []) { const apply = appliers.get(item.question_id); if (apply && item.transcription) { apply(item.transcription, item.scan_revision); applied++; } }
+            const missing = (result.answers || []).filter(item => item.found === false).length;
+            note.textContent = `Read ${applied} answer${applied === 1 ? '' : 's'}${missing ? `; ${missing} question${missing === 1 ? ' had' : 's had'} no answer on these pages and keep what you already saved` : ''}. Check each one against your page, then confirm it.`;
+          } catch (err) { note.textContent = ''; report(err); }
+          finally { busy = false; go.disabled = false; container.dataset.busy = 'false'; }
+        };
+        all.append(picker, go, note); heading.append(all);
+      }
       detail.append(heading);
       const cards = [], navButtons = [];
       let shownQuestion = 0;
@@ -200,7 +241,7 @@ export async function renderExams(container, api) {
           card.append(schedule);
         }
         const raw = el('textarea'); raw.rows = 7; raw.maxLength = 100000; raw.value = q.answer || '';
-        const rawField = mathField('Answer text / JSON (preserved exactly unless edited)', raw);
+        const rawField = mathField(handwritten ? 'Recognised answer (check it against your page)' : 'Answer text / JSON (preserved exactly unless edited)', raw);
         const partsBox = el('div', '', 'stack');
         let parsed;
         try { parsed = JSON.parse(raw.value); } catch { /* Plain text stays plain text. */ }
@@ -217,7 +258,7 @@ export async function renderExams(container, api) {
             return head ? { ...p, heading: head[1].trim(), text: head[2] } : p;
           })
           .filter(p => p.text.trim() || p.heading);
-        const partMode = !!structured || (!raw.value && definitions.some(p => p.label));
+        const partMode = !!structured || (!handwritten && !raw.value && definitions.some(p => p.label));
         const documentAnswer = structured ? parsed : { parts: {} };
         const partInputs = new Map();
         // Only the lowest-level parts take an answer; a parent such as (b) just introduces (b)(i) and (b)(ii).
@@ -274,9 +315,12 @@ export async function renderExams(container, api) {
         drafts.push(draft);
         // Answers save themselves a moment after typing stops, and again when the box loses focus.
         const conflictBox = el('div', '', 'toolbar'); conflictBox.hidden = true;
+        // A freshly recognised answer is not saved (and so not confirmed) until the learner has checked it.
+        let scanPending = false;
         const saver = autosave({
-          isDirty: () => draft.value() !== draft.saved,
+          isDirty: () => !scanPending && draft.value() !== draft.saved,
           status: (kind, err) => {
+            if (scanPending) return;
             conflictBox.hidden = kind !== 'conflict';
             status.dataset.state = kind;
             status.textContent = kind === 'saving' ? 'Saving…' : kind === 'saved' ? 'Saved · on all your devices'
@@ -353,11 +397,52 @@ export async function renderExams(container, api) {
             }
           }
         };
-        save.addEventListener('click', () => run('save'));
-        mark.addEventListener('click', () => run('mark'));
+        const confirmScan = el('button', 'Confirm recognised answer', 'primary'); confirmScan.hidden = true;
+        const accept = () => { scanPending = false; confirmScan.hidden = true; };
+        confirmScan.addEventListener('click', () => { accept(); run('save'); });
+        save.addEventListener('click', () => { accept(); run('save'); });
+        mark.addEventListener('click', () => {
+          if (scanPending) { report(new Error('Check the recognised text, fix any mistakes and press Confirm recognised answer before marking.')); return; }
+          run('mark');
+        });
         previous.addEventListener('click', () => run('feedback'));
-        controls.append(save, mark, previous);
-        card.append(rawField, controls, conflictBox, status, feedback); detail.append(card); cards.push(card);
+        controls.append(confirmScan, save, mark, previous);
+        const scanBox = el('div', '', 'stack');
+        if (handwritten) {
+          const applyScan = (transcription, scanRevision) => {
+            raw.value = transcription; q.scan_revision = scanRevision; scanPending = true;
+            feedback.replaceChildren(); container.dataset.dirty = 'true'; confirmScan.hidden = false;
+            status.dataset.state = 'error';
+            status.textContent = 'Recognised from your handwriting, not saved yet. Check it against your page, fix any mistakes, then press Confirm recognised answer.';
+            raw.dispatchEvent(new Event('input', { bubbles: true }));
+          };
+          appliers.set(q.id, applyScan);
+          scanBox.append(el('h4', 'Your handwritten answer'),
+            el('p', 'Photograph the pages with your answer to this question (up to 10, or one PDF). Include the question number and part labels. The text is read by AI and may contain mistakes, so check it before confirming.', 'muted'));
+          const picker = el('input'); picker.type = 'file'; picker.multiple = true; picker.accept = 'image/png,image/jpeg,application/pdf';
+          picker.setAttribute('aria-label', `Pages for question ${q.position}`);
+          const preview = el('div', '', 'toolbar');
+          picker.addEventListener('change', () => {
+            preview.replaceChildren();
+            for (const file of picker.files) if (file.type.startsWith('image/')) {
+              const thumb = el('img', '', 'scan-thumb'); thumb.alt = file.name; thumb.src = URL.createObjectURL(file); thumb.onload = () => URL.revokeObjectURL(thumb.src); preview.append(thumb);
+            }
+          });
+          const read = el('button', q.scan_revision ? 'Replace with new pages' : 'Read my handwriting', 'primary'); read.type = 'button';
+          read.addEventListener('click', async () => {
+            if (busy) return;
+            try {
+              const form = scanForm([...picker.files]);
+              if (draft.value().trim() && !window.confirm('Replace the current answer with the text read from these pages?')) return;
+              busy = true; read.disabled = true; container.dataset.busy = 'true'; status.dataset.state = 'saving'; status.textContent = 'Reading your handwriting. This can take a minute…';
+              const result = await api(`/exams/${id}/answers/${q.id}/scan`, { method: 'POST', body: form });
+              applyScan(result.transcription, result.scan_revision);
+            } catch (err) { status.textContent = ''; report(err); }
+            finally { busy = false; read.disabled = false; container.dataset.busy = 'false'; }
+          });
+          scanBox.append(picker, preview, read);
+        }
+        card.append(scanBox, rawField, controls, conflictBox, status, feedback); detail.append(card); cards.push(card);
         if (q.answer) navButton.classList.add('done');
       }
       detail.append(pager); showQuestion(0);
@@ -398,7 +483,7 @@ export async function renderExams(container, api) {
     event.preventDefault();
     if (!canLeave() || start.disabled) return;
     const selected = papers[paper.value];
-    const payload = { topic_id: Number(topic.value), mode: mode.value, answer_mode: 'digital' };
+    const payload = { topic_id: Number(topic.value), mode: mode.value, answer_mode: answerMode.value };
     if (!Number.isSafeInteger(payload.topic_id) || payload.topic_id <= 0) { report(new Error('Choose a topic.')); return; }
     if (mode.value === 'original') {
       if (!selected) { report(new Error('Choose an original paper.')); return; }
