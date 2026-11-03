@@ -146,13 +146,34 @@ def create_exam_tables(db):
     db.execute("ALTER TABLE exam_answer_scans ADD COLUMN IF NOT EXISTS revision integer NOT NULL DEFAULT 1")
 
 
+def _rubric_text(value):
+    """A rubric the model returned as an object or list is laid out as plain lines; its words are unchanged."""
+    if isinstance(value, dict):
+        return chr(10).join(f"{key}: {_rubric_text(part)}" for key, part in value.items() if part not in (None, "", [], {}))
+    if isinstance(value, list):
+        return chr(10).join(_rubric_text(part) or "" for part in value if part not in (None, ""))
+    return value if isinstance(value, str) else (str(value) if isinstance(value, (int, float)) else None)
+
+
+def _repair_latex_escapes(text):
+    """Models often write LaTeX with a single backslash, which is not a valid JSON escape.
+
+    Only escapes JSON would reject are doubled; valid ones (including an already-doubled backslash) are untouched.
+    """
+    import re
+    return re.sub(r"\\(.)", lambda m: m.group(0) if m.group(1) in '"\\/bfnrtu' else "\\\\" + m.group(1), text, flags=re.S)
+
+
 def parse_practice_paper(reply, count):
     """Validate a generated practice paper; raises ValueError saying what is wrong."""
     from reviews import _clean_json
     try:
         data = _clean_json(reply)
     except Exception:
-        raise ValueError("the reply was not valid JSON") from None
+        try:
+            data = _clean_json(_repair_latex_escapes(reply))
+        except Exception:
+            raise ValueError("the reply was not valid JSON") from None
     if isinstance(data, dict):  # a harmless wrapper such as {"questions": [...]}
         lists = [value for value in data.values() if isinstance(value, list)]
         data = lists[0] if len(lists) == 1 else data
@@ -164,7 +185,9 @@ def parse_practice_paper(reply, count):
     for number, item in enumerate(data[:count], 1):  # extra questions beyond the requested count are dropped
         if not isinstance(item, dict):
             raise ValueError(f"question {number} was not an object")
-        question, rubric, marks = item.get("question"), item.get("rubric"), item.get("marks")
+        question, marks = item.get("question"), item.get("marks")
+        rubric = next((item[key] for key in ("rubric", "mark_scheme", "marking_scheme", "marking_guide") if item.get(key)), None)
+        rubric = _rubric_text(rubric)
         if isinstance(marks, str) and marks.strip().isdigit():
             marks = int(marks)
         if not isinstance(question, str) or not 20 <= len(question) <= 30000:
@@ -244,6 +267,8 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None):
                 try:
                     generated = parse_practice_paper(model_reply("education", messages, task="exam-practice-generate"), body.question_count)
                 except ValueError as problem:
+                    import logging
+                    logging.getLogger("uvicorn.error").warning("Practice paper rejected (%s); reply began: %r", problem, reply[:1500])
                     raise HTTPException(502, f"Practice generator returned an incomplete paper ({problem}); no exam saved. Try again.") from None
             with connect() as db:
                 ids = []

@@ -43,3 +43,25 @@ def test_practice_paper_parser_rejects_bad_papers_and_says_why():
                             (_paper(3, rubric="x"), "usable rubric"), (_paper(3, question=None), "usable question"), ('{"a": 1}', "not a list")):
         with pytest.raises(ValueError, match=fragment):
             parse_practice_paper(reply, 3)
+
+
+def test_practice_paper_parser_lays_out_structured_rubrics_and_alias_keys():
+    import json
+    from exams import parse_practice_paper
+    base = {"question": "A trolley of mass 2.0 kg accelerates at 3.0 m s^-2. Calculate the force.", "marks": 4}
+    nested = {**base, "rubric": {"Achievement": "Uses F = ma.", "Merit": "Gets 6.0 N.", "Excellence": ["Gives units", "Explains why"]}}
+    paper = parse_practice_paper(json.dumps([nested]), 1)
+    assert paper[0]["rubric"].splitlines()[0] == "Achievement: Uses F = ma." and "Gives units" in paper[0]["rubric"]
+    listed = {**base, "mark_scheme": ["Achievement: Uses F = ma.", "Merit: Gets 6.0 N."]}
+    assert "Merit: Gets 6.0 N." in parse_practice_paper(json.dumps([listed]), 1)[0]["rubric"]
+
+
+def test_practice_paper_parser_repairs_single_backslash_latex_but_leaves_valid_escapes():
+    import json
+    from exams import parse_practice_paper, _repair_latex_escapes
+    bs = chr(92)
+    question = "Which bond is C" + bs + "equiv C in alkynes? State the bond type and name one example."
+    reply = '[{"question": "' + question + '", "rubric": "Achievement: alkyne. Merit: triple bond. Excellence: example.", "marks": 4}]'
+    assert parse_practice_paper(reply, 1)[0]["question"] == question
+    valid = '{"a": "line' + bs + 'nbreak ' + bs + bs + 'text", "b": "q' + bs + '"x"}'
+    assert _repair_latex_escapes(valid) == valid and json.loads(valid)

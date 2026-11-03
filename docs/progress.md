@@ -1712,3 +1712,9 @@ From the pasted source review (not a penetration test):
 - The generator is intermittent: a live run for Mechanics returned a valid 3-question paper, so the failure the user saw was a shape problem in some other reply (the reply itself was not captured, so the exact cause is unknown).
 - Changes (`parse_practice_paper` in `exams.py`): accepts a wrapped list, string marks like "6" and extra questions (dropped, never padded); still rejects too few questions, missing text or rubric, marks outside 1-15. One corrective retry tells the model what was wrong. If that also fails, the error now says why.
 - Checked: 2 new unit tests (suite 222 passed); on the real database with a stub model, a bad first reply then a good one saved a 3-question exam (2 model calls), and two bad replies returned 502 with the reason and saved nothing (rolled back). Not checked: a live failing reply, since I could not reproduce one.
+
+## 3 Nov 2026: AI practice failures, second pass
+
+- Your second error ("question 1 had no usable rubric") did not reproduce in 3 live runs; the parser now lays out a rubric returned as an object or list, and accepts mark_scheme / marking_scheme / marking_guide keys. That is a guess at the cause. Rejected replies are now written to the API log (first 1,500 characters) so a repeat can be diagnosed.
+- A different live failure did reproduce: Organic chemistry replies sometimes use single-backslash LaTeX ($C\equiv C$), which is invalid JSON, so the paper was rejected as "not valid JSON". `_repair_latex_escapes` doubles only escapes JSON would reject; valid escapes are untouched. After the fix Organic chemistry produced a valid paper on 4 of 4 live runs, and all six topics passed once each earlier. Single-backslash LaTeX that happens to look like a valid escape (for example the start of a tab or newline) cannot be told apart and is not repaired.
+- Suite: 224 passed.
