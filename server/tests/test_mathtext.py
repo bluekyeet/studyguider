@@ -60,3 +60,9 @@ def test_overlay_swaps_text_and_parts_but_leaves_other_questions():
     assert out[0]["question_text"] == NEW
     assert [p["text"] for p in out[0]["parts"]] == ["Part a", "Part b $y^2$"]
     assert out[1]["question_text"] == "Other"
+
+
+def test_a_misread_exponent_is_rejected():
+    old = "Solve the equation z3 + 8m27i = 0, where m is a positive real constant."
+    assert mathtext.acceptable("Solve the equation $z^3 + 8m^{27}\text{i} = 0$, where $m$ is a positive real constant.", old)
+    assert not mathtext.acceptable("Solve the equation $z^3 + 8m^3\text{i} = 0$, where $m$ is a positive real constant.", old)

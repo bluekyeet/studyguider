@@ -52,7 +52,10 @@ def acceptable(new, old):
     in_new = set(_words(new))
     added = sum(1 for w in plain_new if w not in in_old)
     kept = sum(1 for w in plain_old if w in in_new)
-    return (not plain_new or added / len(plain_new) <= 0.1) and (not plain_old or kept / len(plain_old) >= 0.85)
+    # Every number the text layer had must survive: a model that "reads" a different exponent or coefficient is caught here
+    # (the text layer says 8m27i, the model wrote 8m^3 i). Such a unit stays as the original text.
+    numbers_kept = set(re.findall(r"\d+", old)) <= set(re.findall(r"\d+", new))
+    return numbers_kept and (not plain_new or added / len(plain_new) <= 0.1) and (not plain_old or kept / len(plain_old) >= 0.85)
 
 
 def units_of(question_text, parts):
@@ -71,7 +74,7 @@ def render_pages(resource_id, pages):
     with pymupdf.open(userspace.upload_root() / str(resource_id)) as document:
         for number in pages[:MAX_PAGES]:
             if 1 <= number <= len(document):
-                images.append(Image.open(io.BytesIO(document[number - 1].get_pixmap(dpi=110).tobytes("png"))).convert("RGB"))
+                images.append(Image.open(io.BytesIO(document[number - 1].get_pixmap(dpi=170).tobytes("png"))).convert("RGB"))
     if not images:
         raise ValueError("no pages to read")
     width = max(i.width for i in images)
@@ -105,20 +108,21 @@ def restore_one(vision_reply, row):
     return {"q": accepted.get("q"), "p": [accepted.get(f"p{i}") for i in range(count)]}
 
 
-def pending(db, topic_id=None, limit=300):
+def pending(db, topic_id=None, limit=300, ids=None):
     return db.execute("""SELECT id, paper_resource_id, paper_page, figure_pages, question_text, parts FROM exam_questions
         WHERE source <> 'ai' AND math_state = '' AND paper_resource_id IS NOT NULL AND length(trim(question_text)) > 0
-          AND (%s::bigint IS NULL OR topic_id = %s) ORDER BY id LIMIT %s""", (topic_id, topic_id, limit)).fetchall()
+          AND (%s::bigint IS NULL OR topic_id = %s) AND (%s::bigint[] IS NULL OR id = ANY(%s)) ORDER BY id LIMIT %s""",
+                      (topic_id, topic_id, ids, ids, limit)).fetchall()
 
 
 _running = set()
 _lock = threading.Lock()
 
 
-def process(connect, vision_reply, topic_id=None, workers=3):
+def process(connect, vision_reply, topic_id=None, workers=3, ids=None):
     from concurrent.futures import ThreadPoolExecutor
     with connect() as db:
-        rows = pending(db, topic_id)
+        rows = pending(db, topic_id, ids=ids)
     counts = {"done": 0, "failed": 0, "retry": 0}
 
     def attempt(row):
@@ -147,7 +151,7 @@ def process(connect, vision_reply, topic_id=None, workers=3):
     return counts
 
 
-def kick(connect, vision_reply, topic_id=None):
+def kick(connect, vision_reply, topic_id=None, ids=None):
     """Run process() in the background, one run at a time per account. Returns whether it started."""
     key = userspace.current_user.get()
     with _lock:
@@ -157,7 +161,7 @@ def kick(connect, vision_reply, topic_id=None):
 
     def run():
         try:
-            log.info("Maths restore finished: %s", process(connect, vision_reply, topic_id))
+            log.info("Maths restore finished: %s", process(connect, vision_reply, topic_id, ids=ids))
         except Exception as error:      # noqa: BLE001 - background work must never take the caller down
             log.warning("Maths restore failed: %s", getattr(error, "detail", error))
         finally:

@@ -195,7 +195,7 @@ def _queue_skipped_review(db, exam_id, question_id):
                (row[0], row[7], row[3], json.dumps(source), row[1], f"Exam question {row[2]}", f"{exam_id}:{question_id}"))
 
 
-def rapid_router(connect, authorised, model_reply=None, search_resources=None, mark_answer=None):
+def rapid_router(connect, authorised, model_reply=None, search_resources=None, mark_answer=None, vision=None):
     router = APIRouter(dependencies=[Depends(authorised)])
 
     # ---- marking in the background -------------------------------------------------------------
@@ -385,6 +385,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             first = _advance(db, exam_id, body.topic_id, body.source, body.count)
             if body.source != "ai":
                 kick_split(body.topic_id)     # questions added since the last run become available shortly
+                if vision is not None:
+                    mathtext.kick(connect, vision, body.topic_id)
             if isinstance(first, str):
                 if body.source != "revision" and body.source != "ai" and splitting.pending(db, body.topic_id, 1):
                     raise HTTPException(409, "Your past papers are being prepared for rapid practice. Try again in a minute.")

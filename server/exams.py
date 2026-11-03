@@ -510,7 +510,7 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
         with connect() as db:
             mathtext.overlay(db, questions, "id")
         if vision is not None:
-            mathtext.kick(connect, vision)      # questions not yet restored get their maths from the page image; shown on the next open
+            mathtext.kick(connect, vision, ids=[q["id"] for q in questions])      # questions not yet restored get their maths from the page image; shown on the next open
         return {"id": exam[0], "created_at": exam[1], "subject_id": exam[2], "kind": exam[3],
                 "total_marks": exam[4], "questions": questions}
 
