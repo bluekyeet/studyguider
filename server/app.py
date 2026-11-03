@@ -391,7 +391,7 @@ def study_styles():
 
 @app.get('/{module_name}.js', include_in_schema=False)
 def study_module(module_name: str):
-    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-library', 'web-settings'}:
+    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-library', 'web-settings'}:
         raise HTTPException(404, 'Module not found')
     return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript')
 

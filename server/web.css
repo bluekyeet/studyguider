@@ -336,3 +336,16 @@ summary::marker{transition:transform .3s var(--ease-spring)}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important;scroll-behavior:auto!important}
 }
+
+/* Rapid questions */
+.tabs a .chip{margin-left:6px;font-size:11px;padding:1px 8px}
+.grade-bar{display:flex;height:12px;border-radius:999px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);gap:2px;margin:10px 0 4px}
+.grade-bar>i{display:block;flex:1 1 0;min-width:0;transition:flex-grow .6s var(--ease-out);animation:grow-bar .9s var(--ease-out) both;transform-origin:left}
+.grade-bar .g-not_achieved{background:var(--danger)}.grade-bar .g-skipped{background:var(--warn)}
+.grade-bar .g-achieved{background:var(--accent)}.grade-bar .g-merit{background:var(--teal)}.grade-bar .g-excellence{background:var(--ok)}.grade-bar .g-unclear{background:var(--faint)}
+@keyframes grow-bar{from{transform:scaleX(0);opacity:.4}}
+.stat.grade-not_achieved b{color:var(--danger)}.stat.grade-merit b{color:var(--teal)}.stat.grade-excellence b{color:var(--ok)}.stat.grade-skipped b{color:var(--warn)}
+.settled *,.settled{animation:none!important}
+blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--line);color:var(--muted)}
+label.check{display:inline-flex;align-items:center;gap:8px;font-weight:400}
+button[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-soft-text);border-color:transparent}

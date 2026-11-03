@@ -11,7 +11,7 @@ def test_study_site_is_at_root_and_advanced_tools_remain_separate():
     assert 'href="#home"' in response.text and 'href="#library"' in response.text and 'href="#settings"' in response.text
     assert 'Advanced tools' in response.text
     assert client.get('/web.css').status_code == 200
-    for module in ('web-home', 'web-library', 'web-settings'):
+    for module in ('web-home', 'web-library', 'web-settings', 'web-rapid', 'web-exam-shared'):
         assert client.get(f'/{module}.js').status_code == 200
     assert client.get('/manage').status_code == 200
     assert client.get('/web-common.js').status_code == 200

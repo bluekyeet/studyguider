@@ -1,52 +1,15 @@
 import { mathText, mathInput, autosave, aiBox } from './web-common.js';
+import { el, field, option, json, reflow, withoutLabel, displayLabel, scanForm } from './web-exam-shared.js';
+import { renderRapid, renderRevision, revisionCount } from './web-rapid.js';
 
-const el = (tag, text = '', className = '') => {
-  const node = document.createElement(tag);
-  node.textContent = text;
-  node.className = className;
-  return node;
-};
-const field = (title, input) => {
-  const label = el('label', title);
-  label.append(input);
-  return label;
-};
 // Answer boxes get the maths toolbar and a live preview.
 const mathField = (title, textarea) => {
   const label = el('label', title);
   label.append(mathInput(textarea, { collapsed: true }));
   return label;
 };
-const option = (select, value, label) => {
-  const node = el('option', label);
-  node.value = String(value);
-  select.append(node);
-};
-// FastAPI only reads a JSON body when the request says it is JSON; fetch would otherwise send text/plain.
-const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-// Paper text keeps the PDF's line breaks. Join them back into sentences, but keep
-// blank lines and lines that start a new source credit or sub-part.
-const reflow = text => String(text || '').replace(/[ \t]*\n(?!\s*\n)(?!\s*(?:Source|\([a-hivx]+\)))/gi, ' ').trim();
-// A part's wording often begins with its own label, which is already shown beside it.
-const withoutLabel = text => String(text || '').replace(/^\s*\([a-hivx]+\)\s*/i, '');
-const displayLabel = label => !label || label === 'context' ? ''
-  : label.startsWith('(') ? label : `(${label.replaceAll('(', ')(')}${label.endsWith(')') ? '' : ')'}`;
 
-// One to ten pages for handwriting recognition: PNG/JPEG photos (joined in the order given) or a single PDF.
-const SCAN_LIMIT = 10 * 1024 * 1024;
-// The whole-paper route only reads a `files` list; the per-question route also accepts a single `file`.
-function scanForm(files, listOnly = false) {
-  if (!files.length || files.length > 10) throw new Error('Choose one to ten pages.');
-  const pdf = files.some(f => f.type === 'application/pdf');
-  if (pdf && files.length > 1) throw new Error('Upload one PDF on its own, or up to ten photos.');
-  if (!pdf && !files.every(f => f.type === 'image/png' || f.type === 'image/jpeg')) throw new Error('Pages must be PNG or JPEG photos, or one PDF.');
-  if (files.reduce((total, f) => total + f.size, 0) > SCAN_LIMIT) throw new Error('The pages are over 10 MiB in total. Use smaller photos.');
-  const form = new FormData();
-  if (files.length === 1 && !listOnly) form.append('file', files[0]); else files.forEach(f => form.append('files', f));
-  return form;
-}
-
-export async function renderExams(container, api) {
+async function renderClassicExams(container, api) {
   const root = el('section', '', 'stack');
   container.replaceChildren(root);
   const alive = () => root.isConnected;
@@ -532,4 +495,21 @@ export async function renderExams(container, api) {
     })(),
   ]);
   return () => stopClock();
+}
+
+// Exams is a hub of three sections so the main menu stays short.
+export async function renderExams(container, api, params) {
+  const sub = params?.get('sub') || '';
+  const bar = el('nav', '', 'tabs'); bar.setAttribute('aria-label', 'Exam sections');
+  const body = el('div', '', 'stack');
+  const links = {};
+  for (const [key, label, href] of [['', 'Classic exam papers', '#exams'], ['rapid', 'Rapid questions', '#exams/rapid'], ['revision', 'Exam revision', '#exams/revision']]) {
+    const a = el('a', label); a.href = href; if (key === sub) a.setAttribute('aria-current', 'page');
+    bar.append(a); links[key] = a;
+  }
+  container.replaceChildren(bar, body);
+  // Misses waiting in Exam revision show on its tab.
+  revisionCount(api).then(count => { if (count > 0 && bar.isConnected) links.revision.append(' ', el('span', String(count), 'chip warn')); }).catch(() => {});
+  const render = sub === 'rapid' ? renderRapid : sub === 'revision' ? renderRevision : renderClassicExams;
+  return render(body, api, params);
 }

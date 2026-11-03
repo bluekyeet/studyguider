@@ -37,8 +37,10 @@ function placePill() {
 window.addEventListener('resize', placePill);
 async function route() {
   if (!ready) return;
-  const [page, query = ''] = (location.hash.slice(1) || 'home').split('?');
+  const [path, query = ''] = (location.hash.slice(1) || 'home').split('?');
+  const [page, sub = ''] = path.split('/');   // #exams/rapid is the Rapid questions section of Exams
   const params = new URLSearchParams(query);
+  params.set('sub', sub);
   if (cleanup?.canLeave && !cleanup.canLeave()) { history.replaceState(null,'','#'+activePage); return; }
   if (($('view').querySelector('[data-dirty="true"]') || $('view').querySelector('[data-busy="true"]')) && !confirm('Leave with an unsaved answer or request in progress?')) {
     history.replaceState(null,'','#'+activePage); return;
