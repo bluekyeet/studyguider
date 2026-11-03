@@ -110,7 +110,7 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
                 Text("Today · ${toDo.size} to do", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 toDo.forEachIndexed { index, item ->
                     LessonRow(item, onOpenLesson, Modifier.staggeredEnter(index, item.optLong("id")),
-                        note = if (item in carried) "From ${date(item)}" else if (item.optBoolean("started")) "In progress" else "To do")
+                        note = if (item.optBoolean("started")) "In progress" else "To do")
                 }
             }
             if (lessons.isNotEmpty() && toDo.isEmpty()) Text(if (fresh.isNotEmpty()) "All of today’s lessons are done. Well done." else "No lessons to do right now.")
