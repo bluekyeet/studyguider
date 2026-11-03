@@ -405,7 +405,11 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                   "or uncertain), feedback, evidence (array of {quote, explanation, marks}), missing "
                   "(array of strings), and confidence (0 to 1). Do not claim this is an official result.")
         if second:
-            system += " You are the independent second marker. Re-mark the answer yourself."
+            system += (" You are the reviewer of the first marker. payload.first_marker holds its result, which may be wrong. "
+                       "Check every claim in its feedback against the learner's answer and every mark against the schedule: "
+                       "wrong arithmetic, misread or invented answer content, marks the schedule does not support, and "
+                       "schedule requirements it ignored. Then give your own corrected mark; if the first marker was right, "
+                       "say so in the feedback, and if it was wrong, say what it got wrong.")
         if available == 8 and uses_ncea_question_scale(schedule):
             system += " This schedule uses the N0/N1/N2/A3/A4/M5/M6/E7/E8 whole-question scale. Select the exact score using its schedule descriptors, not percentages or a sum of part marks. marks_available must be 8. Quote the descriptor supporting that score."
         messages = [
@@ -474,11 +478,11 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                 db.execute("UPDATE markings SET answer_text=%s WHERE exam_id=%s AND question_id=%s AND answer_hash=%s", (row[0], exam_id, question_id, digest))
                 db.execute("UPDATE markings SET scan_revision=%s WHERE exam_id=%s AND question_id=%s AND answer_hash=%s", (scan[2], exam_id, question_id, digest))
             second = None
-            automatic = result.get("confidence", 0) < 0.7 or result.get("outcome") == "uncertain"
+            automatic = True
             if request.second_review or automatic:
                 with connect() as db:
                     stored = db.execute("SELECT result FROM markings WHERE exam_id=%s AND question_id=%s AND answer_hash=%s AND kind = 'second'", (exam_id, question_id, digest)).fetchone()
-                second = stored[0] if stored else vision_mark("Independently re-mark this image.\n" + prompt, "exam-image-second-mark")
+                second = stored[0] if stored else vision_mark("You are the reviewer of the first marker, whose result is below and may be wrong. Check its feedback against the image and each mark against the schedule (arithmetic, misread work, unsupported marks), then give your own corrected mark and say what the first marker got wrong.\nFirst marker result: " + json.dumps(result, ensure_ascii=False) + "\n" + prompt, "exam-image-second-mark")
                 with connect() as db:
                     db.execute("""INSERT INTO markings (exam_id,question_id,answer_hash,kind,result,model,answer_text,scan_revision)
                         VALUES (%s,%s,%s,'second',%s::jsonb,'education-reviewer',%s,%s)
@@ -511,7 +515,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
             cached = False
         second = None
         disagreement = False
-        automatic_review = first.get("confidence", 0) < 0.7 or first.get("outcome") == "uncertain"
+        # Every AI mark is reviewed by the second model, which sees and checks the first marker's result.
+        automatic_review = True
         if request.second_review or automatic_review:
             with connect() as db:
                 stored_second = db.execute("""SELECT result FROM markings
@@ -520,7 +525,7 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
             if stored_second:
                 second = stored_second[0]
             else:
-                second = mark(payload, available, schedule, "education-reviewer", second=True).model_dump()
+                second = mark({**payload, "first_marker": first}, available, schedule, "education-reviewer", second=True).model_dump()
                 with connect() as db:
                     db.execute("""INSERT INTO markings (exam_id, question_id, answer_hash, kind, result, model)
                         VALUES (%s, %s, %s, 'second', %s::jsonb, 'education-reviewer')

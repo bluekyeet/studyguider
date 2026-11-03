@@ -217,7 +217,17 @@ def test_repeated_marks_are_identical_and_cached():
     assert first["marks_awarded"] == second["marks_awarded"]
     assert first["feedback"] == second["feedback"]
     assert second["cached"] is True
-    assert len(calls) == 1
+    assert len(calls) == 2  # first marker + reviewer, both stored; the repeat makes no calls
+
+
+def test_every_mark_is_reviewed_with_the_first_markers_result():
+    client, calls, _ = make_client()
+    body = client.post("/exams/1/answers/2/feedback").json()
+    assert [c[0] for c in calls] == ["education", "education-reviewer"]
+    assert body["second_review"] and body["automatic_second_review"] is True
+    reviewer_input = json.loads(calls[1][1][1]["content"])
+    assert reviewer_input["first_marker"]["marks_awarded"] == body["marks_awarded"]
+    assert "reviewer of the first marker" in calls[1][1][0]["content"]
 
 
 def test_missing_answer_or_schedule_does_not_call_model():
@@ -251,11 +261,11 @@ def test_saved_override_can_be_loaded_without_model_call():
 
 
 def test_invalid_json_is_recovered_on_retry():
-    client, calls, _ = make_client(replies=["not json", marking_json(marks=5)])
+    client, calls, _ = make_client(replies=["not json", marking_json(marks=5), marking_json(marks=5)])
     response = client.post("/exams/1/answers/2/feedback")
     assert response.status_code == 200
     assert response.json()["marks_awarded"] == 5
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 def test_zero_marks_with_no_evidence_is_accepted():
@@ -266,11 +276,11 @@ def test_zero_marks_with_no_evidence_is_accepted():
         "feedback": "Not yet correct.", "evidence": [],
         "missing": ["Correct change in momentum."], "confidence": 1.0,
     })
-    client, calls, _ = make_client(replies=[zero_mark_reply])
+    client, calls, _ = make_client(replies=[zero_mark_reply, zero_mark_reply])
     response = client.post("/exams/1/answers/2/feedback")
     assert response.status_code == 200
     assert response.json()["marks_awarded"] == 0
-    assert len(calls) == 1
+    assert len(calls) == 2
 
 
 def test_awarded_marks_without_evidence_is_rejected():
