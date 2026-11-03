@@ -45,7 +45,7 @@ private fun sizeText(bytes: Long) = if (bytes >= 1048576) "%.1f MB".format(bytes
 fun TopicFiles(
     resources: JSONArray, busy: Boolean, uploadNotice: String,
     onUpload: (String) -> Unit, onRefresh: () -> Unit, onExtract: (String, Boolean) -> Unit,
-    onOpen: (String) -> Unit, onDelete: (List<JSONObject>) -> Unit,
+    onOpen: (String) -> Unit, onDelete: (List<JSONObject>) -> Unit, ownOnly: Boolean = false,
 ) {
     var folder by rememberSaveable { mutableStateOf("all") }
     var filter by rememberSaveable { mutableStateOf("") }
@@ -60,12 +60,13 @@ fun TopicFiles(
     LaunchedEffect(items) { selected = selected.intersect(items.map { it.optString("id") }.toSet()) }
     val current = folders.first { it.key == folder }
     val shown = items.filter(current.matches).filter { it.optString("filename").lowercase().contains(filter.trim().lowercase()) }
-    val shownIds = shown.map { it.optString("id") }
+    // Global files can be read and used but not changed or deleted here.
+    val shownIds = shown.filter { !it.optBoolean("is_global") }.map { it.optString("id") }
     val colours = LocalStudyColours.current
 
     StudyCard(tone = CardTone.Low) {
-        Text("Add files", style = MaterialTheme.typography.titleMedium)
-        Text("Choose files or a ZIP. Up to 50 MiB per upload; duplicates are kept once.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if (ownOnly) "Add your own files" else "Add files", style = MaterialTheme.typography.titleMedium)
+        Text(if (ownOnly) "Only you can see files you add here. The global files are read-only." else "Choose files or a ZIP. Up to 50 MiB per upload; duplicates are kept once.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box {
             OutlinedButton(onClick = { menu = true }, enabled = !busy, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth()) {
                 Text("Category: ${categories.first { it.first == category }.second}  ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -89,7 +90,7 @@ fun TopicFiles(
             }
         }
         OutlinedTextField(filter, { filter = it }, label = { Text("Filter by file name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        if (shown.isNotEmpty()) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (shownIds.isNotEmpty()) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = shownIds.isNotEmpty() && shownIds.all { it in selected },
                 onCheckedChange = { all -> selected = if (all) selected + shownIds else selected - shownIds.toSet() })
             Text(if (selected.isEmpty()) "Select all" else "${selected.size} selected", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -110,7 +111,7 @@ fun TopicFiles(
             Surface(shape = RoundedCornerShape(14.dp), color = colours.container, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = id in selected, onCheckedChange = { selected = if (it) selected + id else selected - id })
+                        Checkbox(checked = id in selected, enabled = !item.optBoolean("is_global"), onCheckedChange = { selected = if (it) selected + id else selected - id })
                         Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
                             Text(extension.take(4).uppercase().ifEmpty { "FILE" }, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
@@ -122,15 +123,17 @@ fun TopicFiles(
                                 "failed" -> MaterialTheme.colorScheme.error
                                 "pending", "extracting" -> colours.amber
                                 else -> colours.outline
-                            }, "${item.optString("display_status", status)} · ${item.optInt("page_count")} pages · ${sizeText(item.optLong("size"))}")
+                            }, "${item.optString("display_status", status)}${if (item.optBoolean("is_global")) " · Global" else ""} · ${item.optInt("page_count")} pages · ${sizeText(item.optLong("size"))}")
                         }
                     }
                     item.optString("error").takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 12.dp)) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                         if (extension in listOf("pdf", "png", "jpg", "jpeg")) TextButton(onClick = { onOpen(id) }) { Text("Open") }
-                        if (status == "failed") TextButton(enabled = !busy, onClick = { onExtract(id, true) }) { Text("Retry") }
-                        else if (status == "extracted") TextButton(enabled = !busy, onClick = { onExtract(id, false) }) { Text("Re-extract") }
-                        TextButton(enabled = !busy, onClick = { confirm = listOf(item) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                        if (!item.optBoolean("is_global")) {
+                            if (status == "failed") TextButton(enabled = !busy, onClick = { onExtract(id, true) }) { Text("Retry") }
+                            else if (status == "extracted") TextButton(enabled = !busy, onClick = { onExtract(id, false) }) { Text("Re-extract") }
+                            TextButton(enabled = !busy, onClick = { confirm = listOf(item) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                        }
                     }
                 }
             }

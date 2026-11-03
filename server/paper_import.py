@@ -17,7 +17,7 @@ def create_import_tables(db):
 
 def import_topic_papers(connect, topic_id):
     with connect() as db:
-        resources = db.execute("SELECT id, filename FROM resources WHERE topic_id=%s AND status='extracted' ORDER BY id", (topic_id,)).fetchall()
+        resources = db.execute("SELECT id, filename FROM resources WHERE topic_id=%s AND status='extracted' AND NOT is_global ORDER BY id", (topic_id,)).fetchall()
     pairs = {}
     for resource_id, filename in resources:
         identity = file_identity(Path(filename).name)

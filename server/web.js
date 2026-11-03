@@ -5,10 +5,11 @@ import {renderExams} from './web-exams.js';
 import {renderLibrary} from './web-library.js';
 import {renderSettings} from './web-settings.js';
 import {renderAccount} from './web-account.js';
-import {session, avatar} from './web-common.js';
+import {session, avatar, library, LIBRARY_PATHS} from './web-common.js';
 
 const $ = id => document.getElementById(id);
 async function api(path, options={}) {
+  if (library.global() && LIBRARY_PATHS.test(path.split('?')[0])) options = {...options, headers: {...options.headers, 'X-Library': 'global'}};
   const response = await fetch(path,{credentials:'same-origin',...options});
   if (!response.ok) {
     const data = await response.json().catch(()=>({}));
@@ -79,6 +80,7 @@ async function route() {
   // The page being left stays on screen, untouched, until the next one has its content; then the two swap in one step. Nothing
   // blanks or flashes while data loads, and a loading bar only appears if the wait is long.
   const mine = ++routeId;
+  library.scope = page === 'library';
   const container = document.createElement('section'); if (!same) container.className = 'entering'; container.hidden = true;
   for (const node of $('view').children) if (!node.hidden) node.inert = true;
   $('view').append(container); $('view').dataset.loading = '1';

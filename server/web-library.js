@@ -1,5 +1,5 @@
 // Library: subjects -> topics -> files, standards, notes and search for one topic.
-import { mathText, readable } from './web-common.js';
+import { mathText, readable, session, library } from './web-common.js';
 const el = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
   if (text !== '') node.textContent = text;
@@ -39,12 +39,29 @@ function crumbs(parts) {
   return nav;
 }
 
+const chip = text => el('span', text, 'chip');
+// Administrators choose between their own library and the global one; everyone else only ever works in their own.
+function libraryMode() {
+  if (!session.user?.is_admin) return null;
+  const box = el('div', '', 'stack');
+  const seg = el('div', '', 'segmented'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Which library to work in');
+  for (const [global, label] of [[false, 'My library'], [true, 'Global library']]) {
+    const button = el('button', label, 'small'); button.setAttribute('aria-pressed', String(library.global() === global));
+    button.onclick = () => { library.set(global); location.hash = '#library'; refresh(); };
+    seg.append(button);
+  }
+  box.append(seg);
+  if (library.global()) box.append(el('p', 'You are editing the global library. Everyone can see what you change here.', 'muted'));
+  return box;
+}
+
 function head(title, subtitle, trail) {
   const wrap = el('div', '', 'page-head');
   const left = el('div');
   if (trail) left.append(trail);
   left.append(el('h1', title));
   if (subtitle) left.append(el('p', subtitle));
+  const mode = libraryMode(); if (mode) left.append(mode);
   wrap.append(left);
   return { wrap, actions: wrap.appendChild(el('div', '', 'toolbar')) };
 }
@@ -80,7 +97,7 @@ export async function renderLibrary(root, api, params) {
 
 async function subjects(root, api) {
   const all = (await api('/subjects')).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-  const { wrap } = head('Library', 'Your subjects, topics and study files.');
+  const { wrap } = head('Library', 'The global library, plus your own subjects, topics and study files.');
   root.append(wrap);
   if (!all.length) root.append(el('p', 'No subjects yet. Add your first one below.', 'empty'));
   for (const level of [...new Set(all.map(s => s.level))]) {
@@ -89,6 +106,7 @@ async function subjects(root, api) {
     for (const subject of all.filter(s => s.level === level)) {
       const tile = el('a', '', 'tile'); tile.href = libraryUrl({ subject: subject.id });
       tile.append(el('strong', subject.name), el('p', `Level ${subject.level}`, 'muted'));
+      if (subject.global) tile.append(chip('Global'));
       grid.append(tile);
     }
     root.append(grid);
@@ -99,7 +117,7 @@ async function subjects(root, api) {
   const fields = el('div', '', 'fields'); fields.append(field('Subject name', name), field('NCEA level', level));
   const submit = el('button', 'Add subject', 'primary'); const note = status();
   const bar = el('div', '', 'toolbar'); bar.append(submit, note);
-  card.append(el('h2', 'Add a subject'), fields, bar);
+  card.append(el('h2', library.global() ? 'Add a global subject' : 'Add my own subject'), fields, bar);
   card.onsubmit = async event => {
     event.preventDefault();
     await guard(submit, note, async () => {
@@ -113,7 +131,7 @@ async function subjects(root, api) {
 async function topics(root, api, subject) {
   const list = await api(`/subjects/${subject.id}/topics`);
   const { wrap, actions } = head(subject.name, `NCEA Level ${subject.level}`, crumbs([{ label: 'Library', href: libraryUrl() }, { label: subject.name }]));
-  const remove = el('button', 'Delete subject', 'danger small'); actions.append(remove);
+  const remove = el('button', 'Delete subject', 'danger small'); if (!subject.global) actions.append(remove);
   const note = status(); root.append(wrap);
   remove.onclick = () => guard(remove, note, async () => {
     if (!confirm(`Delete the subject "${subject.name}"? This only works when it has no topics.`)) return;
@@ -125,6 +143,7 @@ async function topics(root, api, subject) {
   for (const topic of list) {
     const tile = el('a', '', 'tile'); tile.href = libraryUrl({ subject: subject.id, topic: topic.id });
     tile.append(el('strong', topic.name), el('p', 'Files, standards and notes', 'muted'));
+    if (topic.global) tile.append(chip('Global'));
     grid.append(tile);
   }
   root.append(grid);
@@ -132,7 +151,7 @@ async function topics(root, api, subject) {
   const name = el('input'); name.maxLength = 200; name.required = true;
   const submit = el('button', 'Add topic', 'primary'); const addNote = status();
   const bar = el('div', '', 'toolbar'); bar.append(submit, addNote);
-  card.append(el('h2', 'Add a topic'), field('Topic name', name), bar);
+  card.append(el('h2', library.global() ? 'Add a global topic' : 'Add my own topic'), field('Topic name', name), bar);
   card.onsubmit = async event => {
     event.preventDefault();
     await guard(submit, addNote, async () => {
@@ -150,7 +169,7 @@ async function topicView(root, api, subject, topic, params) {
     { label: subject.name, href: libraryUrl({ subject: subject.id }) },
     { label: topic.name },
   ]));
-  const remove = el('button', 'Delete topic', 'danger small'); const removeNote = status(); actions.append(remove);
+  const remove = el('button', 'Delete topic', 'danger small'); const removeNote = status(); if (!topic.global) actions.append(remove);
   remove.onclick = () => guard(remove, removeNote, async () => {
     if (!confirm(`Delete the topic "${topic.name}"? This only works when it has no files, notes, lessons or review history.`)) return;
     await api(`/subjects/${subject.id}/topics/${topic.id}`, { method: 'DELETE' });
@@ -193,7 +212,8 @@ function files(body, { api, subject, topic, params }) {
   const send = el('button', 'Upload', 'primary'); const uploadNote = status();
   const bar = el('div', '', 'toolbar'); bar.append(send, uploadNote);
   const override = el('details'); override.append(el('summary', 'Choose the category myself'), field('Category', category));
-  upload.append(el('h2', 'Add files'), zone, override, bar);
+  const ownOnly = topic.global && !library.global();   // files added beside a global topic are visible only to this account
+  upload.append(el('h2', ownOnly ? 'Add your own files' : 'Add files'), ...(ownOnly ? [el('p', 'Only you can see files you add here. The global files are read-only.', 'muted')] : []), zone, override, bar);
   upload.onsubmit = async event => {
     event.preventDefault();
     await guard(send, uploadNote, async () => {
@@ -230,7 +250,7 @@ function files(body, { api, subject, topic, params }) {
 
   function updateSelection() {
     count.textContent = `${selected.size} selected`; delSelected.disabled = !selected.size;
-    const visible = shown(); selectAll.checked = visible.length > 0 && visible.every(r => selected.has(r.id));
+    const visible = shown().filter(r => !r.is_global); selectAll.checked = visible.length > 0 && visible.every(r => selected.has(r.id));
   }
   async function removeFiles(entries) {
     if (!confirm(`Delete ${entries.length === 1 ? entries[0].filename : entries.length + ' files'} and the extracted text? Lessons that cite a file must be deleted first.`)) return;
@@ -243,7 +263,7 @@ function files(body, { api, subject, topic, params }) {
     await load();
   }
   delSelected.onclick = () => removeFiles(items.filter(r => selected.has(r.id)));
-  selectAll.onchange = () => { for (const r of shown()) selectAll.checked ? selected.add(r.id) : selected.delete(r.id); draw(); };
+  selectAll.onchange = () => { for (const r of shown().filter(r => !r.is_global)) selectAll.checked ? selected.add(r.id) : selected.delete(r.id); draw(); };
 
   function draw() {
     list.replaceChildren();
@@ -251,19 +271,20 @@ function files(body, { api, subject, topic, params }) {
     if (!rows.length) { const li = el('li', items.length ? 'No files match.' : 'This folder is empty. Add files above.', 'empty'); list.append(li); updateSelection(); return; }
     for (const item of rows) {
       const li = el('li');
-      const box = el('input'); box.type = 'checkbox'; box.checked = selected.has(item.id); box.setAttribute('aria-label', `Select ${item.filename}`);
+      const box = el('input'); box.type = 'checkbox'; box.checked = selected.has(item.id); box.setAttribute('aria-label', `Select ${item.filename}`); box.disabled = Boolean(item.is_global);
       box.onchange = () => { box.checked ? selected.add(item.id) : selected.delete(item.id); updateSelection(); };
       const type = el('span', item.filename.split('.').pop().toUpperCase().slice(0, 4), 'filetype'); type.setAttribute('aria-hidden', 'true');
       const text = el('div', '', 'grow');
       const link = el('a', item.filename); link.href = `/resources/${item.id}/download`; link.target = '_blank'; link.rel = 'noopener';
       const tone = item.status === 'extracted' ? 'ok' : item.status === 'failed' ? 'bad' : 'warn';
-      const meta = el('div', '', 'muted'); meta.append(el('span', item.display_status, `chip ${tone}`), ` ${item.page_count || 0} pages · ${size(item.size)}`);
+      const meta = el('div', '', 'muted'); meta.append(el('span', item.display_status, `chip ${tone}`), ...(item.is_global ? [chip('Global')] : []), ` ${item.page_count || 0} pages · ${size(item.size)}`);
       text.append(link, meta);
       if (item.error) text.append(el('div', item.error, 'error'));
       const actions = el('div', '', 'toolbar');
-      if (item.status === 'failed') { const retry = el('button', 'Retry', 'small'); retry.onclick = () => act(retry, `/resources/${item.id}/retry`); actions.append(retry); }
+      if (item.is_global) { /* read-only: an administrator manages it in the global library */ }
+      else if (item.status === 'failed') { const retry = el('button', 'Retry', 'small'); retry.onclick = () => act(retry, `/resources/${item.id}/retry`); actions.append(retry); }
       else if (item.status === 'extracted') { const again = el('button', 'Re-extract', 'small quiet'); again.onclick = () => act(again, `/resources/${item.id}/extract`); actions.append(again); }
-      const del = el('button', 'Delete', 'small danger'); del.onclick = () => removeFiles([item]); actions.append(del);
+      if (!item.is_global) { const del = el('button', 'Delete', 'small danger'); del.onclick = () => removeFiles([item]); actions.append(del); }
       li.append(box, type, text, actions); list.append(li);
     }
     updateSelection();

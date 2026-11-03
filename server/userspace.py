@@ -15,6 +15,9 @@ from pathlib import Path
 current_user = contextvars.ContextVar("current_user", default=None)     # account id, or None outside an account
 
 
+LIBRARY_ID = 0     # the global library is a data account of its own (see library_global.py)
+
+
 def schema_name(user_id):
     return f"u{int(user_id)}"
 
@@ -31,7 +34,7 @@ def as_user(user_id):
 def search_path():
     """The schema the current account's connections use; the shared accounts schema when no account is active."""
     user_id = current_user.get()
-    return schema_name(user_id) if user_id else "public"
+    return schema_name(user_id) if user_id is not None else "public"
 
 
 def upload_base():
@@ -41,7 +44,7 @@ def upload_base():
 def upload_root():
     """Uploaded files of the current account. Outside an account (tests, scripts) this is the shared base folder."""
     user_id = current_user.get()
-    return upload_base() / schema_name(user_id) if user_id else upload_base()
+    return upload_base() / schema_name(user_id) if user_id is not None else upload_base()
 
 
 def submit(executor, function, *args, **kwargs):

@@ -6,6 +6,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
+COPY library_global.py .
 COPY reviews.py .
 COPY exams.py .
 COPY lessons.py .

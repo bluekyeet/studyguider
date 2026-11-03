@@ -110,14 +110,14 @@ try:
         check("session reports the role", client.get("/session", headers=bob).json()["user"]["is_admin"] is False and client.get("/session", headers=admin).json()["user"]["is_admin"] is True)
 
         # ---- everything separated ----
-        check("a new user starts with nothing", client.get("/subjects", headers=bob).json() == [])
+        check("a new user starts with only the read-only global library", [(s["name"], s["global"]) for s in client.get("/subjects", headers=bob).json()] == [("Legacy Physics", True)])
         mine = client.post("/subjects", headers=bob, json={"name": "Bob Chemistry", "level": 2})
-        check("a user can create their own subject (ids are their own)", mine.status_code == 201 and mine.json()["id"] == 1, mine.text)
-        bob_topic = client.post("/subjects/1/topics", headers=bob, json={"name": "Bob Topic"}).json()["id"]
-        check("each account sees only its own subjects", [s["name"] for s in client.get("/subjects", headers=bob).json()] == ["Bob Chemistry"]
+        check("a user can create their own subject (ids are their own)", mine.status_code == 201 and mine.json()["id"] == 2, mine.text)
+        bob_topic = client.post("/subjects/2/topics", headers=bob, json={"name": "Bob Topic"}).json()["id"]
+        check("each account sees the global library and only its own additions", [s["name"] for s in client.get("/subjects", headers=bob).json()] == ["Legacy Physics", "Bob Chemistry"]
               and [s["name"] for s in client.get("/subjects", headers=admin).json()] == ["Legacy Physics"])
-        check("a user cannot reach another account's topic by id", client.get(f"/topics/{topic}/resources", headers=bob).status_code in (404, 200)
-              and client.get(f"/topics/{topic}/resources", headers=bob).json() in ([], {"detail": "Topic not found"}))
+        # The global topic is shared (with the same id here, because the library came from the first account); what stays private is the account's own notes.
+        check("a user cannot read another account's private notes through the shared topic", client.get(f"/topics/{topic}/notes", headers=bob).json() == [])
         upload = client.post(f"/topics/{bob_topic}/resources", headers=bob, files={"file": ("bob.txt", b"bob's own notes about acids", "text/plain")})
         check("a user can upload to their own topic", upload.status_code == 201, upload.text)
         bob_resource = upload.json()["id"]

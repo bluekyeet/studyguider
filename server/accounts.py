@@ -26,6 +26,8 @@ MIN_PASSWORD = 12
 LOCK_AFTER, LOCK_MINUTES, SESSION_DAYS = 5, 15, 30
 AVATAR_SIDE, AVATAR_MAX_BYTES, AVATAR_MAX_PIXELS = 256, 5 * 1024 * 1024, 40_000_000
 ACCOUNT_TABLES = ("users", "sessions")
+# What an administrator may do to the global library by sending `X-Library: global` (the library is a data account of its own, id 0).
+LIBRARY_PATHS = re.compile(r"^/(subjects|standards|resources)(/|$)|^/topics/\d+/(resources|standards|import-papers|search|chunks)(/|$)")
 
 
 def clean_username(value):
@@ -141,7 +143,7 @@ def make_auth(connect_account):
                 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = %s AND s.expires > now()""",
                               (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
 
-    async def authorised(request: Request, authorization: str = Header(default="")):
+    async def authorised(request: Request, authorization: str = Header(default=""), x_library: str = Header(default="")):
         token = authorization[7:] if authorization.startswith("Bearer ") else request.cookies.get("studyguider_session", "")
         if not token:
             raise HTTPException(401, "Authentication required")
@@ -154,6 +156,12 @@ def make_auth(connect_account):
             raise HTTPException(401, "Invalid or expired session")
         # Set here, in the request's own task: the route that runs next (on a worker thread) inherits it.
         userspace.current_user.set(row[0])
+        if x_library.strip().lower() == "global":
+            if not row[2]:
+                raise HTTPException(403, "Only an administrator can edit the global library")
+            if not LIBRARY_PATHS.match(request.url.path):
+                raise HTTPException(403, "That action is not part of the library")
+            userspace.current_user.set(userspace.LIBRARY_ID)
         user = {**user_json(row), "token": token}
         request.state.user = user
         return user

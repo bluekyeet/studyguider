@@ -35,7 +35,7 @@ async function studyTopics(card, api) {
     box.append(el('h3', `Level ${subject.level} · ${subject.name}`));
     for (const topic of topics) {
       const label = el('label', '', 'check'); const check = el('input'); check.type = 'checkbox'; check.checked = active.has(String(topic.id));
-      label.append(check, el('span', topic.name)); box.append(label);
+      label.append(check, el('span', topic.name), ...(topic.global ? [el('span', 'Global', 'chip')] : [])); box.append(label);
       check.onchange = async () => {
         const enabled = check.checked; check.disabled = true; note.textContent = 'Saving…'; note.className = 'muted';
         try {

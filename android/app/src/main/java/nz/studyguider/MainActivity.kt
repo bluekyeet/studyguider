@@ -1470,7 +1470,7 @@ private fun ResourceHub(
                     }
                     Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container, modifier = Modifier.fillMaxWidth().clickable(enabled = !busy, onClickLabel = "Open ${subject.getString("name")}") { onOpenSubject(subject.getLong("id"), subject.getString("name")) }) {
                         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("NCEA LEVEL ${subject.getInt("level")}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                            Text("NCEA LEVEL ${subject.getInt("level")}" + if (subject.optBoolean("global")) " · GLOBAL" else "", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text(subject.getString("name"), style = MaterialTheme.typography.headlineSmall)
                                 Text("↗", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
@@ -1479,7 +1479,7 @@ private fun ResourceHub(
                         }
                     }
                 }
-                OutlinedButton(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), onClick = onToggleAddSubject) { Text(if (showAddSubject) "Cancel" else "+  Add a subject") }
+                OutlinedButton(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), onClick = onToggleAddSubject) { Text(if (showAddSubject) "Cancel" else "+  Add my own subject") }
                 if (showAddSubject) StudyCard(tone = CardTone.Low) {
                     OutlinedTextField(subjectName, onSubjectName, label = { Text("New subject") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(subjectLevel, onSubjectLevel, label = { Text("NCEA level (1–3)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -1494,12 +1494,12 @@ private fun ResourceHub(
                     Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container, modifier = Modifier.fillMaxWidth().clickable(enabled = !busy, onClickLabel = "Open ${topic.getString("name")}") { onOpenTopic(topic.getLong("id"), topic.getString("name")) }) {
                         Column(Modifier.padding(16.dp)) {
                             Text(topic.getString("name"), style = MaterialTheme.typography.titleMedium)
-                            Text("View resources →", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                            Text(if (topic.optBoolean("global")) "Global · View resources →" else "View resources →", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                         }
                     }
                 }
                 StudyCard(tone = CardTone.Low) {
-                    OutlinedTextField(topicName, onTopicName, label = { Text("New topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(topicName, onTopicName, label = { Text("New topic of my own") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Button(enabled = !busy && topicName.isNotBlank(), onClick = onAddTopic, shape = RoundedCornerShape(50)) { Text("Add topic") }
                 }
             }
@@ -1510,7 +1510,8 @@ private fun ResourceHub(
                     SourceScreen(base, token, topicSourceId)
                 }
                 if (refreshError.isNotEmpty()) Text(refreshError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                TopicFiles(resources, busy, uploadNotice, onUpload, onRefresh, onExtract, onOpenPdf, onDelete)
+                TopicFiles(resources, busy, uploadNotice, onUpload, onRefresh, onExtract, onOpenPdf, onDelete,
+                    ownOnly = (0 until topics.length()).map { topics.getJSONObject(it) }.firstOrNull { it.optLong("id") == selectedTopic }?.optBoolean("global") == true)
             }
         } } }
     }

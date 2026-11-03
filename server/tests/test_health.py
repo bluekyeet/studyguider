@@ -32,12 +32,12 @@ class HealthTest(unittest.TestCase):
 
     def test_subject_deletion_locks_before_checking(self):
         db = MagicMock()
-        db.execute.return_value.fetchone.return_value = (1,)
+        db.execute.return_value.fetchone.side_effect = [(1,), (False,), (1,)]     # found and locked, not a global subject, deleted
         with patch("app.connect") as connect:
             connect.return_value.__enter__.return_value = db
             delete_subject(1)
         self.assertIn("FOR UPDATE", db.execute.call_args_list[0].args[0])
-        self.assertIn("NOT EXISTS", db.execute.call_args_list[1].args[0])
+        self.assertIn("NOT EXISTS", db.execute.call_args_list[2].args[0])
 
     def test_upload_collision_preserves_existing_file(self):
         resource_id = uuid.uuid4()

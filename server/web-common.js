@@ -57,6 +57,15 @@ const isTableRule = line => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.
 const cells = line => line.trim().replace(/^\||\|$/g, '').split('|').map(cell => cell.trim());
 const LIST = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 
+// The global library: everyone reads it, only an administrator edits it. An administrator chooses on the Library page whether they
+// are working in their own library or in the global one; while it is global, library requests carry X-Library: global.
+export const library = {
+  scope: false,   // true while the Library page is the one showing
+  global() { try { return Boolean(session.user?.is_admin && this.scope && localStorage.getItem('library') === 'global'); } catch { return false; } },
+  set(on) { try { localStorage.setItem('library', on ? 'global' : 'mine'); } catch { /* the choice just is not remembered */ } },
+};
+export const LIBRARY_PATHS = /^\/(subjects|standards|resources)(\/|$)|^\/topics\/\d+\/(resources|standards|import-papers|search|chunks)(\/|$)/;
+
 // Presentation only: source snapshots and saved questions keep their citations.
 export function readable(text) {
   return String(text || '')

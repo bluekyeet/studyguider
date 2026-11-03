@@ -1,5 +1,6 @@
 """Persistent AI lesson drafts. Neither generation nor review verifies accuracy."""
 import userspace
+import library_global
 import json
 import queue
 import re
@@ -124,6 +125,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             row = db.execute("""INSERT INTO courses (topic_id, goal) VALUES (%s, %s)
                 ON CONFLICT (topic_id) DO UPDATE SET active = true, goal = EXCLUDED.goal
                 RETURNING id, topic_id, goal""", (body.topic_id, body.goal)).fetchone()
+            library_global.sync_topic(db, body.topic_id)    # a global topic's files come with it
         return {"id": row[0], "topic_id": row[1], "goal": row[2]}
 
     @router.delete("/courses/{course_id}")

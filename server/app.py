@@ -42,6 +42,7 @@ from pages import page_router, safe_dpi
 import ocr
 import logging
 import userspace
+import library_global
 from accounts import accounts_router, create_account_tables, make_auth, migrate_legacy, move_legacy_files
 
 
@@ -122,6 +123,11 @@ def init_schema(db):
     create_rapid_tables(db)
     create_revision_tables(db)
     create_scheduler_tables(db)
+    # The global library (library_global.py): rows an account holds as read-only copies carry the library's id.
+    for table in ("subjects", "topics", "exam_questions"):
+        db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
+        db.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {table}_global_idx ON {table}(global_id) WHERE global_id IS NOT NULL")
+    db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT false")
 
 
 def provision_account(user_id):
@@ -152,10 +158,23 @@ async def lifespan(app):
         move_legacy_files(userspace.upload_base())
     except OSError:
         log.exception("Could not move the existing uploads into the first account's folder")
+    provision_account(library_global.LIBRARY)
     for user_id in all_user_ids():
         provision_account(user_id)
-    stop, thread = start_scheduler(connect, scheduled_generate, prepare_reviews=prepare_daily_reviews, user_ids=all_user_ids)
-    extraction_stop, extraction_thread = start_worker(connect, extract_resource, user_ids=all_user_ids)
+    try:
+        with connect_account() as db:
+            first_admin = db.execute("SELECT min(id) FROM users WHERE is_admin").fetchone()[0]
+        if first_admin and library_global.adopt_library(connect_account, first_admin):
+            log.warning("The first administrator's library is now the global library")
+    except Exception:
+        log.exception("Could not move the administrator's library into the global library")
+
+    def tick():
+        library_global.sync_active(connect)     # new global subjects, topics and files reach each account
+        prepare_daily_reviews()
+    stop, thread = start_scheduler(connect, scheduled_generate, prepare_reviews=tick, user_ids=all_user_ids)
+    # The global library's own files are read like any account's.
+    extraction_stop, extraction_thread = start_worker(connect, extract_resource, user_ids=lambda: [library_global.LIBRARY] + all_user_ids())
     try:
         yield
     finally:
@@ -390,6 +409,7 @@ def put_standard(number: int, body: Standard):
 @app.put("/topics/{topic_id}/standards/{number}", dependencies=[Depends(authorised)])
 def link_standard(topic_id: int, number: int):
     with connect() as db:
+        library_global.refuse_if_global(db, "topics", topic_id, "topic")
         row = db.execute("INSERT INTO topic_standards SELECT t.id, s.number FROM topics t CROSS JOIN standards s WHERE t.id = %s AND s.number = %s ON CONFLICT DO NOTHING RETURNING topic_id", (topic_id, number)).fetchone()
         if row is None and not db.execute("SELECT 1 FROM topic_standards WHERE topic_id = %s AND standard_number = %s", (topic_id, number)).fetchone():
             raise HTTPException(404, "Topic or standard not found")
@@ -408,6 +428,7 @@ def topic_standards(topic_id: int):
 @app.delete("/topics/{topic_id}/standards/{number}", dependencies=[Depends(authorised)])
 def unlink_standard(topic_id: int, number: int):
     with connect() as db:
+        library_global.refuse_if_global(db, "topics", topic_id, "topic")
         if not db.execute("DELETE FROM topic_standards WHERE topic_id = %s AND standard_number = %s RETURNING topic_id", (topic_id, number)).fetchone():
             raise HTTPException(404, "Standard link not found")
     return {"status": "ok"}
@@ -438,8 +459,9 @@ def study_module(module_name: str):
 @app.get("/subjects", dependencies=[Depends(authorised)])
 def subjects():
     with connect() as db:
-        rows = db.execute("SELECT id, name, level FROM subjects ORDER BY id").fetchall()
-    return [{"id": row[0], "name": row[1], "level": row[2]} for row in rows]
+        library_global.sync_catalog(db)
+        rows = db.execute("SELECT id, name, level, global_id IS NOT NULL FROM subjects ORDER BY id").fetchall()
+    return [{"id": row[0], "name": row[1], "level": row[2], "global": row[3]} for row in rows]
 
 
 @app.post("/subjects", status_code=201, dependencies=[Depends(authorised)])
@@ -452,6 +474,7 @@ def create_subject(body: Subject):
 @app.put("/subjects/{subject_id}", dependencies=[Depends(authorised)])
 def update_subject(subject_id: int, body: Subject):
     with connect() as db:
+        library_global.refuse_if_global(db, "subjects", subject_id, "subject")
         row = db.execute("UPDATE subjects SET name = %s, level = %s WHERE id = %s RETURNING id", (body.name.strip(), body.level, subject_id)).fetchone()
         if row is None:
             raise HTTPException(404, "Subject not found")
@@ -464,6 +487,7 @@ def delete_subject(subject_id: int):
         # Lock before checking: concurrent topic inserts take a conflicting FK lock.
         if not db.execute("SELECT 1 FROM subjects WHERE id = %s FOR UPDATE", (subject_id,)).fetchone():
             raise HTTPException(404, "Subject not found")
+        library_global.refuse_if_global(db, "subjects", subject_id, "subject")
         row = db.execute("DELETE FROM subjects WHERE id = %s AND NOT EXISTS (SELECT 1 FROM topics WHERE subject_id = %s) RETURNING id", (subject_id, subject_id)).fetchone()
         if row is None:
             raise HTTPException(409, "Delete topics before deleting this subject")
@@ -475,8 +499,8 @@ def topics(subject_id: int):
     with connect() as db:
         if not db.execute("SELECT 1 FROM subjects WHERE id = %s", (subject_id,)).fetchone():
             raise HTTPException(404, "Subject not found")
-        rows = db.execute("SELECT id, name, mastery, status FROM topics WHERE subject_id = %s ORDER BY position, id", (subject_id,)).fetchall()
-    return [{"id": row[0], "name": row[1], "mastery": row[2], "status": row[3]} for row in rows]
+        rows = db.execute("SELECT id, name, mastery, status, global_id IS NOT NULL FROM topics WHERE subject_id = %s ORDER BY position, id", (subject_id,)).fetchall()
+    return [{"id": row[0], "name": row[1], "mastery": row[2], "status": row[3], "global": row[4]} for row in rows]
 
 
 @app.post("/subjects/{subject_id}/topics", status_code=201, dependencies=[Depends(authorised)])
@@ -491,6 +515,7 @@ def create_topic(subject_id: int, body: Topic):
 @app.put("/subjects/{subject_id}/topics/{topic_id}", dependencies=[Depends(authorised)])
 def update_topic(subject_id: int, topic_id: int, body: Topic):
     with connect() as db:
+        library_global.refuse_if_global(db, "topics", topic_id, "topic")
         row = db.execute("UPDATE topics SET name = %s WHERE id = %s AND subject_id = %s RETURNING id", (body.name.strip(), topic_id, subject_id)).fetchone()
         if row is None:
             raise HTTPException(404, "Topic not found")
@@ -500,6 +525,7 @@ def update_topic(subject_id: int, topic_id: int, body: Topic):
 @app.delete("/subjects/{subject_id}/topics/{topic_id}", dependencies=[Depends(authorised)])
 def delete_topic(subject_id: int, topic_id: int):
     with connect() as db:
+        library_global.refuse_if_global(db, "topics", topic_id, "topic")
         if db.execute("SELECT 1 FROM resources WHERE topic_id = %s", (topic_id,)).fetchone():
             raise HTTPException(409, "Delete resources before deleting this topic")
         if db.execute("SELECT 1 FROM notes WHERE topic_id = %s", (topic_id,)).fetchone():
@@ -762,11 +788,12 @@ def list_resources(topic_id: int):
     with connect() as db:
         if not db.execute("SELECT 1 FROM topics WHERE id = %s", (topic_id,)).fetchone():
             raise HTTPException(404, "Topic not found")
-        rows = db.execute("""SELECT id, filename, size, status, category, page_count, error, sha256
+        library_global.sync_topic(db, topic_id)     # opening a global topic brings its files in
+        rows = db.execute("""SELECT id, filename, size, status, category, page_count, error, sha256, is_global
             FROM resources WHERE topic_id = %s ORDER BY category, filename, id""", (topic_id,)).fetchall()
     return [{"id": str(row[0]), "filename": row[1], "size": row[2], "status": row[3],
              "category": row[4], "page_count": row[5], "error": row[6], "sha256": row[7],
-             "display_status": display_status(row[3])} for row in rows]
+             "display_status": display_status(row[3]), "is_global": row[8]} for row in rows]
 
 
 @app.get("/topics/{topic_id}/chunks", dependencies=[Depends(authorised)])
@@ -1311,6 +1338,7 @@ def delete_resource(resource_id: uuid.UUID):
         row = db.execute("SELECT id FROM resources WHERE id = %s FOR UPDATE", (resource_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Resource not found")
+        library_global.refuse_if_global(db, "resources", resource_id, "file")
         if db.execute("SELECT 1 FROM exam_questions WHERE paper_resource_id = %s OR schedule_resource_id = %s LIMIT 1", (resource_id, resource_id)).fetchone():
             raise HTTPException(409, "Resource is referenced by an exam question")
         if db.execute("SELECT 1 FROM lessons WHERE sources @> %s::jsonb LIMIT 1", (json.dumps([{"resource_id": str(resource_id)}]),)).fetchone():
