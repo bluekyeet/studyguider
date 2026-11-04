@@ -129,10 +129,10 @@ def review_router(connect, authorised, model_reply):
                         (topic_id, item["question"], item["expected_answer"], json.dumps(sources), item["concept"]))
                 db.execute("UPDATE lessons SET review_generated_at = now() WHERE id = %s", (lesson_id,))
         with connect() as db:
-            rows = db.execute("""SELECT id, topic_id, question, due_date, concept, standard_number, mastery
-                FROM review_questions WHERE due_date <= %s ORDER BY due_date, id""", (as_of,)).fetchall()
+            rows = db.execute("""SELECT q.id, q.topic_id, q.question, q.due_date, q.concept, q.standard_number, q.mastery, t.name
+                FROM review_questions q LEFT JOIN topics t ON t.id = q.topic_id WHERE q.due_date <= %s ORDER BY q.due_date, q.id""", (as_of,)).fetchall()
         return [{"id": row[0], "topic_id": row[1], "question": row[2], "due_date": row[3],
-                 "concept": row[4], "standard_number": row[5], "mastery": row[6]} for row in rows]
+                 "concept": row[4], "standard_number": row[5], "mastery": row[6], "topic": row[7]} for row in rows]
 
     @router.get("/study-summary")
     def study_summary():

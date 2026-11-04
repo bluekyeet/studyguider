@@ -92,7 +92,7 @@ fun ReviewScreen(base: String, token: String) {
                 StudyCard(tone = CardTone.Container) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("DUE ${question.getString("due_date")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                        Text("TOPIC ${question.getLong("topic_id")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(question.optString("topic").ifBlank { "Topic ${question.getLong("topic_id")}" }.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     MathText(question.getString("question"), formulaStyle = true)
                     MathField(answer, { answer = it }, label = "Your working", enabled = !busy, minLines = 3, maxLines = 10)

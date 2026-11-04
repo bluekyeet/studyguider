@@ -403,7 +403,7 @@ private fun StudyApp() {
                 Column(Modifier.fillMaxWidth().statusBarsPadding()) {
                     val kicker = when (tab) {
                         1 -> scopeLabel
-                        2 -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else "Daily review"
+                        2 -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else null
                         3 -> null
                         4 -> null
                         5 -> null

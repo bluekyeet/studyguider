@@ -59,9 +59,9 @@ fun StudyNavBar(current: Int, onSelect: (Int) -> Unit) {
                     val item = (size.width - 8.dp.toPx()) / Destination.entries.size
                     drawRoundRect(
                         pillColour,
-                        topLeft = Offset(4.dp.toPx() + position * item + 2.dp.toPx(), 6.dp.toPx()),
-                        size = Size(item - 4.dp.toPx(), size.height - 12.dp.toPx()),
-                        cornerRadius = CornerRadius(size.height / 2),
+                        topLeft = Offset(4.dp.toPx() + position * item + 4.dp.toPx(), 8.dp.toPx()),
+                        size = Size(item - 8.dp.toPx(), size.height - 16.dp.toPx()),
+                        cornerRadius = CornerRadius(22.dp.toPx()),
                     )
                 }
                 .heightIn(min = 64.dp).padding(horizontal = 4.dp, vertical = 6.dp),

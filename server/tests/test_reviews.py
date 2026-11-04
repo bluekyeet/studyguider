@@ -63,7 +63,7 @@ def test_completed_lessons_automatically_get_reviews_once():
                 self.inserted.append(params)
             elif "UPDATE lessons" in sql:
                 self.generated = True
-            elif "FROM review_questions WHERE due_date" in sql:
+            elif "WHERE q.due_date" in sql:
                 return Result([])
             return Result()
 
