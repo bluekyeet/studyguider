@@ -674,56 +674,68 @@ private fun TopicPickerSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Topics you're learning", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-            Text("Tick the topics you want lessons for. They appear on your Lessons page, starting from the basics.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Each topic you switch on gets a lesson on your Lessons page, starting from the basics.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             if (loading && allTopics.isEmpty()) {
                 LoadingBar(Modifier.fillMaxWidth())
                 Text("Loading topics…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            var shownLevel: Int? = null
-            allTopics.sortedWith(compareBy<Pair<String, JSONObject>> { it.second.optInt("subject_level") }.thenBy { it.first.lowercase() })
-                .groupBy { Triple(it.second.optInt("subject_level"), it.second.optLong("subject_id"), it.first) }.forEach { (group, entries) ->
-                val (level, _, subject) = group
-                if (shownLevel != level) {
-                    Text("Level $level", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                    shownLevel = level
-                }
-                val list = entries.map { it.second }
-                Text(subject, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
-                list.forEach { topic ->
-                    val id = topic.getLong("id")
-                    val on = id in enrolledTopicIds
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (on) colours.containerLow else colours.container)
-                            .clickable(enabled = busyTopic == null) {
-                                scope.launch {
-                                    busyTopic = id; error = ""
-                                    try {
-                                        if (on) {
-                                            // Removing a course stops it appearing; lessons stay saved on the server.
-                                            val list2 = JSONArray(request(base, "/courses", token))
-                                            for (i in 0 until list2.length()) {
-                                                val c = list2.getJSONObject(i)
-                                                if (c.getLong("topic_id") == id) {
-                                                    request(base, "/courses/${c.getLong("id")}", token, JSONObject(), "DELETE")
-                                                    break
-                                                }
-                                            }
-                                        } else request(base, "/courses", token, JSONObject().put("topic_id", id))
-                                        enrolledTopicIds = loadCourses()
-                                        onChanged()
-                                    } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                                        error = "Could not save: ${e.message ?: "request failed"}"
-                                    } finally { busyTopic = null }
-                                }
+            suspend fun toggle(id: Long, on: Boolean) {
+                busyTopic = id; error = ""
+                try {
+                    if (on) {
+                        // Removing a course stops it appearing; lessons stay saved on the server.
+                        val list2 = JSONArray(request(base, "/courses", token))
+                        for (i in 0 until list2.length()) {
+                            val c = list2.getJSONObject(i)
+                            if (c.getLong("topic_id") == id) {
+                                request(base, "/courses/${c.getLong("id")}", token, JSONObject(), "DELETE")
+                                break
                             }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text(topic.optString("name"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                        if (busyTopic == id) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else Text(if (on) "✓ Learning" else "Add", style = MaterialTheme.typography.labelMedium, color = if (on) colours.teal else MaterialTheme.colorScheme.primary)
+                        }
+                    } else request(base, "/courses", token, JSONObject().put("topic_id", id))
+                    enrolledTopicIds = loadCourses()
+                    onChanged()
+                } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                    error = "Could not save: ${e.message ?: "request failed"}"
+                } finally { busyTopic = null }
+            }
+            // Topics being learned are listed; the rest sit in a dropdown so many topics take little room.
+            val ordered = allTopics.sortedWith(compareBy<Pair<String, JSONObject>> { it.second.optInt("subject_level") }.thenBy { it.first.lowercase() }.thenBy { it.second.optString("name").lowercase() })
+            val learning = ordered.filter { it.second.getLong("id") in enrolledTopicIds }
+            val available = ordered.filter { it.second.getLong("id") !in enrolledTopicIds }
+            learning.forEach { (subject, topic) ->
+                val id = topic.getLong("id")
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(colours.containerLow).padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(topic.optString("name"), style = MaterialTheme.typography.titleSmall)
+                        Text("Level ${topic.optInt("subject_level")} · $subject${if (topic.optBoolean("global")) " · Global" else ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (busyTopic == id) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else TextButton(enabled = busyTopic == null, onClick = { scope.launch { toggle(id, true) } }) { Text("Switch off", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+            if (learning.isEmpty() && !loading && allTopics.isNotEmpty()) Text("No topics yet. Add one below to get a lesson each night.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (allTopics.isNotEmpty()) {
+                var open by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedButton(enabled = busyTopic == null && available.isNotEmpty(), onClick = { open = true }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(if (available.isEmpty()) "Every topic is switched on" else "Add a topic  ▾")
+                    }
+                    DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.heightIn(max = 360.dp)) {
+                        var shownSubject: String? = null
+                        available.forEach { (subject, topic) ->
+                            val heading = "Level ${topic.optInt("subject_level")} · $subject"
+                            if (shownSubject != heading) {
+                                Text(heading, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                                shownSubject = heading
+                            }
+                            DropdownMenuItem(text = { Text(topic.optString("name") + if (topic.optBoolean("global")) "  ·  Global" else "") }, onClick = { open = false; scope.launch { toggle(topic.getLong("id"), false) } })
+                        }
                     }
                 }
             }

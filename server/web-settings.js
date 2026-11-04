@@ -29,28 +29,56 @@ async function studyTopics(card, api) {
   const active = new Map(courses.map(course => [String(course.topic_id), course.id]));
   const groups = await Promise.all(subjects.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
     .map(async subject => [subject, await api(`/subjects/${subject.id}/topics`)]));
-  const box = el('div', '', 'switch-list');
-  for (const [subject, topics] of groups) {
-    if (!topics.length) continue;
-    box.append(el('h3', `Level ${subject.level} · ${subject.name}`));
-    for (const topic of topics) {
-      const label = el('label', '', 'check'); const check = el('input'); check.type = 'checkbox'; check.checked = active.has(String(topic.id));
-      label.append(check, el('span', topic.name), ...(topic.global ? [el('span', 'Global', 'chip')] : [])); box.append(label);
-      check.onchange = async () => {
-        const enabled = check.checked; check.disabled = true; note.textContent = 'Saving…'; note.className = 'muted';
-        try {
-          if (enabled) active.set(String(topic.id), (await api('/courses', { method: 'POST', ...json({ topic_id: topic.id }) })).id);
-          else { await api(`/courses/${active.get(String(topic.id))}`, { method: 'DELETE' }); active.delete(String(topic.id)); }
-          note.textContent = 'Saved';
-        } catch (error) { check.checked = !enabled; note.textContent = error.message; note.className = 'error'; }
-        finally { check.disabled = false; }
-      };
-    }
-  }
-  if (!box.children.length) {
+  const topicsById = new Map();
+  for (const [subject, topics] of groups) for (const topic of topics) topicsById.set(String(topic.id), { topic, subject });
+  if (!topicsById.size) {
     const empty = el('p', '', 'empty'); empty.append('Add a subject and topic in ');
     const link = el('a', 'Library'); link.href = '#library'; empty.append(link, ' first.'); card.append(empty);
-  } else card.append(box);
+    card.append(note); return;
+  }
+  // Topics being learned are listed compactly; the ones not yet switched on sit in a dropdown, so many topics take little room.
+  const list = el('div', '', 'switch-list'); const picker = el('div', '', 'topic-add');
+  const select = el('select'); select.setAttribute('aria-label', 'Add a topic to learn');
+  const add = el('button', 'Add topic', 'primary'); add.type = 'button';
+  picker.append(select, add);
+  const say = (text, bad) => { note.textContent = text; note.className = bad ? 'error' : 'muted'; };
+  const draw = () => {
+    list.replaceChildren();
+    const shown = [...topicsById].filter(([id]) => active.has(id));
+    if (!shown.length) list.append(el('p', 'No topics yet. Add one below to get a lesson each night.', 'muted'));
+    for (const [id, { topic, subject }] of shown) {
+      const row = el('div', '', 'topic-row'); const name = el('span', topic.name, 'topic-name');
+      const meta = el('span', `Level ${subject.level} · ${subject.name}`, 'muted topic-meta');
+      const text = el('div', '', 'topic-text'); text.append(name, meta);
+      const remove = el('button', 'Switch off', 'danger'); remove.type = 'button'; remove.setAttribute('aria-label', `Stop learning ${topic.name}`);
+      row.append(text, ...(topic.global ? [el('span', 'Global', 'chip')] : []), remove); list.append(row);
+      remove.onclick = async () => {
+        remove.disabled = true; say('Saving…');
+        try { await api(`/courses/${active.get(id)}`, { method: 'DELETE' }); active.delete(id); say('Saved'); draw(); }
+        catch (error) { say(error.message, true); remove.disabled = false; }
+      };
+    }
+    select.replaceChildren(); let any = false;
+    for (const [subject, topics] of groups) {
+      const free = topics.filter(topic => !active.has(String(topic.id)));
+      if (!free.length) continue;
+      any = true;
+      const group = el('optgroup'); group.label = `Level ${subject.level} · ${subject.name}`;
+      for (const topic of free) { const option = el('option', topic.name + (topic.global ? ' (global)' : '')); option.value = String(topic.id); group.append(option); }
+      select.append(group);
+    }
+    if (!any) { const done = el('option', 'Every topic is switched on'); done.value = ''; select.append(done); }
+    select.disabled = add.disabled = !any;
+  };
+  add.onclick = async () => {
+    const id = select.value; if (!id) return;
+    add.disabled = select.disabled = true; say('Saving…');
+    try { active.set(id, (await api('/courses', { method: 'POST', ...json({ topic_id: Number(id) }) })).id); say('Saved'); }
+    catch (error) { say(error.message, true); }
+    draw();
+  };
+  draw();
+  card.append(list, picker);
   card.append(note);
 }
 
