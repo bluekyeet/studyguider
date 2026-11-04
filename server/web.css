@@ -128,7 +128,7 @@ h1.as-h2{font-size:22px;line-height:28px;letter-spacing:0;font-weight:600}
 details{margin:12px 0}summary{cursor:pointer;padding:8px 0;font-weight:500}
 .math-content{overflow-wrap:anywhere;max-width:68ch}
 .math-content p{white-space:pre-wrap}
-.katex-display{overflow-x:auto;overflow-y:hidden}
+.katex-display{overflow-x:auto;overflow-y:hidden;padding:.35em 0}
 pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:var(--radius-sm);overflow-wrap:anywhere}
 
 /* buttons and chips keep their natural size inside stacked cards */
@@ -212,6 +212,7 @@ pre{white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:
 .math-content code{font-family:var(--mono);background:var(--surface-3);padding:.1em .35em;border-radius:6px;font-size:.9em}
 .math-content pre code{background:none;padding:0}
 .math-content .math-display{display:block;margin:1em 0;padding:14px 20px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow-x:auto;overflow-y:hidden}
+.math-content .math-display .katex-display{margin:0}
 .table-scroll{overflow-x:auto;margin:.8em 0}
 .math-content table{border-collapse:collapse;min-width:50%}
 .math-content th,.math-content td{border:1px solid var(--line-strong);padding:6px 12px;text-align:left}

@@ -31,9 +31,13 @@ fun withoutSourceMarkers(text: String): String {
     val tagged = text.replace(Regex("[ \\t]*[\\[(](?:`?$uuid`?|S\\d+)\\s*[,;]\\s*[a-z]+(?:_[a-z]+)+\\s*[\\])]", RegexOption.IGNORE_CASE), "")
     val citationsRemoved = tagged.replace(Regex("[ \\t]*[\\[(]`?$uuid`?(?:\\s*[,;]\\s*(?:`?$uuid`?|pp?\\.?\\s*\\d+(?:[–-]\\d+)?))*\\s*[\\])]", RegexOption.IGNORE_CASE), "")
         .replace(Regex("`?$uuid`?", RegexOption.IGNORE_CASE), "")
+    // A citation that names the file instead of its id: "(Phy_91170_Waves.pdf, p. 6)".
+    val extension = "(?:pdf|pptx?|docx?|xlsx?|png|jpe?g|txt)"
+    val page = "(?:\\s*[,;]\\s*(?:pp?\\.|pages?)?\\s*\\d+(?:\\s*[-–,]\\s*\\d+)*)?"
+    val fileCitation = Regex("[ \\t]*[(\\[]\\s*[^()\\[\\]\\n]*?\\.$extension\\b$page(?:\\s*;\\s*[^()\\[\\]\\n]*?\\.$extension\\b$page)*\\s*[)\\]]", RegexOption.IGNORE_CASE)
     // A citation whose id was removed on its own leaves only its page behind: "(, p. 1)".
     val pagesOnly = Regex("[ \\t]*[(\\[]\\s*(?:,?\\s*(?:pp?\\.|pages?)\\s*\\d+(?:\\s*[-–,]\\s*\\d+)*\\s*;?\\s*)+[)\\]]", RegexOption.IGNORE_CASE)
-    return citationsRemoved.replace(pagesOnly, "").replace(
+    return citationsRemoved.replace(fileCitation, "").replace(pagesOnly, "").replace(
     Regex("[ \\t]*[\\[(]S\\d+(?:\\s*(?:,|;)?\\s*(?:pp?\\.?\\s*\\d+(?:[–-]\\d+)?|S\\d+))*\\s*[\\])]", RegexOption.IGNORE_CASE),
     "",
     )

@@ -55,8 +55,29 @@ def pair_files(directory):
     return pairs, ignored
 
 
+def page_tables(page):
+    """[(bbox, markdown)] for the ruled tables of plain text on a page (a table of bond energies, a data table). A table whose
+    cells hold several lines is a drawing of molecules or labels, not data, and is left to the figure handling."""
+    found = []
+    try:
+        tables = page.find_tables().tables
+    except Exception:
+        return found
+    for table in tables:
+        rows = [[(cell or "").strip() for cell in row] for row in table.extract()]
+        flat = [cell for row in rows for cell in row]
+        if len(rows) < 2 or len(rows[0]) < 2 or any("\n" in cell for cell in flat):
+            continue
+        if not all(rows[0]) or sum(1 for cell in flat if cell) < len(flat) * .4:
+            continue
+        line = lambda row: "| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |"
+        found.append((list(table.bbox), "\n".join([line(rows[0]), line(["---"] * len(rows[0]))] + [line(row) for row in rows[1:]])))
+    return found
+
+
 def page_lines(page, ocr=False):
-    """Keep physical lines and coordinates; exclude running headers and footer."""
+    """Keep physical lines and coordinates; exclude running headers and footer. Ruled tables of plain text become one
+    Markdown table in the line where they start."""
     result = []
     textpage = None
     if ocr and not page.get_text().strip():
@@ -74,9 +95,17 @@ def page_lines(page, ocr=False):
                 continue
             if text in {"USE ONLY", "ASSESSOR'S", "ASSESSOR’S", "DO NOT WRITE IN THIS AREA"}:
                 continue
-            if re.fullmatch(r"\d+", text) or re.match(r"(?:Chemistry|Physics|Mathematics) 9\d{4}", text):
+            # A printed page number sits in the top or bottom margin; a number inside a table is data.
+            if (re.fullmatch(r"\d+", text) and (box[1] < 50 or box[3] > page.rect.height - 50)) or re.match(r"(?:Chemistry|Physics|Mathematics) 9\d{4}", text):
                 continue
             result.append({"text": text, "bbox": list(box)})
+    for bbox, markdown in page_tables(page):
+        area = fitz.Rect(bbox)
+        inside = [i for i, line in enumerate(result) if (fitz.Rect(line["bbox"]) & area).get_area() >= fitz.Rect(line["bbox"]).get_area() * .8]
+        if inside:
+            first = inside[0]
+            result[first] = {"text": markdown, "bbox": bbox}
+            result = [line for i, line in enumerate(result) if i not in inside[1:]]
     return result
 
 
@@ -200,7 +229,10 @@ def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
             q["diagram_regions"] = []
             for number in q["pages"]:
                 page = paper[number - 1]
+                tables = [fitz.Rect(bbox) + (-10, -10, 10, 10) for bbox, _ in page_tables(page)]
                 regions = [fitz.Rect(image["bbox"]) for image in page.get_image_info()] + drawing_regions(page)
+                # The ruling of a table that was read as a table is not a figure.
+                regions = [r for r in regions if not any((r & t).get_area() >= r.get_area() * .6 for t in tables)]
                 for region in regions:
                     if region.width > 45 and region.height > 35 and region.get_area() < page.rect.get_area() * .7:
                         box = [max(0, region.x0 - 8), max(0, region.y0 - 8), min(page.rect.width, region.x1 + 8), min(page.rect.height, region.y1 + 8)]

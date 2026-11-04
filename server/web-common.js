@@ -22,31 +22,45 @@ function renderMath(source, display) {
   return holder;
 }
 
-// **bold**, *italic*, `code`, [text](https://link) inside a run of non-maths text.
-const INLINE = /(\*\*|__)(?=\S)([\s\S]+?)(?<=\S)\1|(\*|_)(?=\S)([^*_]+?)(?<=\S)\3|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
-function markdown(text, parent) {
+// **bold**, *italic*, `code`, [text](https://link). Maths is swapped for a placeholder first, so emphasis may wrap a formula
+// ("**Wavelength ($\lambda$):**") and underscores or asterisks inside a formula are never read as Markdown.
+// An underscore only marks emphasis at a word edge, so file names like Phy_91170_Waves.pdf stay as written.
+const INLINE = /(\*\*|__)(?=\S)([\s\S]+?)(?<=\S)\1|\*(?=\S)([^*]+?)(?<=\S)\*|(?<![A-Za-z0-9])_(?=\S)([^_]+?)(?<=\S)_(?![A-Za-z0-9])|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+const HOLD = /(\d+)/g;
+
+// Plain text with any held formulae put back as drawn maths.
+function plain(text, parent, maths) {
   let index = 0;
-  for (const match of text.matchAll(INLINE)) {
+  for (const match of text.matchAll(HOLD)) {
     if (match.index > index) parent.append(document.createTextNode(text.slice(index, match.index)));
-    if (match[1]) parent.append(withInline(el('strong'), match[2]));
-    else if (match[3]) parent.append(withInline(el('em'), match[4]));
-    else if (match[5] !== undefined) parent.append(el('code', match[5]));
-    else { const a = el('a'); a.href = match[7]; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.append(withInline(el('span'), match[6])); parent.append(a); }
+    parent.append(renderMath(...maths[Number(match[1])]));
     index = match.index + match[0].length;
   }
   if (index < text.length) parent.append(document.createTextNode(text.slice(index)));
+}
+
+function markdown(text, parent, maths) {
+  let index = 0;
+  for (const match of text.matchAll(INLINE)) {
+    if (match.index > index) plain(text.slice(index, match.index), parent, maths);
+    if (match[1]) markdown(match[2], parent.appendChild(el('strong')), maths);
+    else if (match[3] !== undefined) markdown(match[3], parent.appendChild(el('em')), maths);
+    else if (match[4] !== undefined) markdown(match[4], parent.appendChild(el('em')), maths);
+    else if (match[5] !== undefined) parent.append(el('code', match[5].replace(HOLD, (_, n) => { const [source, display] = maths[Number(n)]; return display ? `$$${source}$$` : `$${source}$`; })));
+    else { const a = parent.appendChild(el('a')); a.href = match[7]; a.target = '_blank'; a.rel = 'noopener noreferrer'; markdown(match[6], a, maths); }
+    index = match.index + match[0].length;
+  }
+  if (index < text.length) plain(text.slice(index), parent, maths);
   return parent;
 }
 
-// Maths is cut out first so underscores and asterisks inside formulae are never read as Markdown.
 function withInline(parent, text) {
-  let index = 0;
-  for (const match of text.matchAll(/\$\$([\s\S]+?)\$\$|\$([^$\n]+)\$/g)) {
-    markdown(text.slice(index, match.index), parent);
-    parent.append(renderMath(match[1] ?? match[2], match[1] !== undefined));
-    index = match.index + match[0].length;
-  }
-  return markdown(text.slice(index), parent);
+  const maths = [];
+  const held = String(text).replace(/\$\$([\s\S]+?)\$\$|\$([^$\n]+)\$/g, (_, block, inline) => {
+    maths.push([block ?? inline, block !== undefined]);
+    return `${maths.length - 1}`;
+  });
+  return markdown(held, parent, maths);
 }
 
 // One line of text with its $...$ maths drawn, for titles and labels (mathText makes whole blocks).
@@ -71,6 +85,8 @@ export function readable(text) {
   return String(text || '')
     .replace(/[ \t]*[\[(](?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|S\d+)\s*[,;]\s*[a-z]+(?:_[a-z]+)+\s*[\])]/gi, '')
     .replace(/\[?\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b\]?/gi, '')
+    // A citation that names the file instead of its id: "(Phy_91170_Waves.pdf, p. 6)" or "[notes.pdf, pp. 2-3; slides.pptx]".
+    .replace(/[ \t]*[(\[]\s*[^()\[\]\n]*?\.(?:pdf|pptx?|docx?|xlsx?|png|jpe?g|txt)\b(?:\s*[,;]\s*(?:pp?\.|pages?)?\s*\d+(?:\s*[-–,]\s*\d+)*)?(?:\s*;\s*[^()\[\]\n]*?\.(?:pdf|pptx?|docx?|xlsx?|png|jpe?g|txt)\b(?:\s*[,;]\s*(?:pp?\.|pages?)?\s*\d+(?:\s*[-–,]\s*\d+)*)?)*\s*[)\]]/gi, '')
     .replace(/\[S\d+(?:\s*[,;]\s*S?\d+)*\]/g, '')
     .replace(/\bS\d+\b/g, '')
     // A citation whose source id was removed leaves only its page behind: "(, p. 1)" or "(, p. 1;, p. 3)".

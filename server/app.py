@@ -169,7 +169,24 @@ async def lifespan(app):
     except Exception:
         log.exception("Could not move the administrator's library into the global library")
 
+    def reread_papers():
+        """Papers read by an older parser are read again (the library first, so accounts pick the better copy up when they sync)."""
+        import paper_import
+        for account in [library_global.LIBRARY] + all_user_ids():
+            with userspace.as_user(account):
+                with connect() as db:
+                    topics = [row[0] for row in db.execute("""SELECT DISTINCT r.topic_id FROM resources r JOIN paper_import_runs p ON p.paper_id = r.id
+                        WHERE p.parser_version < %s AND NOT r.is_global""", (paper_import.PARSER_VERSION,)).fetchall()]
+                for topic_id in topics:
+                    if any(r.get("status") == "imported" for r in paper_import.import_topic_papers(connect, topic_id) or []):
+                        import mathtext
+                        mathtext.kick(connect, model_reply_vision, topic_id)    # equations in the re-read wording are restored again
+
     def tick():
+        try:
+            reread_papers()
+        except Exception:
+            log.exception("Could not re-read papers with the newer parser")
         library_global.sync_active(connect)     # new global subjects, topics and files reach each account
         prepare_daily_reviews()
     stop, thread = start_scheduler(connect, scheduled_generate, prepare_reviews=tick, user_ids=all_user_ids)
