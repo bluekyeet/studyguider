@@ -9,9 +9,10 @@ const BOARDS = [['networth', 'Net worth'], ['questions', 'Questions'], ['lessons
 const num = n => Number(n).toLocaleString('en-NZ');
 const plural = (n, word) => `${num(n)} ${word}${n === 1 ? '' : 's'}`;
 
-export const avatarUrl = (outfit = {}, skin = '') => {
+export const avatarUrl = (outfit = {}, skin = '', build = '') => {
   const query = new URLSearchParams(Object.entries(outfit || {}).filter(([, id]) => id));
   if (skin) query.set('skin', skin);
+  if (build) query.set('build', build);
   return `/game/art/avatar.svg?${query}`;
 };
 const itemUrl = (id, skin) => `/game/art/item/${encodeURIComponent(id)}.svg${skin ? `?skin=${encodeURIComponent(skin)}` : ''}`;
@@ -63,11 +64,29 @@ export async function renderGame(container, api, params) {
     catch (error) { if (alive()) fail(error); return null; }
   };
   const apply = state => { if (state) { me = state; draw(); } };
+  // The points figure counts up once when the page opens, then only moves when the balance actually changes.
+  let shownBalance = null;
+  function balanceFigure() {
+    const value = el('span', num(me.balance));
+    const from = shownBalance;
+    shownBalance = me.balance;
+    if (from === null) countUp(value, me.balance, { format: n => num(Math.round(n)) });
+    else if (from !== me.balance) {
+      const begin = performance.now(), duration = 600;
+      const frame = now => {
+        const t = Math.min(1, (now - begin) / duration);
+        value.textContent = num(Math.round(from + (me.balance - from) * (1 - Math.pow(1 - t, 3))));
+        if (t < 1 && value.isConnected) requestAnimationFrame(frame);
+      };
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) { value.textContent = num(from); requestAnimationFrame(frame); }
+    }
+    return value;
+  }
 
   // --- The banner every section shares: who you are, what you have, where to go -----------------------------------------
   function banner() {
     const hero = el('header', '', 'game-hero');
-    const portrait = el('div', '', 'hero-portrait'); portrait.append(picture(avatarUrl(me.outfit, me.skin), 'Your character'));
+    const portrait = el('div', '', 'hero-portrait'); portrait.append(picture(avatarUrl(me.outfit, me.skin, me.build), 'Your character'));
     const middle = el('div', '', 'hero-text');
     middle.append(el('p', 'Rewards', 'eyebrow'), el('h1', 'Your collection'));
     const percent = me.catalog.total ? (100 * me.catalog.owned) / me.catalog.total : 0;
@@ -75,8 +94,7 @@ export async function renderGame(container, api, params) {
     progress.append(el('span', `${num(me.catalog.owned)} of ${num(me.catalog.total)} collected · ${percent.toFixed(1)}%`), bar(me.catalog.owned, me.catalog.total));
     middle.append(progress);
     const figures = el('div', '', 'hero-figures');
-    const points = el('div', '', 'figure main'); const shown = el('b'); shown.append(el('i', '', 'coin-dot'), el('span', num(me.balance)));
-    countUp(shown.lastChild, me.balance, { format: n => num(Math.round(n)) });
+    const points = el('div', '', 'figure main'); const shown = el('b'); shown.append(el('i', '', 'coin-dot'), balanceFigure());
     points.append(el('span', 'Points'), shown);
     const worth = el('div', '', 'figure'); worth.append(el('span', 'Net worth'), el('b', num(me.networth)));
     figures.append(points, worth);
@@ -92,8 +110,14 @@ export async function renderGame(container, api, params) {
   function character() {
     const page = el('div', '', 'game-grid');
     const stage = el('section', '', 'card stage');
-    const frame = el('div', '', 'stage-frame'); frame.append(picture(avatarUrl(me.outfit, me.skin), 'Your character'));
+    const frame = el('div', '', 'stage-frame'); frame.append(picture(avatarUrl(me.outfit, me.skin, me.build), 'Your character'));
     stage.append(frame);
+    const builds = el('div', '', 'segmented small builds'); builds.setAttribute('role', 'radiogroup'); builds.setAttribute('aria-label', 'Body');
+    for (const build of me.catalog.builds) {
+      const on = build.id === me.build;
+      const b = button(build.name, on ? 'on' : '', async () => apply(await act('/game/outfit', 'PUT', { build: build.id })));
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(on)); builds.append(b);
+    }
     const skins = el('div', '', 'skins'); skins.setAttribute('role', 'radiogroup'); skins.setAttribute('aria-label', 'Skin tone');
     for (const tone of me.catalog.skins) {
       const b = button('', `skin${tone.id === me.skin ? ' on' : ''}`, async () => apply(await act('/game/outfit', 'PUT', { skin: tone.id })), tone.name);
@@ -107,7 +131,7 @@ export async function renderGame(container, api, params) {
     const privacy = el('label', '', 'switch'); const box = document.createElement('input'); box.type = 'checkbox'; box.checked = me.visible;
     box.onchange = async () => apply(await act('/game/settings', 'PUT', { visible: box.checked }));
     privacy.append(box, el('span', '', 'track'), el('span', 'Show me on leaderboards'));
-    stage.append(el('h3', 'Skin tone'), skins, controls, privacy);
+    stage.append(el('h3', 'Body'), builds, el('h3', 'Skin tone'), skins, controls, privacy);
 
     const wardrobe = el('section', '', 'card wardrobe');
     const head = el('div', '', 'section-head'); head.append(el('h2', 'Wardrobe'), el('span', `${plural(me.owned.length, 'item')} owned`, 'muted'));
@@ -115,7 +139,7 @@ export async function renderGame(container, api, params) {
     const slots = el('div', '', 'slot-strip'); slots.setAttribute('role', 'tablist');
     for (const s of me.catalog.slots) {
       const count = me.catalog.by_slot[s.id].owned;
-      const b = button('', `slot${s.id === slot ? ' on' : ''}${count ? '' : ' empty'}`, () => { slot = s.id; draw(); });
+      const b = button('', `slot${s.id === slot ? ' on' : ''}${count ? '' : ' none'}`, () => { slot = s.id; draw(); });
       b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(s.id === slot));
       b.append(picture(itemUrl(s.icon), ''), el('span', s.name), el('small', String(count)));
       slots.append(b);
@@ -140,7 +164,7 @@ export async function renderGame(container, api, params) {
           const next = shown ? me.showcase.filter(i => i !== item.id) : [...me.showcase, item.id];
           apply(await act('/game/showcase', 'PUT', { items: next }));
         }, shown ? 'Remove from showcase' : 'Add to showcase'));
-        if (item.count > 1) actions.push(button(`♻ +${Math.round(item.value * 0.4)}`, 'small icon', async () => { const r = await act('/game/recycle', 'POST', { item_id: item.id, count: 1 }); if (r) apply(r.state); }, 'Recycle one spare copy'));
+        if (item.count > 1) actions.push(button('♻', 'small icon', async () => { const r = await act('/game/recycle', 'POST', { item_id: item.id, count: 1 }); if (r) apply(r.state); }, `Recycle one spare copy for ${Math.round(item.value * 0.4)} points`));
         grid.append(itemCard(item, me.skin, { actions, worn: isWorn }));
       }
       wardrobe.append(grid);
@@ -294,7 +318,7 @@ export async function renderGame(container, api, params) {
       for (const index of [1, 0, 2]) {
         const row = data.rows[index]; if (!row) continue;
         const spot = button('', `spot place${index + 1}${row.user_id === data.you ? ' you' : ''}`, () => openPlayer(row.user_id));
-        spot.append(picture(avatarUrl(row.outfit, row.skin), ''), el('span', String(row.rank), 'medal'), el('b', row.username), el('span', row.text, 'score'), el('span', '', 'plinth'));
+        spot.append(picture(avatarUrl(row.outfit, row.skin, row.build), ''), el('span', String(row.rank), 'medal'), el('b', row.username), el('span', row.text, 'score'), el('span', '', 'plinth'));
         podium.append(spot);
       }
       body.append(podium);
@@ -308,7 +332,7 @@ export async function renderGame(container, api, params) {
   function boardRow(row, you) {
     const li = el('li');
     const b = button('', `board-row${row.user_id === you ? ' you' : ''}`, () => openPlayer(row.user_id));
-    b.append(el('span', `#${row.rank}`, 'rank'), picture(avatarUrl(row.outfit, row.skin), '', 'mini'), el('span', row.user_id === you ? `${row.username} (you)` : row.username, 'who'), el('b', row.text));
+    b.append(el('span', `#${row.rank}`, 'rank'), picture(avatarUrl(row.outfit, row.skin, row.build), '', 'mini'), el('span', row.user_id === you ? `${row.username} (you)` : row.username, 'who'), el('b', row.text));
     li.append(b);
     return li;
   }
@@ -318,7 +342,7 @@ export async function renderGame(container, api, params) {
       dialog.replaceChildren();
       const close = button('×', 'quiet icon close', () => dialog.close(), 'Close');
       const top = el('div', '', 'player-top');
-      const frame = el('div', '', 'stage-frame small'); frame.append(picture(avatarUrl(p.outfit, p.skin), p.username));
+      const frame = el('div', '', 'stage-frame small'); frame.append(picture(avatarUrl(p.outfit, p.skin, p.build), p.username));
       const facts = el('div', '', 'player-facts');
       facts.append(el('p', 'Player card', 'eyebrow'), el('h2', p.you ? `${p.username} (you)` : p.username));
       const grid = el('div', '', 'fact-grid');

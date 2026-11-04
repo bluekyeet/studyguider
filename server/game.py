@@ -93,6 +93,7 @@ def create_game_tables(db):
         id integer PRIMARY KEY CHECK (id = 1), pulls integer NOT NULL DEFAULT 0,
         since_rare integer NOT NULL DEFAULT 0, since_epic integer NOT NULL DEFAULT 0,
         skin text NOT NULL DEFAULT 'sand', visible boolean NOT NULL DEFAULT true)""")
+    db.execute("ALTER TABLE game_state ADD COLUMN IF NOT EXISTS build text NOT NULL DEFAULT 'masculine'")
     db.execute("""CREATE TABLE IF NOT EXISTS game_ledger (
         id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, kind text NOT NULL, item_id text,
         amount integer NOT NULL, created_at timestamptz NOT NULL DEFAULT now())""")
@@ -111,6 +112,7 @@ def create_public_game_tables(db):
         est_mastery double precision, est_gpa double precision, distinct_items integer NOT NULL DEFAULT 0, total_items integer NOT NULL DEFAULT 0,
         rarest text, outfit jsonb NOT NULL DEFAULT '{}'::jsonb, showcase jsonb NOT NULL DEFAULT '[]'::jsonb,
         skin text NOT NULL DEFAULT 'sand', visible boolean NOT NULL DEFAULT true, updated_at timestamptz NOT NULL DEFAULT now())""")
+    db.execute("ALTER TABLE game_profiles ADD COLUMN IF NOT EXISTS build text NOT NULL DEFAULT 'masculine'")
 
 
 # --- reading an account -------------------------------------------------------------------------------------------------
@@ -161,8 +163,8 @@ def ensure_state(db):
 
 def lock_state(db):
     ensure_state(db)
-    row = db.execute("SELECT pulls, since_rare, since_epic, skin, visible FROM game_state WHERE id = 1 FOR UPDATE").fetchone()
-    return {"pulls": row[0], "since_rare": row[1], "since_epic": row[2], "skin": row[3], "visible": row[4]}
+    row = db.execute("SELECT pulls, since_rare, since_epic, skin, visible, build FROM game_state WHERE id = 1 FOR UPDATE").fetchone()
+    return {"pulls": row[0], "since_rare": row[1], "since_epic": row[2], "skin": row[3], "visible": row[4], "build": row[5]}
 
 
 def owned_counts(db):
@@ -196,15 +198,15 @@ def publish_profile(connect_account, user_id, snap):
     mastery = stats["mastery"]
     with connect_account() as db:
         db.execute("""INSERT INTO game_profiles (user_id, networth, balance, questions, lessons, papers, est_mastery, est_gpa, distinct_items, total_items,
-                rarest, outfit, showcase, skin, visible, updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s, now())
+                rarest, outfit, showcase, skin, visible, build, updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s, now())
             ON CONFLICT (user_id) DO UPDATE SET networth=EXCLUDED.networth, balance=EXCLUDED.balance, questions=EXCLUDED.questions,
                 lessons=EXCLUDED.lessons, papers=EXCLUDED.papers, est_mastery=EXCLUDED.est_mastery, est_gpa=EXCLUDED.est_gpa,
                 distinct_items=EXCLUDED.distinct_items, total_items=EXCLUDED.total_items, rarest=EXCLUDED.rarest, outfit=EXCLUDED.outfit,
-                showcase=EXCLUDED.showcase, skin=EXCLUDED.skin, visible=EXCLUDED.visible, updated_at=now()""",
+                showcase=EXCLUDED.showcase, skin=EXCLUDED.skin, visible=EXCLUDED.visible, build=EXCLUDED.build, updated_at=now()""",
                    (user_id, snap["networth"], snap["balance"], stats["questions"], stats["lessons"], stats["papers"], mastery,
                     gpa_from(mastery) if mastery is not None else None, len(owned), len(items.CATALOG), rarest,
-                    json.dumps(snap["outfit"]), json.dumps(snap["showcase"]), snap["state"]["skin"], snap["state"]["visible"]))
+                    json.dumps(snap["outfit"]), json.dumps(snap["showcase"]), snap["state"]["skin"], snap["state"]["visible"], snap["state"]["build"]))
 
 
 # --- API ----------------------------------------------------------------------------------------------------------------
@@ -226,6 +228,7 @@ class OutfitBody(BaseModel):
     slot: str | None = Field(default=None, max_length=20)
     item_id: str | None = Field(default=None, max_length=80)
     skin: str | None = Field(default=None, max_length=20)
+    build: str | None = Field(default=None, max_length=20)
     clear: bool = False
 
 
@@ -259,12 +262,13 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
                 "grade": grade_name(snap["stats"]["mastery"]), "mastery": round(snap["stats"]["mastery"], 3),
                 "gpa": gpa_from(snap["stats"]["mastery"]), "topics": snap["stats"]["graded_topics"]},
             "owned": sorted((full(i, n) for i, n in owned.items()), key=lambda x: (-x["rarity"], x["slot"], x["name"])),
-            "outfit": snap["outfit"], "showcase": snap["showcase"], "skin": snap["state"]["skin"], "visible": snap["state"]["visible"],
+            "outfit": snap["outfit"], "showcase": snap["showcase"], "skin": snap["state"]["skin"], "build": snap["state"]["build"], "visible": snap["state"]["visible"],
             "pity": {"pulls": snap["state"]["pulls"], "rare_in": RARE_PITY - snap["state"]["since_rare"], "epic_in": EPIC_PITY - snap["state"]["since_epic"]},
             "costs": {"pull": PULL_COST, "ten": TEN_PULL_COST},
             "catalog": {"total": len(items.CATALOG), "owned": len(owned), "by_slot": {s: {"owned": by_slot[s], "total": sum(1 for i in items.CATALOG.values() if i["slot"] == s)} for s in items.SLOTS},
                         "rarities": items.RARITIES, "slots": [{"id": s, "name": items.SLOT_NAMES[s], "worn": s in items.WORN, "icon": f"{s}.{next(iter(items.STYLES[s]))}.teal"} for s in items.SLOTS],
-                        "skins": [{"id": k, "name": v[0], "colour": v[1]} for k, v in items.SKINS.items()]},
+                        "skins": [{"id": k, "name": v[0], "colour": v[1]} for k, v in items.SKINS.items()],
+                        "builds": [{"id": k, "name": v} for k, v in items.BUILDS.items()]},
             "odds": dict(zip(items.RARITIES, items.ODDS)),
             "notice": "Points come from work recorded as correct. Estimated grade and GPA are unofficial estimates, not NZQA results.",
         }
@@ -351,6 +355,10 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
                 if body.skin not in items.SKINS:
                     raise HTTPException(422, "Unknown skin tone")
                 db.execute("UPDATE game_state SET skin = %s WHERE id = 1", (body.skin,))
+            if body.build is not None:
+                if body.build not in items.BUILDS:
+                    raise HTTPException(422, "Unknown body")
+                db.execute("UPDATE game_state SET build = %s WHERE id = 1", (body.build,))
             if body.clear:
                 db.execute("DELETE FROM game_outfit")
             if body.slot is not None:
@@ -393,7 +401,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
         column, label, unit = BOARDS[board]
         extra = f"AND p.{column} IS NOT NULL" if board in ("grade", "gpa") else f"AND p.{column} > 0"
         ranked = f"""SELECT p.user_id, u.username, p.{column}, p.outfit, p.skin, p.visible, p.networth, p.est_mastery, p.est_gpa,
-                RANK() OVER (ORDER BY p.{column} DESC) AS place FROM game_profiles p JOIN users u ON u.id = p.user_id
+                RANK() OVER (ORDER BY p.{column} DESC) AS place, p.build FROM game_profiles p JOIN users u ON u.id = p.user_id
                 WHERE (p.visible OR p.user_id = %s) {extra}"""
         rows = db.execute(f"SELECT * FROM ({ranked}) r ORDER BY place, username LIMIT %s", (viewer, limit)).fetchall()
         mine = db.execute(f"SELECT * FROM ({ranked}) r WHERE user_id = %s", (viewer, viewer)).fetchone()
@@ -414,7 +422,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
                 return {"value": r[2], "text": f"{r[2]:.2f} / 9"}
             return {"value": r[2], "text": f"{r[2]:,}"}
         def row_json(r):
-            return {"rank": r[9], "user_id": r[0], "username": r[1], "outfit": r[3], "skin": r[4], "hidden": not r[5], **value(r)}
+            return {"rank": r[9], "user_id": r[0], "username": r[1], "outfit": r[3], "skin": r[4], "build": r[10], "hidden": not r[5], **value(r)}
         return {"board": board, "label": label, "unit": unit, "you": viewer,
                 "note": "Estimated grade and GPA come from review answers and are unofficial." if board in ("grade", "gpa") else "",
                 "rows": [row_json(r) for r in rows], "mine": row_json(mine) if mine else None}
@@ -426,13 +434,13 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
             current()
         with connect_account() as db:
             row = db.execute("""SELECT u.username, p.networth, p.questions, p.lessons, p.papers, p.est_mastery, p.est_gpa, p.distinct_items, p.total_items,
-                    p.rarest, p.outfit, p.showcase, p.skin, p.visible FROM game_profiles p JOIN users u ON u.id = p.user_id WHERE p.user_id = %s""", (user_id,)).fetchone()
+                    p.rarest, p.outfit, p.showcase, p.skin, p.visible, p.build FROM game_profiles p JOIN users u ON u.id = p.user_id WHERE p.user_id = %s""", (user_id,)).fetchone()
         if not row or (not row[13] and user_id != viewer):
             raise HTTPException(404, "No such player, or they keep their rewards private")
         return {"user_id": user_id, "username": row[0], "networth": row[1], "questions": row[2], "lessons": row[3], "papers": row[4],
                 "estimate": None if row[5] is None else {"grade": grade_name(row[5]), "gpa": row[6]},
                 "collection": {"owned": row[7], "total": row[8], "percent": round(100 * row[7] / row[8], 1) if row[8] else 0},
-                "rarest": full(row[9]) if row[9] in items.CATALOG else None, "outfit": row[10], "skin": row[12],
+                "rarest": full(row[9]) if row[9] in items.CATALOG else None, "outfit": row[10], "skin": row[12], "build": row[14],
                 "showcase": [full(i) for i in row[11] if i in items.CATALOG], "you": user_id == viewer}
 
     # Public and deterministic: the art of catalogue items and of an outfit given in the query. No account data is involved.
@@ -445,7 +453,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
     @router.get("/game/art/avatar.svg", include_in_schema=False)
     def avatar_art(request: Request):
         query = request.query_params
-        return Response(items.avatar_svg(art_outfit(query), query.get("skin", "")), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
+        return Response(items.avatar_svg(art_outfit(query), query.get("skin", ""), build=query.get("build", "")), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
 
     # The same art as PNG for the Android app, which has no SVG renderer. Widths are limited so a request cannot ask for a huge image.
     def png_response(svg, width):
@@ -461,7 +469,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
     @router.get("/game/art/avatar.png", include_in_schema=False)
     def avatar_png(request: Request, w: int = 400):
         query = request.query_params
-        return png_response(items.avatar_svg(art_outfit(query), query.get("skin", "")), w)
+        return png_response(items.avatar_svg(art_outfit(query), query.get("skin", ""), build=query.get("build", "")), w)
 
     return router
 

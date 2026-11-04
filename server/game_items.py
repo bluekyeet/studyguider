@@ -276,25 +276,60 @@ def shade(colour, factor):
 INK = "#2a2338"
 
 
-def body(skin):
+BUILDS = {"masculine": "Masculine", "feminine": "Feminine"}
+DEFAULT_BUILD = "masculine"
+# What a character wears in a slot it has nothing equipped in, so nobody is a bare mannequin: (style, colour) per build.
+STARTER = {
+    "masculine": {"hair": ("short", "brown"), "top": ("tee", "teal"), "bottom": ("shorts", "black"), "shoes": ("sneakers", "white")},
+    "feminine": {"hair": ("long", "brown"), "top": ("tee", "teal"), "bottom": ("skirt", "purple"), "shoes": ("sneakers", "white")},
+}
+IRIS = "#5a3e2b"
+
+
+def eye(x, feminine):
+    """One eye: white, iris, pupil and two highlights; lashes on the feminine build."""
+    lashes = ""
+    if feminine:
+        side = -1 if x < 100 else 1
+        lashes = P(f"M{x + side * 6} 73.5 Q{x + side * 8.5} 72.5 {x + side * 10} 70", "none", f'stroke="{INK}" stroke-width="2" stroke-linecap="round"')
+    return G(E(x, 77, 6.2, 7.2, "#fff", f'stroke="{INK}" stroke-opacity=".25" stroke-width="1"'), C(x + 0.6, 78, 4.6, IRIS), C(x + 0.6, 78, 2.4, INK),
+             C(x + 2.2, 75.6, 1.6, "#fff"), C(x - 1.2, 80.2, 0.8, "#fff"),
+             P(f"M{x - 6.5} 74 Q{x} 68.5 {x + 6.5} 74", "none", f'stroke="{INK}" stroke-width="{2.6 if feminine else 1.8}" stroke-linecap="round"'), lashes)
+
+
+def body(skin, build=None):
     s = SKINS.get(skin, SKINS[DEFAULT_SKIN])[1]
-    o, lit = shade(s, 0.72), shade(s, 1.18)
+    o, lit = shade(s, 0.72), shade(s, 1.16)
+    feminine = build == "feminine"
     line = f'stroke="{o}" stroke-width="2" stroke-linejoin="round"'
+    torso = ("M74 134 Q74 121 87 120 H113 Q126 121 126 134 Q124 156 119 167 Q131 184 131 196 Q131 205 121 205 H79 Q69 205 69 196 Q69 184 81 167 Q76 156 74 134Z"
+             if feminine else "M68 136 Q68 120 86 120 H114 Q132 120 132 136 V194 Q132 204 121 204 H79 Q68 204 68 194Z")
+    arm = 14 if feminine else 16
+    left, right = (56, 130) if feminine else (53, 131)
+    brows = ('M80 64 Q87 59.5 95 63', 'M105 63 Q113 59.5 120 64') if feminine else ('M79 65 Q87 61.5 95 64', 'M105 64 Q113 61.5 121 65')
+    mouth = (P("M92 93 Q100 101 108 93 Q100 96.5 92 93Z", "#d9566b", f'stroke="{shade("#d9566b", 0.7)}" stroke-width="1.2" stroke-linejoin="round"') if feminine
+             else P("M91 93 Q100 101 109 93", "none", f'stroke="{INK}" stroke-width="2.8" stroke-linecap="round"'))
     return G(
-        R(77, 196, 21, 66, s, 9, line), R(102, 196, 21, 66, s, 9, line),                                   # legs
-        R(53, 126, 16, 66, s, 8, line), R(131, 126, 16, 66, s, 8, line),                                   # arms
-        C(61, 195, 8.5, s, line), C(139, 195, 8.5, s, line),                                               # hands
-        P("M70 136 Q70 120 86 120 H114 Q130 120 130 136 V194 Q130 204 120 204 H80 Q70 204 70 194Z", s, line),  # torso
-        R(91, 104, 18, 22, s, 6, line), R(91, 112, 18, 8, o, 3, 'opacity=".35"'),                           # neck and its shadow
-        E(66, 80, 5.5, 9, s, line), E(134, 80, 5.5, 9, s, line),                                           # ears
-        E(100, 78, 34, 37, s, line), E(90, 58, 14, 8, lit, 'opacity=".45"'),                                # head and a highlight
-        P("M80 66 Q88 62 95 66", "none", f'stroke="{o}" stroke-width="2.6" stroke-linecap="round"'),          # brows
-        P("M105 66 Q112 62 120 66", "none", f'stroke="{o}" stroke-width="2.6" stroke-linecap="round"'),
-        E(88, 77, 4.2, 5.2, INK), E(112, 77, 4.2, 5.2, INK), C(89.6, 75, 1.5, "#fff"), C(113.6, 75, 1.5, "#fff"),  # eyes
-        P("M98 84 Q100 87 102 84", "none", f'stroke="{o}" stroke-width="2" stroke-linecap="round"'),            # nose
-        P("M90 93 Q100 102 110 93", "none", f'stroke="{INK}" stroke-width="3" stroke-linecap="round"'),        # smile
-        E(78, 89, 6, 3.6, "#ff7a8a", 'opacity=".28"'), E(122, 89, 6, 3.6, "#ff7a8a", 'opacity=".28"'),       # cheeks
+        R(77, 196, 21, 66, s, 9, line), R(102, 196, 21, 66, s, 9, line),                                       # legs
+        R(left, 126, arm, 66, s, 7, line), R(right, 126, arm, 66, s, 7, line),                                  # arms
+        C(left + arm / 2, 195, 8, s, line), C(right + arm / 2, 195, 8, s, line),                                # hands
+        P(torso, s, line),
+        R(92, 104, 16, 22, s, 6, line), R(92, 113, 16, 7, o, 3, 'opacity=".35"'),                                # neck and its shadow
+        E(66, 80, 5.5, 9, s, line), E(134, 80, 5.5, 9, s, line), E(66.5, 80, 2.5, 5, o, 'opacity=".35"'), E(133.5, 80, 2.5, 5, o, 'opacity=".35"'),
+        E(100, 78, 34, 37, s, line), E(89, 57, 14, 8, lit, 'opacity=".5"'), E(100, 107, 22, 5, o, 'opacity=".12"'),  # head, highlight, jaw shade
+        P(brows[0], "none", f'stroke="{shade(s, 0.45)}" stroke-width="{2.2 if feminine else 3.2}" stroke-linecap="round"'),
+        P(brows[1], "none", f'stroke="{shade(s, 0.45)}" stroke-width="{2.2 if feminine else 3.2}" stroke-linecap="round"'),
+        eye(88, feminine), eye(112, feminine),
+        P("M98.5 83 Q100 86.5 102 84.5", "none", f'stroke="{o}" stroke-width="2" stroke-linecap="round"'),        # nose
+        mouth,
+        E(78, 90, 6.5, 4, "#ff7a8a", f'opacity="{.4 if feminine else .25}"'), E(122, 90, 6.5, 4, "#ff7a8a", f'opacity="{.4 if feminine else .25}"'),
     )
+
+
+def styled(slot, style, colour, skin=None):
+    """A catalogue drawing in a given style and colour, as worn (used for starter clothes)."""
+    item_id = f"{slot}.{style}.{colour}"
+    return drawing(item_id, skin) if item_id in CATALOG else ""
 
 
 GROUND = E(100, 279, 52, 7, "#000", 'opacity=".18"')
@@ -302,16 +337,21 @@ CROPS = {"hat": "44 0 112 96", "hair": "44 20 112 96", "face": "56 52 88 56", "t
          "shoes": "56 236 88 52", "held": "104 120 96 110", "pet": "128 206 72 84"}
 
 
-def avatar_svg(outfit, skin=None, size=None, crop=None):
-    """The whole character. `outfit` maps a slot to an item id; unknown or non-wearable entries are ignored."""
+def avatar_svg(outfit, skin=None, size=None, crop=None, build=None):
+    """The whole character. `outfit` maps a slot to an item id; unknown or non-wearable entries are ignored, and an empty hair, top,
+    bottom or shoes slot shows the build's starter piece instead."""
+    build = build if build in BUILDS else DEFAULT_BUILD
+    starter = STARTER[build]
     layers = []
     for slot in LAYER_ORDER:
         if slot == "BODY":
-            layers.append(GROUND + body(skin))
+            layers.append(GROUND + body(skin, build))
             continue
         item_id = outfit.get(slot)
         if item_id in CATALOG and CATALOG[item_id]["slot"] == slot:
             layers.append(drawing(item_id, skin))
+        elif slot in starter and not (slot == "hair" and outfit.get("hat") in CATALOG and CATALOG[outfit["hat"]]["style"] in ("helmet", "beanie", "tophat", "chef")):
+            layers.append(styled(slot, *starter[slot], skin))
     return _wrap("".join(layers), crop or "0 0 200 300", size)
 
 

@@ -463,7 +463,8 @@ button.danger:disabled{opacity:.45}
 .slot span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
 .slot small{position:absolute;top:4px;right:6px;font-family:var(--mono);font-size:10px;color:var(--faint)}
 .slot.on{border-color:var(--teal-line);background:var(--brand-soft);color:var(--brand-soft-text)}
-.slot.empty:not(.on){opacity:.6}
+.slot.none:not(.on){opacity:.55}
+.builds{margin:0;width:100%}.builds button{flex:1;justify-content:center}
 .empty{text-align:center;padding:26px 12px;border:1px dashed var(--line-strong);border-radius:14px;color:var(--muted)}
 .empty .toolbar{justify-content:center}
 
