@@ -438,6 +438,14 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                   "marks_awarded, marks_available, outcome (not_achieved, achieved, merit, excellence, "
                   "or uncertain), feedback, evidence (array of {quote, explanation, marks}), missing "
                   "(array of strings), and confidence (0 to 1). Do not claim this is an official result.")
+        if payload.get("rapid_fire"):
+            system += (" This is a rapid-fire question: the learner worked it out on paper and typed only the final answer, so do not "
+                       "penalise missing working for a CALCULATION. When the question asks for a calculation, mark the final answer: award "
+                       "the full marks when it matches the schedule's answer (allow the schedule's accepted range, equivalent forms and "
+                       "units, and rounding or significant figures within one place of the schedule), and when it is wrong or missing, "
+                       "award no marks and say what the schedule's answer is, without commenting on working you cannot see. Do not "
+                       "mention that no working was shown. Every other kind of question (explain, describe, compare, draw, state) "
+                       "is marked exactly as usual against the schedule.")
         if second:
             system += (" You are the reviewer of the first marker. payload.first_marker holds its result, which may be wrong. "
                        "Check every claim in its feedback against the learner's answer and every mark against the schedule: "
@@ -475,6 +483,8 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
         if not row[0] or not row[0].strip():
             raise HTTPException(422, "An answer is required")
         payload, available, schedule = prompt_payload(row, style)
+        with connect() as db:
+            payload["rapid_fire"] = bool(db.execute("SELECT 1 FROM exams WHERE id = %s AND kind = 'rapid'", (exam_id,)).fetchone())
         if row[7] is None:
             payload["rubric_type"] = "AI-generated practice rubric, NOT an official NZQA schedule"
         if not schedule.strip():

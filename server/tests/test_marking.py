@@ -41,6 +41,8 @@ class Result:
 
 
 class DB:
+    rapid = False
+
     def __init__(self, row=ROW):
         self.row = row
         self.markings = {}
@@ -56,6 +58,8 @@ class DB:
     def execute(self, sql, params=()):
         if "FROM rapid_sessions" in sql:
             return Result()   # an ordinary exam, not a rapid session
+        if "kind = 'rapid'" in sql:
+            return Result((1,) if self.rapid else None)
         if "SELECT answer FROM exam_items" in sql:
             return Result((self.row[0],) if self.row else None)
         if "SELECT revision, confirmed FROM exam_answer_scans" in sql:
@@ -369,3 +373,15 @@ def test_whole_paper_scan_keeps_found_answers_when_a_question_is_missing_from_th
     answers = response.json()["answers"]
     assert [(a["question_id"], a["found"]) for a in answers] == [(2, True), (3, False)]
     assert answers[0]["transcription"] == "(a) F = 2 N" and answers[1]["transcription"] == ""
+
+
+def test_rapid_fire_calculations_are_marked_on_the_final_answer_only():
+    client, calls, db = make_client()
+    db.rapid = True
+    assert client.post("/exams/1/answers/2/feedback", json={}).status_code == 200
+    first = calls[0][1]
+    assert "rapid-fire" in first[0]["content"] and "final answer" in first[0]["content"]
+    assert json.loads(first[1]["content"])["rapid_fire"] is True
+    client, calls, db = make_client()
+    assert client.post("/exams/1/answers/2/feedback", json={}).status_code == 200
+    assert "rapid-fire" not in calls[0][1][0]["content"]
