@@ -126,7 +126,7 @@ fun TopicFiles(
                             }, "${item.optString("display_status", status)}${if (item.optBoolean("is_global")) " · Global" else ""} · ${item.optInt("page_count")} pages · ${sizeText(item.optLong("size"))}")
                         }
                     }
-                    item.optString("error").takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 12.dp)) }
+                    item.takeUnless { it.isNull("error") }?.optString("error")?.takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 12.dp)) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                         if (extension in listOf("pdf", "png", "jpg", "jpeg")) TextButton(onClick = { onOpen(id) }) { Text("Open") }
                         if (!item.optBoolean("is_global")) {
