@@ -132,8 +132,9 @@ private fun Points(value: Int, style: androidx.compose.ui.text.TextStyle = Mater
 @Composable
 private fun RarityChip(rarity: Int) {
     val colour = RARITY_COLOURS[rarity.coerceIn(0, 5)]
-    Text(RARITY[rarity.coerceIn(0, 5)].uppercase(), Modifier.clip(RoundedCornerShape(50)).background(colour).padding(horizontal = 8.dp, vertical = 1.dp),
-        color = Color(0xFF11131B), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp)
+    Text(RARITY[rarity.coerceIn(0, 5)].uppercase(), Modifier.clip(RoundedCornerShape(50)).background(colour).padding(horizontal = 6.dp, vertical = 1.dp),
+        color = Color(0xFF11131B), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, letterSpacing = 0.2.sp,
+        maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
 }
 
 /** One collectable: its art on a plate tinted by rarity, the name, and the actions it allows. */

@@ -42,7 +42,7 @@ A "paper" counts when it has at least three questions, every one answered and ma
 
 ## Collection
 
-More than 2,700 items across 12 slots, built from styles x colours so the catalogue is large and consistent.
+More than 3,200 items across 12 slots, with statement pieces (kimono, ball gown, royal robe, pirate coat, space suit, hakama, tutu, glass slippers, tiara, viking helmet, dragon wings and more) cut to fit both bodies, built from styles x colours so the catalogue is large and consistent.
 
 | Slot | Worn on the character | Examples |
 | --- | --- | --- |

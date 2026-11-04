@@ -5,7 +5,7 @@ Every item is a style (a shape such as "wizard hat") in a colour (such as "Galax
 the website and the Android app show exactly the same thing. Colour placeholders in a drawing: @c main, @d dark, @l light, @s skin.
 """
 
-ART_VERSION = 3          # bump when drawings change, so cached pictures are fetched again
+ART_VERSION = 4          # bump when drawings change, so cached pictures are fetched again
 
 RARITIES = ["common", "uncommon", "rare", "epic", "legendary", "mythic"]
 VALUE = [10, 25, 60, 150, 400, 1000]
@@ -103,6 +103,8 @@ STYLES = {
         "backpack": ("Backpack", 0, R(58, 128, 84, 78, "@d", 14) + R(70, 176, 60, 24, "@c", 6)),
         "jetpack": ("Jetpack", 3, R(52, 124, 22, 70, "@d", 8) + R(126, 124, 22, 70, "@d", 8) + P("M54 196 Q63 236 72 196Z", "#ffb020") + P("M128 196 Q137 236 146 196Z", "#ffb020") + R(52, 140, 22, 8, "@c") + R(126, 140, 22, 8, "@c")),
         "shell": ("Shell", 1, E(100, 164, 52, 54, "@d") + P("M100 112 L124 140 L124 182 L100 214 L76 182 L76 140Z", "@c", 'opacity=".7"')),
+        "dragonwings": ("Dragon wings", 3, P("M70 132 Q30 80 4 92 Q20 104 14 124 Q30 120 26 144 Q42 136 44 162 Q58 148 72 168Z") + P("M130 132 Q170 80 196 92 Q180 104 186 124 Q170 120 174 144 Q158 136 156 162 Q142 148 128 168Z")
+                        + P("M70 132 Q40 104 14 124 M70 140 Q46 130 26 144 M72 150 Q56 148 44 162", "none", 'stroke="@d" stroke-width="2"') + P("M130 132 Q160 104 186 124 M130 140 Q154 130 174 144 M128 150 Q144 148 156 162", "none", 'stroke="@d" stroke-width="2"')),
     },
     "bottom": {
         "jeans": ("Jeans", 0, HIPS + CLIP("@LEGL", "long") + CLIP("@LEGR", "long") + L(88, 214, 88.5, 256, "@d", 1.2) + L(112, 214, 111.5, 256, "@d", 1.2)),
@@ -113,6 +115,10 @@ STYLES = {
         "leggings": ("Leggings", 0, HIPS + CLIP("@LEGL", "ankle") + CLIP("@LEGR", "ankle")),
         "kilt": ("Kilt", 1, P("M73 194 H127 L134 232 Q100 238 66 232Z") + G(*[L(x, 204, x - 2, 232, "@d", 1.6) for x in (82, 92, 100, 108, 118)]) + L(69, 218, 131, 218, "@l", 2)),
         "bermuda": ("Bermudas", 0, HIPS + CLIP("@LEGL", "knee") + CLIP("@LEGR", "knee") + L(86, 238, 95, 238, "@d", 1.5) + L(105, 238, 114, 238, "@d", 1.5)),
+        "hakama": ("Hakama", 2, P("M72 194 H128 L142 262 H104 L100 216 L96 262 H58Z") + G(*[L(x, 200, x + (x - 100) * 0.18, 260, "@d", 1.4) for x in (80, 90, 110, 120)]) + R(72, 194, 56, 7, "@d", 2)),
+        "tutu": ("Tutu", 2, HIPS + E(100, 216, 42, 11, "@l") + E(100, 212, 38, 10) + G(*[E(x, 222, 6, 3, "@l") for x in range(64, 140, 12)])),
+        "flares": ("Flares", 1, HIPS + CLIP("@LEGL", "long") + CLIP("@LEGR", "long") + P("M79 238 L71 263 H96 L96 238Z") + P("M121 238 L129 263 H104 L104 238Z")),
+        "greaves": ("Knight greaves", 2, HIPS + CLIP("@LEGL", "long") + CLIP("@LEGR", "long") + C(88, 232, 6, "@l") + C(112, 232, 6, "@l") + L(88, 240, 88, 258, "@d", 2) + L(112, 240, 112, 258, "@d", 2)),
     },
     "shoes": {
         "sneakers": ("Sneakers", 0, E(87, 266, 16, 10, "@c") + E(113, 266, 16, 10, "@c") + R(71, 272, 33, 5, "@l", 2) + R(97, 272, 33, 5, "@l", 2)),
@@ -123,6 +129,10 @@ STYLES = {
         "hightops": ("High-tops", 1, R(74, 250, 24, 24, "@c", 6) + R(102, 250, 24, 24, "@c", 6) + R(70, 272, 32, 6, "@l", 3) + R(98, 272, 32, 6, "@l", 3) + C(86, 258, 3, "@l") + C(114, 258, 3, "@l")),
         "loafers": ("Loafers", 0, E(86, 268, 17, 8, "@d") + E(114, 268, 17, 8, "@d") + E(80, 266, 4, 2, "@c") + E(120, 266, 4, 2, "@c")),
         "rocket": ("Rocket boots", 3, R(74, 244, 24, 26, "@c", 5) + R(102, 244, 24, 26, "@c", 5) + P("M76 272 Q86 296 96 272Z", "#ffb020") + P("M104 272 Q114 296 124 272Z", "#ffb020")),
+        "glass": ("Glass slippers", 3, E(87, 268, 16, 8, "#bfe6ff", 'opacity=".75" stroke="@c" stroke-width="2"') + E(113, 268, 16, 8, "#bfe6ff", 'opacity=".75" stroke="@c" stroke-width="2"') + STAR(80, 262, 5, "#ffffff") + STAR(120, 262, 5, "#ffffff")),
+        "cowboy": ("Cowboy boots", 1, R(76, 238, 22, 32, "@c", 5) + R(102, 238, 22, 32, "@c", 5) + R(70, 266, 32, 7, "@d", 3) + R(98, 266, 32, 7, "@d", 3)
+                   + P("M80 246 Q87 254 94 246", "none", 'stroke="@l" stroke-width="1.6"') + P("M106 246 Q113 254 120 246", "none", 'stroke="@l" stroke-width="1.6"')),
+        "platform": ("Platforms", 2, R(72, 258, 30, 10, "@c", 5) + R(98, 258, 30, 10, "@c", 5) + R(70, 266, 34, 12, "@d", 4) + R(96, 266, 34, 12, "@d", 4)),
     },
     "top": {
         "tee": ("T-shirt", 0, CLIP("@ARML", "sleeve") + CLIP("@ARMR", "sleeve") + P("@TORSO") + NECK),
@@ -143,6 +153,32 @@ STYLES = {
         "puffer": ("Puffer jacket", 1, CLIP("@ARML", "wrist", 'stroke="@d" stroke-width="5" stroke-opacity=".25"') + CLIP("@ARMR", "wrist", 'stroke="@d" stroke-width="5" stroke-opacity=".25"')
                    + P("@TORSO", "@c", 'stroke="@d" stroke-width="5" stroke-opacity=".25"') + TORSO_CLIP(G(*[L(60, y, 140, y, "@d", 2.5) for y in (144, 164, 184)])) + L(100, 122, 100, 204, "@d", 2) + CUFFS),
         "poncho": ("Poncho", 2, P("M100 114 C118 114 152 176 156 206 Q100 216 44 206 C48 176 82 114 100 114Z") + G(*[L(x, 204, x + 2, 216, "@l", 3) for x in range(54, 150, 12)]) + NECK),
+        # Statement pieces: costumes and couture, cut from the same body outlines so they fit both builds.
+        "kimono": ("Kimono", 2, P("M72 196 L68 254 Q100 262 132 254 L128 196Z") + P("M68 130 C56 136 50 162 47 198 L71 202 C72 180 72 160 76 140Z") + P("M132 130 C144 136 150 162 153 198 L129 202 C128 180 128 160 124 140Z")
+                   + P("@TORSO") + L(88, 120, 104, 172, "@l", 5) + L(112, 120, 96, 172, "@l", 5) + TORSO_CLIP(R(60, 160, 80, 16, "@d")) + R(95, 156, 10, 24, "@l", 3)),
+        "royalrobe": ("Royal robe", 3, P("M70 158 L58 254 Q100 266 142 254 L130 158Z", "@d") + CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + R(94, 124, 12, 136, "#fbfbfd", 3)
+                      + G(*[C(100, y, 1.6, "#1b1830") for y in range(134, 256, 14)]) + P("M80 121 C88 135 112 135 120 121 C113 115 87 115 80 121Z", "#fbfbfd") + G(*[C(x, 125, 1.4, "#1b1830") for x in (88, 100, 112)])
+                      + '<path d="@ARML" fill="#fbfbfd" clip-path="url(#k-cuff)"/><path d="@ARMR" fill="#fbfbfd" clip-path="url(#k-cuff)"/>'),
+        "pirate": ("Pirate coat", 2, P("M70 168 L62 236 L92 236 L100 196 L108 236 L138 236 L130 168Z") + CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + POLY("90,119 110,119 100,150", "#fbfbfd")
+                   + TORSO_CLIP(R(60, 182, 80, 8, "#c0392b")) + '<path d="@ARML" fill="@l" clip-path="url(#k-cuff)"/><path d="@ARMR" fill="@l" clip-path="url(#k-cuff)"/>'
+                   + G(*[C(x, y, 2.2, "#f2c230") for x in (88, 112) for y in (140, 156, 170)])),
+        "astronaut": ("Space suit", 3, CLIP("@ARML", "wrist", 'stroke="@d" stroke-width="4" stroke-opacity=".3"') + CLIP("@ARMR", "wrist", 'stroke="@d" stroke-width="4" stroke-opacity=".3"')
+                      + P("@TORSO", "@c", 'stroke="@d" stroke-width="4" stroke-opacity=".3"') + R(86, 140, 28, 18, "@d", 4) + C(93, 149, 2.6, "#ff5f5f") + C(100, 149, 2.6, "#ffd24d") + C(107, 149, 2.6, "#3ddc97")
+                      + E(100, 122, 20, 6, "#c0c5ce") + TORSO_CLIP(R(60, 188, 80, 8, "@d")) + CUFFS),
+        "hero": ("Hero suit", 2, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + POLY("100,134 116,148 100,168 84,148", "@l") + POLY("100,141 108,148 100,159 92,148", "@d")
+                 + TORSO_CLIP(R(60, 186, 80, 8, "#f2c230")) + '<path d="@ARML" fill="@d" clip-path="url(#k-cuff)"/><path d="@ARMR" fill="@d" clip-path="url(#k-cuff)"/>'),
+        "sequin": ("Sequin jacket", 2, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + TORSO_CLIP(G(*[C(x + (6 if (y // 10) % 2 else 0), y, 1.8, "@l", 'opacity=".85"') for x in range(64, 140, 12) for y in range(124, 206, 10)]))
+                   + G(*[C(x, y, 1.5, "@l") for x, y in [(60, 150), (62, 166), (140, 150), (138, 166)]]) + P("M90 119 L100 146 L110 119", "none", 'stroke="@d" stroke-width="2"')),
+        "leather": ("Leather jacket", 1, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + POLY("86,120 98,120 92,140", "@d") + POLY("114,120 102,120 108,140", "@d")
+                    + L(96, 124, 106, 202, "#c0c5ce", 2) + TORSO_CLIP(R(60, 192, 80, 7, "@d")) + C(80, 150, 1.8, "#c0c5ce") + C(120, 150, 1.8, "#c0c5ce")),
+        "tuxedo": ("Tailcoat", 2, P("M76 186 L70 246 L98 204Z") + P("M124 186 L130 246 L102 204Z") + CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + POLY("88,119 112,119 100,166", "#fbfbfd")
+                   + POLY("92,124 100,128 92,132", "#15131c") + POLY("108,124 100,128 108,132", "#15131c") + C(100, 146, 1.6, "#15131c") + C(100, 156, 1.6, "#15131c")
+                   + '<path d="@ARML" fill="#fbfbfd" clip-path="url(#k-cuff)"/><path d="@ARMR" fill="#fbfbfd" clip-path="url(#k-cuff)"/>'),
+        "ballgown": ("Ball gown", 3, P("M78 162 C60 190 46 232 40 264 Q100 282 160 264 C154 232 140 190 122 162Z") + P("M70 238 Q100 252 130 238", "none", 'stroke="@l" stroke-width="3"')
+                     + P("M58 256 Q100 272 142 256", "none", 'stroke="@l" stroke-width="3"') + P("@TORSO") + E(70, 134, 11, 10, "@l") + E(130, 134, 11, 10, "@l") + R(78, 158, 44, 7, "@d", 3)
+                     + G(*[C(x, 160, 1.6, "#fff") for x in (86, 94, 100, 106, 114)])),
+        "ninja": ("Ninja gi", 2, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + L(88, 120, 110, 170, "@d", 3) + L(112, 120, 96, 150, "@d", 3) + TORSO_CLIP(R(60, 166, 80, 10, "@l"))
+                  + R(110, 168, 6, 22, "@l", 2) + CUFFS),
     },
     "face": {
         "round": ("Round glasses", 0, C(88, 76, 11, "none", 'stroke="@c" stroke-width="3"') + C(112, 76, 11, "none", 'stroke="@c" stroke-width="3"') + L(99, 76, 101, 76, "@c", 3)),
@@ -194,6 +230,13 @@ STYLES = {
         "bow": ("Hair bow", 0, POLY("100,44 76,32 76,56", "@c") + POLY("100,44 124,32 124,56", "@c") + C(100, 44, 6, "@d")),
         "flowers": ("Flower crown", 1, G(*[C(x, y, 7, "@c") + C(x, y, 2.5, "@l") for x, y in [(70, 56), (84, 44), (100, 40), (116, 44), (130, 56)]])),
         "catears": ("Cat ears", 1, POLY("66,52 72,22 92,42", "@c") + POLY("134,52 128,22 108,42", "@c") + POLY("72,44 74,32 84,42", "@l") + POLY("128,44 126,32 116,42", "@l")),
+        "tiara": ("Tiara", 2, P("M76 52 L82 38 L90 46 L100 30 L110 46 L118 38 L124 52 Q100 46 76 52Z") + C(100, 40, 3.6, "@l") + C(84, 45, 2.2, "@l") + C(116, 45, 2.2, "@l")),
+        "tricorn": ("Tricorn", 2, P("M52 56 Q76 22 100 30 Q124 22 148 56 Q100 44 52 56Z") + P("M56 54 Q100 42 144 54", "none", 'stroke="#f2c230" stroke-width="2.5"')),
+        "viking": ("Viking helmet", 2, P("M66 50 Q44 40 48 14 Q56 36 74 42Z", "#f4e8d4") + P("M134 50 Q156 40 152 14 Q144 36 126 42Z", "#f4e8d4") + P("M64 62 Q64 28 100 28 Q136 28 136 62Z") + R(62, 56, 76, 9, "@d", 3)
+                   + G(*[C(x, 60.5, 1.8, "@l") for x in (72, 86, 100, 114, 128)])),
+        "jester": ("Jester hat", 2, P("M66 60 Q60 30 38 28 Q70 18 100 30 Q130 18 162 28 Q140 30 134 60Z") + P("M100 30 Q96 14 100 6 Q104 14 100 30Z", "@d") + R(64, 54, 72, 9, "@d", 3)
+                   + C(38, 28, 5, "#f2c230") + C(162, 28, 5, "#f2c230") + C(100, 6, 5, "#f2c230")),
+        "astro": ("Space helmet", 3, C(100, 78, 47, "#bfe6ff", 'opacity=".28" stroke="@c" stroke-width="5"') + P("M70 54 Q84 40 104 38", "none", 'stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".7"')),
     },
     "held": {
         "book": ("Book", 0, R(140, 176, 30, 38, "@c", 3) + R(144, 180, 22, 30, "@l", 1) + R(140, 176, 6, 38, "@d", 2)),
@@ -400,7 +443,7 @@ def hair_layers(item_id, skin=None, build=None):
 GROUND = E(100, 279, 52, 7, "#000", 'opacity=".18"')
 CROPS = {"hat": "44 0 112 96", "hair": "28 8 144 144", "face": "56 54 88 56", "top": "36 100 128 150", "bottom": "50 180 100 100",
          "shoes": "56 236 88 52", "held": "104 120 96 110", "pet": "128 206 72 84"}
-FULL_COVER_HATS = ("helmet", "beanie", "tophat", "chef")
+FULL_COVER_HATS = ("helmet", "beanie", "tophat", "chef", "viking")
 
 
 def avatar_svg(outfit, skin=None, size=None, crop=None, build=None):
