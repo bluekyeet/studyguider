@@ -84,16 +84,19 @@ private suspend fun game(base: String, token: String, path: String, method: Stri
     } finally { c.disconnect() }
 }
 
-private object ArtCache { val pictures = LruCache<String, ImageBitmap>(200) }
+private object ArtCache {
+    val pictures = LruCache<String, ImageBitmap>(200)
+    var version = ""      // the server's art version, part of every picture address so redrawn art is fetched again
+}
 
 private fun avatarPath(outfit: JSONObject?, skin: String, width: Int, build: String = ""): String {
-    val query = StringBuilder("w=$width")
+    val query = StringBuilder("w=$width&v=${ArtCache.version}")
     if (build.isNotEmpty()) query.append("&build=").append(Uri.encode(build))
     if (skin.isNotEmpty()) query.append("&skin=").append(Uri.encode(skin))
     outfit?.keys()?.forEach { slot -> query.append('&').append(Uri.encode(slot)).append('=').append(Uri.encode(outfit.optString(slot))) }
     return "/game/art/avatar.png?$query"
 }
-private fun itemPath(id: String, width: Int = 256) = "/game/art/item/${Uri.encode(id)}.png?w=$width"
+private fun itemPath(id: String, width: Int = 256) = "/game/art/item/${Uri.encode(id)}.png?w=$width&v=${ArtCache.version}"
 
 /** A server-drawn picture, kept in memory once loaded so lists scroll without reloading. */
 @Composable
@@ -194,7 +197,7 @@ fun RewardsScreen(base: String, token: String, onDismiss: () -> Unit) {
     val scroll = rememberScrollState()
     BackHandler { if (player != null) player = null else onDismiss() }
     LaunchedEffect(base, token) {
-        try { me = game(base, token, "/game/me") } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load rewards" }
+        try { me = game(base, token, "/game/me").also { ArtCache.version = it.optJSONObject("catalog")?.optString("art").orEmpty() } } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load rewards" }
     }
     // Every action answers with the new state, which replaces the old one; `after` also sees the full reply (null when it failed,
     // in which case the server's reason is shown and nothing changes).

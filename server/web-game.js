@@ -9,13 +9,15 @@ const BOARDS = [['networth', 'Net worth'], ['questions', 'Questions'], ['lessons
 const num = n => Number(n).toLocaleString('en-NZ');
 const plural = (n, word) => `${num(n)} ${word}${n === 1 ? '' : 's'}`;
 
+let artVersion = '';      // from the server; part of every picture address so redrawn art is not served from the browser's cache
 export const avatarUrl = (outfit = {}, skin = '', build = '') => {
   const query = new URLSearchParams(Object.entries(outfit || {}).filter(([, id]) => id));
+  if (artVersion) query.set('v', artVersion);
   if (skin) query.set('skin', skin);
   if (build) query.set('build', build);
   return `/game/art/avatar.svg?${query}`;
 };
-const itemUrl = (id, skin) => `/game/art/item/${encodeURIComponent(id)}.svg${skin ? `?skin=${encodeURIComponent(skin)}` : ''}`;
+const itemUrl = (id, skin) => `/game/art/item/${encodeURIComponent(id)}.svg?v=${artVersion}${skin ? `&skin=${encodeURIComponent(skin)}` : ''}`;
 function picture(src, alt = '', className = '') {
   const image = new Image(); image.src = src; image.alt = alt; image.decoding = 'async';
   if (className) image.className = className;
@@ -53,6 +55,7 @@ export async function renderGame(container, api, params) {
   const root = el('section', '', 'game');
   container.replaceChildren(root);
   let me = await api('/game/me');
+  artVersion = String(me.catalog.art || '');
   const alive = () => root.isConnected;
 
   const fail = error => {

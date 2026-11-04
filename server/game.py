@@ -265,7 +265,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
             "outfit": snap["outfit"], "showcase": snap["showcase"], "skin": snap["state"]["skin"], "build": snap["state"]["build"], "visible": snap["state"]["visible"],
             "pity": {"pulls": snap["state"]["pulls"], "rare_in": RARE_PITY - snap["state"]["since_rare"], "epic_in": EPIC_PITY - snap["state"]["since_epic"]},
             "costs": {"pull": PULL_COST, "ten": TEN_PULL_COST},
-            "catalog": {"total": len(items.CATALOG), "owned": len(owned), "by_slot": {s: {"owned": by_slot[s], "total": sum(1 for i in items.CATALOG.values() if i["slot"] == s)} for s in items.SLOTS},
+            "catalog": {"art": items.ART_VERSION, "total": len(items.CATALOG), "owned": len(owned), "by_slot": {s: {"owned": by_slot[s], "total": sum(1 for i in items.CATALOG.values() if i["slot"] == s)} for s in items.SLOTS},
                         "rarities": items.RARITIES, "slots": [{"id": s, "name": items.SLOT_NAMES[s], "worn": s in items.WORN, "icon": f"{s}.{next(iter(items.STYLES[s]))}.teal"} for s in items.SLOTS],
                         "skins": [{"id": k, "name": v[0], "colour": v[1]} for k, v in items.SKINS.items()],
                         "builds": [{"id": k, "name": v} for k, v in items.BUILDS.items()]},

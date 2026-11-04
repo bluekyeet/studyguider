@@ -5,6 +5,8 @@ Every item is a style (a shape such as "wizard hat") in a colour (such as "Galax
 the website and the Android app show exactly the same thing. Colour placeholders in a drawing: @c main, @d dark, @l light, @s skin.
 """
 
+ART_VERSION = 3          # bump when drawings change, so cached pictures are fetched again
+
 RARITIES = ["common", "uncommon", "rare", "epic", "legendary", "mythic"]
 VALUE = [10, 25, 60, 150, 400, 1000]
 ODDS = [55, 25, 12, 5, 2.5, 0.5]
@@ -54,7 +56,19 @@ L = lambda x1, y1, x2, y2, stroke="@d", w=3: f'<line x1="{x1}" y1="{y1}" x2="{x2
 T = lambda x, y, s, size=40, fill="@c", extra="": f'<text x="{x}" y="{y}" font-size="{size}" font-family="Georgia,serif" font-weight="700" text-anchor="middle" fill="{fill}" {extra}>{s}</text>'
 STAR = lambda x, y, r, fill="@l": f'<path d="M{x} {y-r} L{x+r*.28} {y-r*.28} L{x+r} {y} L{x+r*.28} {y+r*.28} L{x} {y+r} L{x-r*.28} {y+r*.28} L{x-r} {y} L{x-r*.28} {y-r*.28}Z" fill="{fill}"/>'
 G = lambda *parts: "".join(parts)
-SHORT_HAIR = P("M62 78 Q58 36 100 36 Q142 36 138 78 Q124 54 100 54 Q76 54 62 78Z")
+# Clothes follow the body: a drawing names body parts (@TORSO, @ARML, @ARMR, @LEGL, @LEGR) and each build supplies its own outline, so
+# one T-shirt fits both bodies. Sleeves and trouser legs are the limb outline cut off at a height (the clip paths in `defs`).
+CLIP = lambda part, cut, extra="": f'<path d="{part}" fill="@c" clip-path="url(#k-{cut})" {extra}/>'
+TORSO_CLIP = lambda inner: f'<g clip-path="url(#k-torso)">{inner}</g>'
+CUTS = {"cap": 142, "sleeve": 156, "wrist": 184, "knee": 242, "short": 228, "ankle": 256, "long": 259}
+NECK = P("M90 119 Q100 129 110 119", "none", 'stroke="@d" stroke-width="2" stroke-linecap="round"')
+CUFFS = '<path d="@ARML" fill="@d" clip-path="url(#k-cuff)"/><path d="@ARMR" fill="@d" clip-path="url(#k-cuff)"/>'
+HIPS = P("M73 193 H127 L129 212 H71Z") + R(73, 193, 54, 6, "@d", 2)
+# Hair has two layers split by "|||": what sits behind the head (volume, long lengths) and what frames the face.
+BACK = P("M61 88 C56 46 80 35 100 35 C120 35 144 46 139 88Z") + "|||"
+FRONT_SHORT = P("M63 84 C60 52 80 40 100 40 C122 40 140 52 137 84 C134 72 128 63 120 59 C108 66 90 67 78 61 C72 66 66 74 63 84Z")
+FRONT_PART = P("M63 88 C59 52 80 40 100 40 C120 40 141 52 137 88 C134 74 126 62 104 56 C100 62 92 66 80 66 C72 70 66 78 63 88Z")
+FRONT_SWEPT = P("M63 86 C60 52 80 40 100 40 C122 40 140 52 137 86 C132 70 120 58 98 60 C86 62 74 68 63 86Z")
 
 # slot -> style key -> (name, tier, drawing)
 STYLES = {
@@ -91,14 +105,14 @@ STYLES = {
         "shell": ("Shell", 1, E(100, 164, 52, 54, "@d") + P("M100 112 L124 140 L124 182 L100 214 L76 182 L76 140Z", "@c", 'opacity=".7"')),
     },
     "bottom": {
-        "jeans": ("Jeans", 0, R(76, 198, 22, 62, "@c", 4) + R(102, 198, 22, 62, "@c", 4) + R(74, 194, 52, 10, "@d", 3)),
-        "shorts": ("Shorts", 0, R(74, 196, 25, 32, "@c", 4) + R(101, 196, 25, 32, "@c", 4)),
-        "skirt": ("Skirt", 0, P("M72 196 L128 196 L142 240 L58 240Z")),
-        "track": ("Track pants", 0, R(76, 198, 22, 62, "@c", 4) + R(102, 198, 22, 62, "@c", 4) + R(87, 198, 4, 62, "@l") + R(109, 198, 4, 62, "@l")),
-        "cargo": ("Cargo pants", 1, R(76, 198, 22, 62, "@c", 4) + R(102, 198, 22, 62, "@c", 4) + R(78, 226, 14, 14, "@d", 2) + R(108, 226, 14, 14, "@d", 2)),
-        "leggings": ("Leggings", 0, R(80, 198, 16, 62, "@c", 6) + R(104, 198, 16, 62, "@c", 6)),
-        "kilt": ("Kilt", 1, P("M72 196 L128 196 L136 236 L64 236Z") + G(*[L(x, 198, x - 2, 234, "@d", 2) for x in (84, 100, 116)]) + L(66, 220, 134, 220, "@d", 2)),
-        "bermuda": ("Bermudas", 0, R(74, 196, 25, 46, "@c", 4) + R(101, 196, 25, 46, "@c", 4) + R(74, 196, 52, 6, "@d")),
+        "jeans": ("Jeans", 0, HIPS + CLIP("@LEGL", "long") + CLIP("@LEGR", "long") + L(88, 214, 88.5, 256, "@d", 1.2) + L(112, 214, 111.5, 256, "@d", 1.2)),
+        "shorts": ("Shorts", 0, HIPS + CLIP("@LEGL", "short") + CLIP("@LEGR", "short")),
+        "skirt": ("Skirt", 0, P("M73 194 H127 L139 236 Q100 246 61 236Z") + P("M73 194 H127 L128 203 H72Z", "@d")),
+        "track": ("Track pants", 0, HIPS + CLIP("@LEGL", "long") + CLIP("@LEGR", "long") + L(80, 210, 80.5, 256, "@l", 3) + L(120, 210, 119.5, 256, "@l", 3)),
+        "cargo": ("Cargo pants", 1, HIPS + CLIP("@LEGL", "long") + CLIP("@LEGR", "long") + R(77, 224, 15, 15, "@d", 3) + R(108, 224, 15, 15, "@d", 3)),
+        "leggings": ("Leggings", 0, HIPS + CLIP("@LEGL", "ankle") + CLIP("@LEGR", "ankle")),
+        "kilt": ("Kilt", 1, P("M73 194 H127 L134 232 Q100 238 66 232Z") + G(*[L(x, 204, x - 2, 232, "@d", 1.6) for x in (82, 92, 100, 108, 118)]) + L(69, 218, 131, 218, "@l", 2)),
+        "bermuda": ("Bermudas", 0, HIPS + CLIP("@LEGL", "knee") + CLIP("@LEGR", "knee") + L(86, 238, 95, 238, "@d", 1.5) + L(105, 238, 114, 238, "@d", 1.5)),
     },
     "shoes": {
         "sneakers": ("Sneakers", 0, E(87, 266, 16, 10, "@c") + E(113, 266, 16, 10, "@c") + R(71, 272, 33, 5, "@l", 2) + R(97, 272, 33, 5, "@l", 2)),
@@ -111,18 +125,24 @@ STYLES = {
         "rocket": ("Rocket boots", 3, R(74, 244, 24, 26, "@c", 5) + R(102, 244, 24, 26, "@c", 5) + P("M76 272 Q86 296 96 272Z", "#ffb020") + P("M104 272 Q114 296 124 272Z", "#ffb020")),
     },
     "top": {
-        "tee": ("T-shirt", 0, R(68, 120, 64, 82, "@c", 12) + R(52, 124, 17, 26, "@c", 7) + R(131, 124, 17, 26, "@c", 7)),
-        "longsleeve": ("Long sleeve", 0, R(68, 120, 64, 82, "@c", 12) + R(52, 124, 17, 68, "@c", 7) + R(131, 124, 17, 68, "@c", 7)),
-        "hoodie": ("Hoodie", 1, R(68, 120, 64, 82, "@c", 12) + R(52, 124, 17, 68, "@c", 7) + R(131, 124, 17, 68, "@c", 7) + P("M80 118 Q100 148 120 118 Q100 134 80 118Z", "@d") + R(86, 170, 28, 20, "@d", 5)),
-        "jumper": ("Striped jumper", 0, R(68, 120, 64, 82, "@c", 12) + R(52, 124, 17, 68, "@c", 7) + R(131, 124, 17, 68, "@c", 7) + G(*[R(68, y, 64, 6, "@l") for y in (140, 160, 180)])),
-        "labcoat": ("Lab coat", 1, R(66, 120, 68, 112, "@c", 10) + R(50, 124, 18, 70, "@c", 7) + R(132, 124, 18, 70, "@c", 7) + L(100, 126, 100, 230, "@d", 2) + C(94, 150, 2.5, "@d") + C(94, 170, 2.5, "@d") + R(108, 176, 16, 14, "@d", 2, 'opacity=".4"')),
-        "suit": ("Suit", 1, R(66, 120, 68, 84, "@c", 10) + R(50, 124, 18, 70, "@c", 7) + R(132, 124, 18, 70, "@c", 7) + POLY("88,122 112,122 100,170", "#ffffff") + POLY("98,128 102,128 104,172 100,182 96,172", "@d")),
-        "armour": ("Armour", 2, R(66, 120, 68, 82, "@c", 8) + C(62, 128, 15, "@l") + C(138, 128, 15, "@l") + R(52, 130, 16, 60, "@d", 6) + R(132, 130, 16, 60, "@d", 6) + L(100, 126, 100, 200, "@d", 3) + R(66, 184, 68, 8, "@d")),
-        "dress": ("Dress", 1, R(70, 120, 60, 40, "@c", 10) + P("M70 156 L130 156 L150 240 L50 240Z") + R(52, 124, 17, 24, "@c", 7) + R(131, 124, 17, 24, "@c", 7) + R(70, 154, 60, 6, "@d")),
-        "tank": ("Tank top", 0, R(74, 120, 52, 80, "@c", 10) + R(52, 124, 14, 60, "@s", 7) + R(134, 124, 14, 60, "@s", 7)),
-        "hooped": ("Hooped tee", 0, R(68, 120, 64, 82, "@c", 12) + R(52, 124, 17, 26, "@c", 7) + R(131, 124, 17, 26, "@c", 7) + G(*[R(68, y, 64, 7, "@d") for y in (136, 156, 176)])),
-        "puffer": ("Puffer jacket", 1, R(64, 120, 72, 84, "@c", 14) + R(48, 124, 20, 68, "@c", 9) + R(132, 124, 20, 68, "@c", 9) + G(*[L(66, y, 134, y, "@d", 3) for y in (146, 166, 186)])),
-        "poncho": ("Poncho", 2, POLY("100,116 150,208 50,208", "@c") + G(*[L(x, 196, x + 4, 208, "@l", 3) for x in range(62, 140, 12)])),
+        "tee": ("T-shirt", 0, CLIP("@ARML", "sleeve") + CLIP("@ARMR", "sleeve") + P("@TORSO") + NECK),
+        "longsleeve": ("Long sleeve", 0, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + NECK + CUFFS),
+        "hoodie": ("Hoodie", 1, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + CUFFS + P("M80 121 C84 110 116 110 120 121 C112 128 88 128 80 121Z", "@d")
+                   + L(94, 126, 93, 146, "@l", 1.6) + L(106, 126, 107, 146, "@l", 1.6) + P("M84 168 H116 L113 188 H87Z", "@d", 'opacity=".55"')),
+        "jumper": ("Striped jumper", 0, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + TORSO_CLIP(G(*[R(60, y, 80, 7, "@l") for y in (140, 158, 176, 194)])) + NECK + CUFFS),
+        "labcoat": ("Lab coat", 1, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("M70 160 L66 234 Q100 240 134 234 L130 160Z") + P("@TORSO") + CUFFS
+                    + P("M90 119 L100 150 L110 119", "none", 'stroke="@d" stroke-width="1.6"') + L(100, 150, 100, 236, "@d", 1.6) + C(95, 168, 2.2, "@d") + C(95, 186, 2.2, "@d")
+                    + R(108, 170, 14, 12, "@d", 2, 'opacity=".35"')),
+        "suit": ("Suit", 1, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + CUFFS + POLY("89,119 111,119 100,152", "#ffffff")
+                 + POLY("98,124 102,124 104.5,150 100,158 95.5,150", "@d") + P("M89 119 L100 152 L84 140Z", "@d", 'opacity=".5"') + P("M111 119 L100 152 L116 140Z", "@d", 'opacity=".5"')),
+        "armour": ("Armour", 2, CLIP("@ARML", "wrist") + CLIP("@ARMR", "wrist") + P("@TORSO") + E(68, 132, 15, 11, "@l") + E(132, 132, 15, 11, "@l")
+                   + TORSO_CLIP(R(60, 186, 80, 9, "@d")) + L(100, 124, 100, 186, "@d", 2.5) + C(100, 150, 7, "@l")),
+        "dress": ("Dress", 1, CLIP("@ARML", "cap") + CLIP("@ARMR", "cap") + P("@TORSO") + P("M76 164 H124 L144 242 Q100 252 56 242Z") + R(76, 160, 48, 7, "@d", 3) + NECK),
+        "tank": ("Tank top", 0, TORSO_CLIP(R(60, 128, 80, 90)) + L(86, 120, 82, 130, "@c", 6) + L(114, 120, 118, 130, "@c", 6)),
+        "hooped": ("Hooped tee", 0, CLIP("@ARML", "sleeve") + CLIP("@ARMR", "sleeve") + P("@TORSO") + TORSO_CLIP(G(*[R(60, y, 80, 8, "@d") for y in (138, 156, 174, 192)])) + NECK),
+        "puffer": ("Puffer jacket", 1, CLIP("@ARML", "wrist", 'stroke="@d" stroke-width="5" stroke-opacity=".25"') + CLIP("@ARMR", "wrist", 'stroke="@d" stroke-width="5" stroke-opacity=".25"')
+                   + P("@TORSO", "@c", 'stroke="@d" stroke-width="5" stroke-opacity=".25"') + TORSO_CLIP(G(*[L(60, y, 140, y, "@d", 2.5) for y in (144, 164, 184)])) + L(100, 122, 100, 204, "@d", 2) + CUFFS),
+        "poncho": ("Poncho", 2, P("M100 114 C118 114 152 176 156 206 Q100 216 44 206 C48 176 82 114 100 114Z") + G(*[L(x, 204, x + 2, 216, "@l", 3) for x in range(54, 150, 12)]) + NECK),
     },
     "face": {
         "round": ("Round glasses", 0, C(88, 76, 11, "none", 'stroke="@c" stroke-width="3"') + C(112, 76, 11, "none", 'stroke="@c" stroke-width="3"') + L(99, 76, 101, 76, "@c", 3)),
@@ -139,18 +159,24 @@ STYLES = {
         "bandage": ("Bandage", 0, R(94, 82, 18, 8, "@c", 3, 'transform="rotate(-18 103 86)"')),
     },
     "hair": {
-        "short": ("Short hair", 0, SHORT_HAIR),
-        "long": ("Long hair", 0, SHORT_HAIR + R(60, 60, 14, 78, "@c", 7) + R(126, 60, 14, 78, "@c", 7)),
-        "bun": ("Bun", 0, SHORT_HAIR + C(100, 30, 15)),
-        "spiky": ("Spiky hair", 1, P("M62 78 L60 48 L74 54 L80 30 L92 46 L100 26 L108 46 L120 30 L126 54 L140 48 L138 78 Q124 54 100 54 Q76 54 62 78Z")),
-        "mohawk": ("Mohawk", 1, P("M90 50 L92 22 L100 36 L106 14 L112 40 L116 50Z") + P("M66 74 Q70 48 90 48 L110 48 Q130 48 134 74 Q124 56 100 56 Q76 56 66 74Z", "@c", 'opacity=".4"')),
-        "afro": ("Afro", 1, G(C(64, 62, 20), C(76, 42, 22), C(100, 34, 24), C(124, 42, 22), C(136, 62, 20), R(66, 44, 68, 18, "@c"))),
-        "bob": ("Bob", 0, SHORT_HAIR + R(60, 60, 16, 44, "@c", 8) + R(124, 60, 16, 44, "@c", 8)),
-        "ponytail": ("Ponytail", 0, SHORT_HAIR + P("M134 62 Q168 66 156 118 Q146 92 132 82Z")),
-        "pigtails": ("Pigtails", 0, SHORT_HAIR + C(56, 92, 13) + C(144, 92, 13) + R(54, 66, 8, 20, "@c") + R(138, 66, 8, 20, "@c")),
-        "curly": ("Curly hair", 0, G(*[C(x, y, 11) for x, y in [(66, 66), (72, 50), (86, 42), (100, 38), (114, 42), (128, 50), (134, 66)]]) + R(68, 44, 64, 12, "@c")),
-        "buzz": ("Buzz cut", 0, P("M66 72 Q66 42 100 40 Q134 42 134 72 Q124 50 100 50 Q76 50 66 72Z", "@c", 'opacity=".75"')),
-        "fringe": ("Fringe", 0, SHORT_HAIR + R(66, 48, 68, 14, "@c", 6)),
+        "short": ("Short hair", 0, BACK + FRONT_SHORT),
+        "long": ("Long hair", 0, P("M60 84 C56 44 80 36 100 36 C120 36 144 44 140 84 C142 112 146 140 140 156 C120 162 80 162 60 156 C54 140 58 112 60 84Z") + BACK + FRONT_PART
+                 + P("M64 76 C60 100 62 126 66 146 L74 142 C70 120 69 98 71 80Z") + P("M136 76 C140 100 138 126 134 146 L126 142 C130 120 131 98 129 80Z")),
+        "bun": ("Bun", 0, C(100, 34, 15) + C(100, 34, 8, "@d", 'opacity=".25"') + BACK + FRONT_PART),
+        "spiky": ("Spiky hair", 1, BACK + P("M63 84 C61 66 62 56 66 48 L62 36 L76 42 L78 26 L90 38 L100 22 L110 38 L122 26 L124 42 L138 36 L134 48 C138 56 139 66 137 84 C132 72 126 64 118 60 C106 66 92 66 82 60 C74 64 68 72 63 84Z")),
+        "mohawk": ("Mohawk", 1, P("M64 82 C62 60 72 48 86 44 L114 44 C128 48 138 60 136 82 C130 66 118 58 100 58 C82 58 70 66 64 82Z", "@c", 'opacity=".3"')
+                   + P("M90 58 C88 40 92 24 100 14 C108 24 112 40 110 58Z")),
+        "afro": ("Afro", 1, G(*[C(100 + 46 * __import__("math").cos(a / 10), 70 + 40 * __import__("math").sin(a / 10), 17) for a in range(-31, 1, 4)]) + C(100, 60, 40) + "|||"
+                 + P("M66 84 C64 62 76 50 100 50 C124 50 136 62 134 84 C128 70 116 62 100 62 C84 62 72 70 66 84Z")),
+        "bob": ("Bob", 0, P("M60 84 C56 44 80 36 100 36 C120 36 144 44 140 84 L142 116 C126 122 74 122 58 116Z") + "|||"
+                + P("M64 84 C60 50 80 40 100 40 C120 40 140 50 136 84 L134 68 C120 60 80 60 66 68Z")
+                + P("M62 80 L60 116 L72 116 L70 84Z") + P("M138 80 L140 116 L128 116 L130 84Z")),
+        "ponytail": ("Ponytail", 0, P("M124 52 C160 54 166 104 150 144 C146 120 144 90 128 70Z") + C(127, 58, 6, "@d") + BACK + FRONT_SWEPT),
+        "pigtails": ("Pigtails", 0, E(54, 104, 12, 24) + E(146, 104, 12, 24) + C(60, 82, 5, "@d") + C(140, 82, 5, "@d") + BACK + FRONT_PART),
+        "curly": ("Curly hair", 0, G(*[C(x, y, 13) for x, y in [(64, 76), (68, 56), (82, 44), (100, 39), (118, 44), (132, 56), (136, 76), (62, 96), (138, 96)]]) + "|||"
+                  + G(*[C(x, y, 9) for x, y in [(72, 60), (86, 52), (100, 50), (114, 52), (128, 60)]])),
+        "buzz": ("Buzz cut", 0, "|||" + P("M64 80 C62 56 78 44 100 44 C122 44 138 56 136 80 C128 64 116 58 100 58 C84 58 72 64 64 80Z", "@c", 'opacity=".7"')),
+        "fringe": ("Fringe", 0, BACK + P("M63 86 C59 50 80 38 100 38 C120 38 141 50 137 86 C136 76 134 70 132 68 C112 72 88 72 68 68 C66 72 64 78 63 86Z")),
     },
     "hat": {
         "cap": ("Cap", 0, P("M64 58 Q66 28 100 28 Q134 28 136 58Z") + P("M60 58 L128 58 Q150 58 154 66 L60 66Z", "@d")),
@@ -247,16 +273,17 @@ def public(item):
     return {**item, "rarity_name": RARITIES[item["rarity"]]}
 
 
-def fill(markup, item_id=None, skin=None):
-    """Fill the colour placeholders of one drawing for the item's colour and the skin."""
+def fill(markup, item_id=None, skin=None, build=None):
+    """Fill the body-part and colour placeholders of one drawing for the build, the item's colour and the skin."""
+    markup = geometry(markup, build)
     colour = COLOURS[CATALOG[item_id]["colour"]] if item_id else COLOURS["grey"]
     _, c, d, l, _ = colour
     return markup.replace("@c", c).replace("@d", d).replace("@l", l).replace("@s", SKINS.get(skin, SKINS[DEFAULT_SKIN])[1])
 
 
-def drawing(item_id, skin=None):
+def drawing(item_id, skin=None, build=None):
     item = CATALOG[item_id]
-    markup = fill(STYLES[item["slot"]][item["style"]][2], item_id, skin)
+    markup = fill(STYLES[item["slot"]][item["style"]][2], item_id, skin, build).replace("|||", "")
     if item["slot"] in ("trinket", "background"):
         return markup
     # A soft ink outline on every filled shape gives the cartoon look; shapes that set their own stroke keep it.
@@ -280,61 +307,100 @@ BUILDS = {"masculine": "Masculine", "feminine": "Feminine"}
 DEFAULT_BUILD = "masculine"
 # What a character wears in a slot it has nothing equipped in, so nobody is a bare mannequin: (style, colour) per build.
 STARTER = {
-    "masculine": {"hair": ("short", "brown"), "top": ("tee", "teal"), "bottom": ("shorts", "black"), "shoes": ("sneakers", "white")},
+    "masculine": {"hair": ("short", "brown"), "top": ("tee", "teal"), "bottom": ("jeans", "blue"), "shoes": ("sneakers", "white")},
     "feminine": {"hair": ("long", "brown"), "top": ("tee", "teal"), "bottom": ("skirt", "purple"), "shoes": ("sneakers", "white")},
+}
+# Each build's outline of the parts clothes follow, and where its hands are.
+GEOMETRY = {
+    "masculine": {
+        "@TORSO": "M86 118 C76 119 68 123 66 133 C67 150 69 168 70 184 C71 194 72 200 73 205 L127 205 C128 200 129 194 130 184 C131 168 133 150 134 133 C132 123 124 119 114 118Z",
+        "@ARML": "M67 130 C60 138 57 160 56 186 C56 193 66 194 66.5 187 C68 166 71 150 76 140Z",
+        "@ARMR": "M133 130 C140 138 143 160 144 186 C144 193 134 194 133.5 187 C132 166 129 150 124 140Z",
+        "@LEGL": "M77 198 C76 222 77 244 79 263 C83 266 92 266 95 263 C96 244 98 222 99.5 204Z",
+        "@LEGR": "M123 198 C124 222 123 244 121 263 C117 266 108 266 105 263 C104 244 102 222 100.5 204Z",
+        "hands": ((61, 191, 7.5), (139, 191, 7.5)),
+    },
+    "feminine": {
+        "@TORSO": "M88 118 C79 119 72 123 71 133 C71 148 77 158 80 168 C75 180 70 192 70 205 L130 205 C130 192 125 180 120 168 C123 158 129 148 129 133 C128 123 121 119 112 118Z",
+        "@ARML": "M72 130 C65 138 62 160 61 186 C61 192 70 193 70.5 187 C72 166 75 150 79 140Z",
+        "@ARMR": "M128 130 C135 138 138 160 139 186 C139 192 130 193 129.5 187 C128 166 125 150 121 140Z",
+        "@LEGL": "M78 198 C77 222 79 244 81 263 C84 266 92 266 94 263 C96 244 98 222 99.5 204Z",
+        "@LEGR": "M122 198 C123 222 121 244 119 263 C116 266 108 266 106 263 C104 244 102 222 100.5 204Z",
+        "hands": ((65.5, 191, 6.8), (134.5, 191, 6.8)),
+    },
 }
 IRIS = "#5a3e2b"
 
 
+def geometry(markup, build):
+    shapes = GEOMETRY.get(build, GEOMETRY[DEFAULT_BUILD])
+    for token in ("@TORSO", "@ARML", "@ARMR", "@LEGL", "@LEGR"):
+        markup = markup.replace(token, shapes[token])
+    return markup
+
+
+def defs(build):
+    """Gradients and filters every picture uses, and the clip paths that cut sleeves and legs for this build."""
+    shapes = GEOMETRY.get(build, GEOMETRY[DEFAULT_BUILD])
+    clips = "".join(f'<clipPath id="k-{name}"><rect x="-50" y="-50" width="300" height="{y + 50}"/></clipPath>' for name, y in CUTS.items())
+    clips += '<clipPath id="k-cuff"><rect x="-50" y="177" width="300" height="7"/></clipPath>'
+    clips += f'<clipPath id="k-torso"><path d="{shapes["@TORSO"]}"/></clipPath>'
+    return DEFS.replace("</defs>", clips + "</defs>")
+
+
 def eye(x, feminine):
-    """One eye: white, iris, pupil and two highlights; lashes on the feminine build."""
-    lashes = ""
+    """One eye: white, iris, pupil and two highlights; a lid flick on the feminine build."""
+    flick = ""
     if feminine:
         side = -1 if x < 100 else 1
-        lashes = P(f"M{x + side * 6} 73.5 Q{x + side * 8.5} 72.5 {x + side * 10} 70", "none", f'stroke="{INK}" stroke-width="2" stroke-linecap="round"')
-    return G(E(x, 77, 6.2, 7.2, "#fff", f'stroke="{INK}" stroke-opacity=".25" stroke-width="1"'), C(x + 0.6, 78, 4.6, IRIS), C(x + 0.6, 78, 2.4, INK),
-             C(x + 2.2, 75.6, 1.6, "#fff"), C(x - 1.2, 80.2, 0.8, "#fff"),
-             P(f"M{x - 6.5} 74 Q{x} 68.5 {x + 6.5} 74", "none", f'stroke="{INK}" stroke-width="{2.6 if feminine else 1.8}" stroke-linecap="round"'), lashes)
+        flick = P(f"M{x + side * 6} 74.5 Q{x + side * 8.5} 73.5 {x + side * 10} 71", "none", f'stroke="{INK}" stroke-width="2" stroke-linecap="round"')
+    return G(E(x, 79, 6.4, 7.4, "#fff", f'stroke="{INK}" stroke-opacity=".25" stroke-width="1"'), C(x + 0.6, 80, 4.8, IRIS), C(x + 0.6, 80, 2.5, INK),
+             C(x + 2.3, 77.4, 1.7, "#fff"), C(x - 1.2, 82.4, 0.8, "#fff"),
+             P(f"M{x - 6.6} 76 Q{x} 70.2 {x + 6.6} 76", "none", f'stroke="{INK}" stroke-width="{2.6 if feminine else 1.8}" stroke-linecap="round"'), flick)
 
 
-def body(skin, build=None):
-    s = SKINS.get(skin, SKINS[DEFAULT_SKIN])[1]
+def body(skin, build=None, face=True):
+    """The character's body in a skin tone (a SKINS key, or a #rrggbb colour); without a face it is the plain mannequin of item icons."""
+    build = build if build in BUILDS else DEFAULT_BUILD
+    shapes = GEOMETRY[build]
+    s = skin if str(skin).startswith("#") else SKINS.get(skin, SKINS[DEFAULT_SKIN])[1]
     o, lit = shade(s, 0.72), shade(s, 1.16)
     feminine = build == "feminine"
     line = f'stroke="{o}" stroke-width="2" stroke-linejoin="round"'
-    torso = ("M74 134 Q74 121 87 120 H113 Q126 121 126 134 Q124 156 119 167 Q131 184 131 196 Q131 205 121 205 H79 Q69 205 69 196 Q69 184 81 167 Q76 156 74 134Z"
-             if feminine else "M68 136 Q68 120 86 120 H114 Q132 120 132 136 V194 Q132 204 121 204 H79 Q68 204 68 194Z")
-    arm = 14 if feminine else 16
-    left, right = (56, 130) if feminine else (53, 131)
-    brows = ('M80 64 Q87 59.5 95 63', 'M105 63 Q113 59.5 120 64') if feminine else ('M79 65 Q87 61.5 95 64', 'M105 64 Q113 61.5 121 65')
-    mouth = (P("M92 93 Q100 101 108 93 Q100 96.5 92 93Z", "#d9566b", f'stroke="{shade("#d9566b", 0.7)}" stroke-width="1.2" stroke-linejoin="round"') if feminine
-             else P("M91 93 Q100 101 109 93", "none", f'stroke="{INK}" stroke-width="2.8" stroke-linecap="round"'))
+    brows = ("M80 66 Q87 61.5 95 65", "M105 65 Q113 61.5 120 66") if feminine else ("M79 67 Q87 63.5 95 66", "M105 66 Q113 63.5 121 67")
+    brow = f'stroke="{shade(s, 0.45)}" stroke-width="{2.2 if feminine else 3.2}" stroke-linecap="round"'
+    mouth = (P("M92 95 Q100 103 108 95 Q100 98.5 92 95Z", "#d9566b", f'stroke="{shade("#d9566b", 0.7)}" stroke-width="1.2" stroke-linejoin="round"') if feminine
+             else P("M91 95 Q100 103 109 95", "none", f'stroke="{INK}" stroke-width="2.8" stroke-linecap="round"'))
+    (lx, ly, lr), (rx, ry, rr) = shapes["hands"]
+    blush = .4 if feminine else .25
     return G(
-        R(77, 196, 21, 66, s, 9, line), R(102, 196, 21, 66, s, 9, line),                                       # legs
-        R(left, 126, arm, 66, s, 7, line), R(right, 126, arm, 66, s, 7, line),                                  # arms
-        C(left + arm / 2, 195, 8, s, line), C(right + arm / 2, 195, 8, s, line),                                # hands
-        P(torso, s, line),
-        R(92, 104, 16, 22, s, 6, line), R(92, 113, 16, 7, o, 3, 'opacity=".35"'),                                # neck and its shadow
-        E(66, 80, 5.5, 9, s, line), E(134, 80, 5.5, 9, s, line), E(66.5, 80, 2.5, 5, o, 'opacity=".35"'), E(133.5, 80, 2.5, 5, o, 'opacity=".35"'),
-        E(100, 78, 34, 37, s, line), E(89, 57, 14, 8, lit, 'opacity=".5"'), E(100, 107, 22, 5, o, 'opacity=".12"'),  # head, highlight, jaw shade
-        P(brows[0], "none", f'stroke="{shade(s, 0.45)}" stroke-width="{2.2 if feminine else 3.2}" stroke-linecap="round"'),
-        P(brows[1], "none", f'stroke="{shade(s, 0.45)}" stroke-width="{2.2 if feminine else 3.2}" stroke-linecap="round"'),
+        P(shapes["@LEGL"], s, line), P(shapes["@LEGR"], s, line),
+        P(shapes["@ARML"], s, line), P(shapes["@ARMR"], s, line), C(lx, ly, lr, s, line), C(rx, ry, rr, s, line),
+        P(shapes["@TORSO"], s, line),
+        R(93, 106, 14, 18, s, 6, line), R(93, 114, 14, 6, o, 3, 'opacity=".35"'),                                # neck and its shadow
+        E(64.5, 83, 5.5, 8.5, s, line), E(135.5, 83, 5.5, 8.5, s, line),                                        # ears
+        E(100, 79, 36, 35, s, line), E(88, 60, 15, 8, lit, 'opacity=".5"'), E(100, 107, 22, 5, o, 'opacity=".12"'),
+    ) + (G(
+        P(brows[0], "none", brow), P(brows[1], "none", brow),
         eye(88, feminine), eye(112, feminine),
-        P("M98.5 83 Q100 86.5 102 84.5", "none", f'stroke="{o}" stroke-width="2" stroke-linecap="round"'),        # nose
+        P("M98.5 85 Q100 88.5 102 86.5", "none", f'stroke="{o}" stroke-width="2" stroke-linecap="round"'),          # nose
         mouth,
-        E(78, 90, 6.5, 4, "#ff7a8a", f'opacity="{.4 if feminine else .25}"'), E(122, 90, 6.5, 4, "#ff7a8a", f'opacity="{.4 if feminine else .25}"'),
-    )
+        E(77, 92, 6.5, 4, "#ff7a8a", f'opacity="{blush}"'), E(123, 92, 6.5, 4, "#ff7a8a", f'opacity="{blush}"'),
+    ) if face else "")
 
 
-def styled(slot, style, colour, skin=None):
-    """A catalogue drawing in a given style and colour, as worn (used for starter clothes)."""
-    item_id = f"{slot}.{style}.{colour}"
-    return drawing(item_id, skin) if item_id in CATALOG else ""
+def hair_layers(item_id, skin=None, build=None):
+    """(behind the head, in front of it) for a hair item."""
+    markup = fill(STYLES["hair"][CATALOG[item_id]["style"]][2], item_id, skin, build)
+    back, _, front = markup.rpartition("|||") if "|||" in markup else ("", "", markup)
+    wrap = lambda m: f'<g stroke="#1b1830" stroke-opacity=".38" stroke-width="1.6" stroke-linejoin="round">{m}</g>' if m else ""
+    return wrap(back.replace("|||", "")), wrap(front)
 
 
 GROUND = E(100, 279, 52, 7, "#000", 'opacity=".18"')
-CROPS = {"hat": "44 0 112 96", "hair": "44 20 112 96", "face": "56 52 88 56", "top": "36 100 128 120", "bottom": "50 180 100 100",
+CROPS = {"hat": "44 0 112 96", "hair": "28 8 144 144", "face": "56 54 88 56", "top": "36 100 128 150", "bottom": "50 180 100 100",
          "shoes": "56 236 88 52", "held": "104 120 96 110", "pet": "128 206 72 84"}
+FULL_COVER_HATS = ("helmet", "beanie", "tophat", "chef")
 
 
 def avatar_svg(outfit, skin=None, size=None, crop=None, build=None):
@@ -342,26 +408,31 @@ def avatar_svg(outfit, skin=None, size=None, crop=None, build=None):
     bottom or shoes slot shows the build's starter piece instead."""
     build = build if build in BUILDS else DEFAULT_BUILD
     starter = STARTER[build]
+    wearing = lambda slot: outfit.get(slot) if outfit.get(slot) in CATALOG and CATALOG[outfit[slot]]["slot"] == slot else None
+    hair = wearing("hair")
+    if not hair and not (wearing("hat") and CATALOG[wearing("hat")]["style"] in FULL_COVER_HATS):
+        hair = "hair.{}.{}".format(*starter["hair"])
+    back, front = hair_layers(hair, skin, build) if hair else ("", "")
     layers = []
     for slot in LAYER_ORDER:
         if slot == "BODY":
-            layers.append(GROUND + body(skin, build))
-            continue
-        item_id = outfit.get(slot)
-        if item_id in CATALOG and CATALOG[item_id]["slot"] == slot:
-            layers.append(drawing(item_id, skin))
-        elif slot in starter and not (slot == "hair" and outfit.get("hat") in CATALOG and CATALOG[outfit["hat"]]["style"] in ("helmet", "beanie", "tophat", "chef")):
-            layers.append(styled(slot, *starter[slot], skin))
-    return _wrap("".join(layers), crop or "0 0 200 300", size)
+            layers.append(back + GROUND + body(skin, build))
+        elif slot == "hair":
+            layers.append(front)
+        elif wearing(slot):
+            layers.append(drawing(wearing(slot), skin, build))
+        elif slot in starter:
+            layers.append(drawing("{}.{}.{}".format(slot, *starter[slot]), skin, build))
+    return _wrap("".join(layers), crop or "0 0 200 300", size, build)
 
 
-def _wrap(inner, view, size=None):
+def _wrap(inner, view, size=None, build=None):
     w, h = [float(x) for x in view.split()[2:]]
     dims = f' width="{size}" height="{round(size * h / w)}"' if size else ""
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view}"{dims}>{DEFS}{inner}</svg>'
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view}"{dims}>{defs(build)}{inner}</svg>'
 
 
-GHOST = '<g opacity=".22" filter="url(#grey)">{}</g>'
+MANNEQUIN = lambda: GROUND + body("#e2e5ee", face=False)     # the plain stand item icons are shown on
 
 
 def item_svg(item_id, skin=None):
@@ -375,9 +446,12 @@ def item_svg(item_id, skin=None):
         card = (f'<linearGradient id="card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>'
                 + R(10, 10, 180, 280, "url(#card)", 20, 'stroke="#000" stroke-opacity=".13" stroke-width="2"') + R(20, 20, 160, 260, "none", 14, 'stroke="#fff" stroke-opacity=".35" stroke-width="2"'))
         return _wrap(card + drawing(item_id, skin), "0 0 200 300")
-    mannequin = GHOST.format(GROUND + body(skin))
+    mannequin = MANNEQUIN()
     if slot == "background":
         return _wrap(drawing(item_id) + '<g opacity=".5">' + GROUND + body(skin) + "</g>", "0 0 200 300")
+    if slot == "hair":
+        back, front = hair_layers(item_id, skin)
+        return _wrap(back + mannequin + front, CROPS["hair"])
     return _wrap(mannequin + drawing(item_id, skin), CROPS.get(slot, "0 0 200 300"))
 
 
