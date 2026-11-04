@@ -162,6 +162,15 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
                 finally { busy = false }
             }
         }) { Text(if (mode == "ai") "Generate practice exam" else "Start exam") }
+        // Say what is missing instead of leaving the button greyed out without a reason.
+        if (!busy && (topic == null || (mode == "original" && paper == null))) Text(
+            when {
+                topic == null -> "Choose a topic to start."
+                papers.isEmpty() -> "This topic has no past papers yet. Pick AI-written practice, or add papers in Resources."
+                else -> "Choose a year to start."
+            },
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         if (busy) LoadingBar(Modifier.fillMaxWidth())
         OutlinedButton(enabled = !busy, shape = RoundedCornerShape(50), onClick = { scope.launch { load() } }) { Text(if (exams == null && error.isNotEmpty()) "Retry" else "Refresh") }

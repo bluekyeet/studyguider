@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -562,14 +563,15 @@ private fun StudyApp() {
                 else -> Column(Modifier.fillMaxSize()) {
                     // Section switch. Hidden while a classic exam is open so the exam keeps the whole screen.
                     if (examSection != 0 || examId.isEmpty()) Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        listOf(0 to "Classic exam papers", 1 to "Rapid questions", 2 to "Exam revision").forEach { (section, label) ->
-                            FilterChip(selected = examSection == section, onClick = {
+                        // Short names so all three sections fit side by side without scrolling.
+                        listOf(0 to "Papers", 1 to "Rapid", 2 to "Revision").forEach { (section, label) ->
+                            FilterChip(modifier = Modifier.weight(1f), selected = examSection == section, onClick = {
                                 if (section == examSection) return@FilterChip
                                 if (examDirty) { pendingSection = section; pendingTab = null; confirmExamExit = true } else examSection = section
-                            }, label = { Text(label) })
+                            }, label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, maxLines = 1) })
                         }
                     }
                     AnimatedContent(
@@ -876,12 +878,15 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
             TextButton(onClick = { retry++ }) { Text("Try again") }
         }
         if (!loading && error.isEmpty() && courses.isEmpty()) Text("Choose topics to include in your lessons.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (courses.isNotEmpty()) Text("Tap a topic to see its last seven nightly lesson runs.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (courses.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
             Column {
                 courses.forEachIndexed { index, course ->
                     if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    ListItem(headlineContent = { Text(course.optString("topic")) }, supportingContent = { Text(course.optString("subject")) }, trailingContent = {
-                        TextButton(onClick = { scheduleTopic = course }) { Text("Nightly status") }
+                    // The whole row opens that topic's nightly status, so the rows need no button of their own.
+                    ListItem(modifier = Modifier.clickable(onClickLabel = "Nightly status for ${course.optString("topic")}") { scheduleTopic = course },
+                        headlineContent = { Text(course.optString("topic")) }, supportingContent = { Text(course.optString("subject")) }, trailingContent = {
+                        Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 }
             }
