@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+import mathtext
 
 
 class ReviewQuestion(BaseModel):
@@ -126,7 +127,7 @@ def review_router(connect, authorised, model_reply):
                 for item in items:
                     db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, concept)
                         VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s)""",
-                        (topic_id, item["question"], item["expected_answer"], json.dumps(sources), item["concept"]))
+                        (topic_id, mathtext.normalise_maths(item["question"]), mathtext.normalise_maths(item["expected_answer"]), json.dumps(sources), item["concept"]))
                 db.execute("UPDATE lessons SET review_generated_at = now() WHERE id = %s", (lesson_id,))
         with connect() as db:
             rows = db.execute("""SELECT q.id, q.topic_id, q.question, q.due_date, q.concept, q.standard_number, q.mastery, t.name

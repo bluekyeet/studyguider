@@ -265,6 +265,8 @@ export async function renderLessons(container, api, params) {
       li.append(go); items.append(li);
     });
     outline.append(element('p', `Section ${current + 1} of ${lesson.chunks.length}`, 'muted'), items);
+    // On a phone the sections are a row of pills; bring the current one into view.
+    requestAnimationFrame(() => { const here = items.querySelector('[aria-current]'); if (here) items.scrollLeft += here.getBoundingClientRect().left - items.getBoundingClientRect().left - 12; });
 
     const main = element('div', '', 'reader-main stack');
     if (readerStep) { main.style.setProperty('--ex', readerStep * 28 + 'px'); main.style.setProperty('--ey', '0px'); }

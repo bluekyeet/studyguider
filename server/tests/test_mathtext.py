@@ -91,3 +91,9 @@ def test_review_parts_are_single_asks_with_their_parents_wording():
     assert mathtext.review_parts(db, 1)[0][1] == "Ethanol is a fuel. The combustion is shown.\n\nCalculate x."
     db.execute.return_value.fetchone.return_value = ([{"label": "a", "text": "(a) only"}], None, "")
     assert mathtext.review_parts(db, 1) == []
+
+
+def test_model_maths_is_normalised_to_dollar_forms_and_degrees_leave_text():
+    assert mathtext.normalise_maths(r"Use \( x + 1 \) and \[ y = 2 \].") == "Use $x + 1$ and $$y = 2$$."
+    assert mathtext.normalise_maths(r"$200\text{^\circ C}$ and $/\text{^\circ C}$") == r"$200^\circ\text{C}$ and $/^\circ\text{C}$"
+    assert mathtext.normalise_maths("Plain $x$ text") == "Plain $x$ text"

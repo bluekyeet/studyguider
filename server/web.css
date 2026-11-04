@@ -245,6 +245,18 @@ body.signed-out .sidebar{display:none}
   .sidebar nav a svg{width:22px;height:22px}
   /* Home tables become stacked rows: the first cell is the title, the rest follow beneath */
   .tabs a{flex:1 1 0;min-width:0;padding:11px 6px;white-space:normal;text-align:center;line-height:1.25;font-size:14px}
+  /* three figures sit in one row instead of leaving one alone beneath */
+  .stat-row:has(>:nth-child(3):last-child){grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .stat-row:has(>:nth-child(3):last-child) .stat{padding:10px}
+  /* the lesson's sections become a row of pills so the lesson itself starts near the top of the screen */
+  .reader-outline{padding:10px 12px}
+  .reader-outline ol{flex-direction:row;overflow-x:auto;gap:6px;scrollbar-width:none}
+  .reader-outline ol::-webkit-scrollbar{display:none}
+  .reader-outline li{flex:none}
+  .reader-outline button{width:auto;white-space:nowrap;border:1px solid var(--line);border-radius:999px;padding:6px 12px;min-height:36px}
+  .math-toolbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-2px}
+  .math-toolbar::-webkit-scrollbar{display:none}
+  .math-toolbar button{flex:none}
   .home .table thead{display:none}
   .home .table,.home .table tbody{display:block}
   .home .table tr{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:12px 0;border-bottom:1px solid var(--line)}

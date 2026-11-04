@@ -37,6 +37,13 @@ import java.net.URL
 internal fun normaliseFormulaEscapes(formula: String): String = formula.replace(
     Regex("\\\\\\\\(?=(?:text|mathrm|mathbf|vec|frac|tfrac|sqrt|ce)\\b|[,;!])"),
 ) { "\\" }
+    // A degree sign inside \text ("\text{^\circ C}") is not valid LaTeX: put it in the formula and keep the unit as text.
+    .replace(Regex("\\\\text\\{\\s*\\^\\s*\\\\circ\\s*([^{}]*)\\}")) { "^\\circ\\text{" + it.groupValues[1].trim() + "}" }
+
+/** \( ... \) and \[ ... \] are the same maths as $ ... $ and $$ ... $$; the app only reads the dollar forms. */
+internal fun normaliseMathDelimiters(text: String): String = text
+    .replace(Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)) { "\$\$" + it.groupValues[1].trim() + "\$\$" }
+    .replace(Regex("\\\\\\((.+?)\\\\\\)", RegexOption.DOT_MATCHES_ALL)) { "\$" + it.groupValues[1].trim() + "\$" }
 
 object KaTeX {
     const val AVAILABLE = true
@@ -81,7 +88,7 @@ object KaTeX {
         val builder = StringBuilder()
         fun escape(value: String) = escapeHtml(value)
         var seenText = false
-        inlineRuns(text).map { run ->
+        inlineRuns(normaliseMathDelimiters(text)).map { run ->
             if (!seenText && run.text.isNotBlank()) { seenText = true; run.copy(text = run.text.trimStart()) } else run
         }.forEachIndexed { position, run ->
             if (run.bold) builder.append("<b>")

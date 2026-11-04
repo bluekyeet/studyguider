@@ -47,3 +47,11 @@ def test_atom_symbols_of_a_structural_formula_become_a_figure_not_a_sentence():
         page.insert_text((100, 400), 'Water is H2O and I think so.', fontsize=11)
         regions = structure_regions(page)
     assert len(regions) == 1 and regions[0].x0 <= 201 and regions[0].x1 >= 258 and regions[0].y0 < 300 < regions[0].y1
+
+
+def test_the_printed_symbol_pattern_is_not_question_text():
+    with fitz.open() as doc:
+        page = doc.new_page(width=595, height=842)
+        page.insert_text((60, 90), '#$%&*!!?', fontsize=11)
+        page.insert_text((60, 120), 'Calculate the force.', fontsize=11)
+        assert [line['text'] for line in page_lines(page)] == ['Calculate the force.']

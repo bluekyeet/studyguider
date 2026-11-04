@@ -104,7 +104,7 @@ def restore_one(vision_reply, row):
     texts = {m.group(1): m.group(2).strip() for m in BLOCK.finditer(reply if isinstance(reply, str) else "")}
     if not texts:
         raise ValueError("the reply was not in the requested form")
-    accepted = {key: texts[key] for key in units if acceptable(texts.get(key), units[key])}
+    accepted = {key: normalise_maths(texts[key]) for key in units if acceptable(texts.get(key), units[key])}
     if not accepted:
         raise ValueError("no rewritten text kept the original wording")
     count = len(parts) if isinstance(parts, list) else 0
@@ -206,6 +206,13 @@ def display_label(label):
 
 
 CONTEXT_ONLY = re.compile(r"^\s*question\s+\w+\s*$", re.I)
+
+
+def normalise_maths(text):
+    """Model-written maths in the one form the apps read: $...$ and $$...$$, with a degree sign inside \\text moved out of it."""
+    text = re.sub(r"\\\[(.+?)\\\]", lambda m: "$$" + m.group(1).strip() + "$$", text, flags=re.S)
+    text = re.sub(r"\\\((.+?)\\\)", lambda m: "$" + m.group(1).strip() + "$", text, flags=re.S)
+    return re.sub(r"\\text\{\s*\^\s*\\circ\s*([^{}]*)\}", lambda m: "^\\circ\\text{" + m.group(1).strip() + "}", text)
 
 
 def _tidy(text, label=None):

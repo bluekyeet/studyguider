@@ -9,7 +9,9 @@ const el = (tag, text, className) => {
 // Models often double the backslash before a command or spacing (text, frac, comma), which LaTeX reads as a line break and wraps the formula.
 // Same rule as the Android app: repair only known commands and spacing, never a row break between matrix or aligned rows.
 const DOUBLED = /\\\\(?=(?:text|mathrm|mathbf|vec|frac|tfrac|sqrt|ce)\b|[,;!])/g;
-export const repairEscapes = source => source.replace(DOUBLED, '\\');
+// A degree sign inside \text ("\text{^\circ C}") is not valid LaTeX: the sign goes in the formula and the unit stays text.
+const DEGREE_IN_TEXT = /\\text\{\s*\^\s*\\circ\s*([^{}]*)\}/g;
+export const repairEscapes = source => source.replace(DOUBLED, '\\').replace(DEGREE_IN_TEXT, (_, unit) => `^\\circ\\text{${unit.trim()}}`);
 
 function renderMath(source, display) {
   source = repairEscapes(source);
@@ -56,8 +58,10 @@ function markdown(text, parent, maths) {
 
 function withInline(parent, text) {
   const maths = [];
-  const held = String(text).replace(/\$\$([\s\S]+?)\$\$|\$([^$\n]+)\$/g, (_, block, inline) => {
-    maths.push([block ?? inline, block !== undefined]);
+  // \( ... \) and \[ ... \] are the same maths as $ ... $ and $$ ... $$.
+  const held = String(text).replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^$\n]+)\$|\\\(([\s\S]+?)\\\)/g, (_, dollars, bracket, dollar, paren) => {
+    const block = dollars ?? bracket;
+    maths.push([(block ?? dollar ?? paren).trim(), block !== undefined]);
     return `${maths.length - 1}`;
   });
   return markdown(held, parent, maths);

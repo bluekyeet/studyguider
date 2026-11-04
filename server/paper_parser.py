@@ -128,6 +128,8 @@ def page_lines(page, ocr=False):
                 continue
             if not text or box[1] < 30 or box[3] > page.rect.height - 28:
                 continue
+            if re.fullmatch(r"[#$%&*!?@^~+=<>\/|_.,;:'\"-]{3,}", text):
+                continue    # the printed symbol pattern of the no-writing area ("#$%&*!!?") is not question text
             if text in {"USE ONLY", "ASSESSOR'S", "ASSESSOR’S", "DO NOT WRITE IN THIS AREA"}:
                 continue
             # A printed page number sits in the top or bottom margin; a number inside a table is data.
