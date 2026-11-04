@@ -36,18 +36,9 @@ object Motion {
     val easeOut = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 }
 
-/** A block eases up and fades in when it first appears; later blocks follow a beat behind it. */
-fun Modifier.staggeredEnter(index: Int, key: Any? = Unit): Modifier = composed {
-    val progress = remember(key) { Animatable(0f) }
-    LaunchedEffect(key) {
-        delay((index * 55L).coerceAtMost(440L))
-        progress.animateTo(1f, tween(520, easing = Motion.easeOut))
-    }
-    graphicsLayer {
-        alpha = progress.value
-        translationY = (1f - progress.value) * 22.dp.toPx()
-    }
-}
+/** Kept so call sites read the same, but blocks no longer pop in one by one: a screen arrives as a whole through its transition. */
+@Suppress("UNUSED_PARAMETER")
+fun Modifier.staggeredEnter(index: Int, key: Any? = Unit): Modifier = this
 
 /** Springy press feedback: the element sinks slightly while held and rebounds on release. */
 fun Modifier.pressScale(source: InteractionSource, pressed: Float = 0.97f): Modifier = composed {

@@ -291,32 +291,13 @@ body.signed-out .sidebar{display:none}
 @keyframes pop{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
 @keyframes grow{from{transform:scaleX(0)}}
 
-/* Pages: each top-level block eases up in turn, so a screen builds from the top down. This only happens as a page is
-   entered (the router sets .entering); a background refresh of a list never replays it. */
-#view>section.entering>*{animation:enter .55s var(--ease-out) both}
-#view>section.entering>:nth-child(2){animation-delay:.05s}
-#view>section.entering>:nth-child(3){animation-delay:.1s}
-#view>section.entering>:nth-child(4){animation-delay:.15s}
-#view>section.entering>:nth-child(5){animation-delay:.2s}
-#view>section.entering>:nth-child(6){animation-delay:.25s}
-#view>section.entering>:nth-child(n+7){animation-delay:.3s}
-/* Grids and tables: items follow one another instead of arriving together. */
-.entering .card-grid>*{animation:rise .5s var(--ease-out) both}
-.entering .card-grid>:nth-child(2){animation-delay:.06s}.entering .card-grid>:nth-child(3){animation-delay:.12s}
-.entering .card-grid>:nth-child(4){animation-delay:.18s}.entering .card-grid>:nth-child(5){animation-delay:.24s}
-.entering .card-grid>:nth-child(n+6){animation-delay:.3s}
-.entering .table tbody tr{animation:rise .45s var(--ease-out) both}
-.entering .table tbody tr:nth-child(2){animation-delay:.05s}.entering .table tbody tr:nth-child(3){animation-delay:.1s}
-.entering .table tbody tr:nth-child(4){animation-delay:.15s}.entering .table tbody tr:nth-child(5){animation-delay:.2s}
-.entering .table tbody tr:nth-child(6){animation-delay:.25s}.entering .table tbody tr:nth-child(n+7){animation-delay:.3s}
-.entering .stat-row>*{animation:pop .5s var(--ease-spring) both}
-.entering .stat-row>:nth-child(2){animation-delay:.06s}.entering .stat-row>:nth-child(3){animation-delay:.12s}
-.entering .stat-row>:nth-child(4){animation-delay:.18s}.entering .stat-row>:nth-child(5){animation-delay:.24s}
+/* Pages arrive as one piece, from the direction they are entered (the router sets .entering and --ex / --ey). Nothing inside
+   pops in on its own, so a screen never builds up element by element. A background refresh of a list never replays this. */
+#view>section.entering{animation:enter .45s var(--ease-out) both}
 
 /* Reader and exams: the next section or question slides in rather than snapping. */
-.reader-main>*{animation:enter .42s var(--ease-out) both}
-.reader-main>:nth-child(2){animation-delay:.04s}.reader-main>:nth-child(3){animation-delay:.08s}
-.reader-main>:nth-child(n+4){animation-delay:.12s}
+.reader-main{animation:enter .42s var(--ease-out) both}
+.entering .reader-main,.entering .exam-layout article.card{animation:none}
 .exam-layout article.card{animation:enter .42s var(--ease-out) both}
 .exam-part{animation:fade .5s var(--ease-out) both}
 .ai-box,.exam-figure,.math-preview:not([hidden]){animation:pop .4s var(--ease-out) both;transform-origin:top left}
