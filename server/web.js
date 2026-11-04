@@ -9,8 +9,6 @@ import {renderGame} from './web-game.js';
 import {session, avatar, library, LIBRARY_PATHS} from './web-common.js';
 
 const $ = id => document.getElementById(id);
-// The Android app shows the Rewards page full screen inside its own frame (?embedded=1), so the site's menu is left out.
-if (new URLSearchParams(location.search).has('embedded')) document.body.classList.add('embedded');
 async function api(path, options={}) {
   if (library.global() && LIBRARY_PATHS.test(path.split('?')[0])) options = {...options, headers: {...options.headers, 'X-Library': 'global'}};
   const response = await fetch(path,{credentials:'same-origin',...options});

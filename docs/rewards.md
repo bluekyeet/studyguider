@@ -93,7 +93,8 @@ GPA scale from topic mastery: 0 -> 0, 0.4 -> 3, 0.6 -> 5, 0.8 -> 7, 1.0 -> 9 (li
 - `game_items.py` (catalogue), `game_art.py` (SVG for items and the character), `game.py` (economy, API).
 - API: `/game/me`, `/game/catalog`, `/game/pull`, `/game/shop/buy`, `/game/recycle`, `/game/outfit`, `/game/showcase`,
   `/game/settings`, `/game/leaderboard/{board}`, `/game/players/{id}`, and public deterministic art at `/game/art/...`.
-- UI: a Rewards page on the website; the Android app opens that same page full screen from Home (signed in with the app's session, limited to the server's host).
+- UI: a Rewards page on the website and a native Rewards screen on Android (opened from Home) with the same four sections. The
+  server draws all art; the website uses `/game/art/...svg`, the app `/game/art/...png?w=` (rendered with cairosvg, widths 32-768).
 - Check: `server/tests/game_check.py` runs the whole API against a throwaway PostgreSQL; `tests/test_game.py` covers the rules.
 
 ## Not doing

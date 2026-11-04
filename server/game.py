@@ -263,7 +263,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
             "pity": {"pulls": snap["state"]["pulls"], "rare_in": RARE_PITY - snap["state"]["since_rare"], "epic_in": EPIC_PITY - snap["state"]["since_epic"]},
             "costs": {"pull": PULL_COST, "ten": TEN_PULL_COST},
             "catalog": {"total": len(items.CATALOG), "owned": len(owned), "by_slot": {s: {"owned": by_slot[s], "total": sum(1 for i in items.CATALOG.values() if i["slot"] == s)} for s in items.SLOTS},
-                        "rarities": items.RARITIES, "slots": [{"id": s, "name": items.SLOT_NAMES[s], "worn": s in items.WORN} for s in items.SLOTS],
+                        "rarities": items.RARITIES, "slots": [{"id": s, "name": items.SLOT_NAMES[s], "worn": s in items.WORN, "icon": f"{s}.{next(iter(items.STYLES[s]))}.teal"} for s in items.SLOTS],
                         "skins": [{"id": k, "name": v[0], "colour": v[1]} for k, v in items.SKINS.items()]},
             "odds": dict(zip(items.RARITIES, items.ODDS)),
             "notice": "Points come from work recorded as correct. Estimated grade and GPA are unofficial estimates, not NZQA results.",
@@ -392,10 +392,12 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
     def board_rows(db, board, limit, viewer):
         column, label, unit = BOARDS[board]
         extra = f"AND p.{column} IS NOT NULL" if board in ("grade", "gpa") else f"AND p.{column} > 0"
-        rows = db.execute(f"""SELECT p.user_id, u.username, p.{column}, p.outfit, p.skin, p.visible, p.networth, p.est_mastery, p.est_gpa,
-                RANK() OVER (ORDER BY p.{column} DESC) FROM game_profiles p JOIN users u ON u.id = p.user_id
-                WHERE (p.visible OR p.user_id = %s) {extra} ORDER BY p.{column} DESC, u.username LIMIT %s""", (viewer, limit)).fetchall()
-        return column, label, unit, rows
+        ranked = f"""SELECT p.user_id, u.username, p.{column}, p.outfit, p.skin, p.visible, p.networth, p.est_mastery, p.est_gpa,
+                RANK() OVER (ORDER BY p.{column} DESC) AS place FROM game_profiles p JOIN users u ON u.id = p.user_id
+                WHERE (p.visible OR p.user_id = %s) {extra}"""
+        rows = db.execute(f"SELECT * FROM ({ranked}) r ORDER BY place, username LIMIT %s", (viewer, limit)).fetchall()
+        mine = db.execute(f"SELECT * FROM ({ranked}) r WHERE user_id = %s", (viewer, viewer)).fetchone()
+        return column, label, unit, rows, mine
 
     @router.get("/game/leaderboard/{board}", dependencies=[Depends(authorised)])
     def leaderboard(board: str, limit: int = 25):
@@ -404,16 +406,18 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
         viewer = me_id()
         current()
         with connect_account() as db:
-            column, label, unit, rows = board_rows(db, board, max(1, min(limit, 100)), viewer)
+            column, label, unit, rows, mine = board_rows(db, board, max(1, min(limit, 100)), viewer)
         def value(r):
             if board == "grade":
                 return {"value": round(r[2], 3), "text": grade_name(r[2])}
             if board == "gpa":
                 return {"value": r[2], "text": f"{r[2]:.2f} / 9"}
             return {"value": r[2], "text": f"{r[2]:,}"}
+        def row_json(r):
+            return {"rank": r[9], "user_id": r[0], "username": r[1], "outfit": r[3], "skin": r[4], "hidden": not r[5], **value(r)}
         return {"board": board, "label": label, "unit": unit, "you": viewer,
                 "note": "Estimated grade and GPA come from review answers and are unofficial." if board in ("grade", "gpa") else "",
-                "rows": [{"rank": r[9], "user_id": r[0], "username": r[1], "outfit": r[3], "skin": r[4], "hidden": not r[5], **value(r)} for r in rows]}
+                "rows": [row_json(r) for r in rows], "mine": row_json(mine) if mine else None}
 
     @router.get("/game/players/{user_id}", dependencies=[Depends(authorised)])
     def player(user_id: int):
@@ -442,6 +446,22 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
     def avatar_art(request: Request):
         query = request.query_params
         return Response(items.avatar_svg(art_outfit(query), query.get("skin", "")), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
+
+    # The same art as PNG for the Android app, which has no SVG renderer. Widths are limited so a request cannot ask for a huge image.
+    def png_response(svg, width):
+        width = max(32, min(width, 768))
+        return Response(items.png(svg, width), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+    @router.get("/game/art/item/{item_id}.png", include_in_schema=False)
+    def item_png(item_id: str, w: int = 256, skin: str = ""):
+        if item_id not in items.CATALOG:
+            raise HTTPException(404, "Unknown item")
+        return png_response(items.item_svg(item_id, skin), w)
+
+    @router.get("/game/art/avatar.png", include_in_schema=False)
+    def avatar_png(request: Request, w: int = 400):
+        query = request.query_params
+        return png_response(items.avatar_svg(art_outfit(query), query.get("skin", "")), w)
 
     return router
 

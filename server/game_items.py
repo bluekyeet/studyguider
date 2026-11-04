@@ -33,7 +33,7 @@ DEFS = ('<defs><linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="1"><stop of
         '<stop offset=".5" stop-color="#4dff88"/><stop offset=".75" stop-color="#4da6ff"/><stop offset="1" stop-color="#c04dff"/></linearGradient>'
         '<linearGradient id="galaxy" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1a1040"/><stop offset=".5" stop-color="#5b2d8a"/><stop offset="1" stop-color="#2b6cd8"/></linearGradient>'
         '<linearGradient id="holo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9ad0ff"/><stop offset=".35" stop-color="#ffb3f0"/><stop offset=".7" stop-color="#b3ffd9"/><stop offset="1" stop-color="#fff3a8"/></linearGradient>'
-        '<radialGradient id="glow"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>')
+        '<filter id="grey"><feColorMatrix type="saturate" values="0"/></filter><radialGradient id="glow"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>')
 
 SKINS = {"porcelain": ("Porcelain", "#fbe3d0"), "sand": ("Sand", "#f3c9a0"), "honey": ("Honey", "#e0a878"), "tan": ("Tan", "#c68a5a"),
          "umber": ("Umber", "#9a6240"), "cocoa": ("Cocoa", "#6b3f28"), "mint": ("Mint", "#a9e0c4"), "lilac": ("Lilac", "#d1b8ee")}
@@ -256,19 +256,50 @@ def fill(markup, item_id=None, skin=None):
 
 def drawing(item_id, skin=None):
     item = CATALOG[item_id]
-    return fill(STYLES[item["slot"]][item["style"]][2], item_id, skin)
+    markup = fill(STYLES[item["slot"]][item["style"]][2], item_id, skin)
+    if item["slot"] in ("trinket", "background"):
+        return markup
+    # A soft ink outline on every filled shape gives the cartoon look; shapes that set their own stroke keep it.
+    return f'<g stroke="#1b1830" stroke-opacity=".38" stroke-width="1.6" stroke-linejoin="round">{markup}</g>'
+
+
+def shade(colour, factor):
+    """`colour` (#rrggbb) moved towards black (factor < 1) or white (factor > 1)."""
+    r, g, b = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
+    if factor < 1:
+        r, g, b = (round(v * factor) for v in (r, g, b))
+    else:
+        r, g, b = (round(v + (255 - v) * (factor - 1)) for v in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+INK = "#2a2338"
 
 
 def body(skin):
     s = SKINS.get(skin, SKINS[DEFAULT_SKIN])[1]
-    shade = "#00000022"
-    return (R(76, 198, 22, 62, s, 6) + R(102, 198, 22, 62, s, 6) + R(70, 120, 60, 84, s, 14) + R(52, 124, 17, 70, s, 8) + R(131, 124, 17, 70, s, 8)
-            + C(60, 196, 9, s) + C(140, 196, 9, s) + R(91, 104, 18, 22, s, 6) + E(100, 78, 34, 37, s) + E(66, 80, 5, 9, s) + E(134, 80, 5, 9, s)
-            + C(88, 76, 3.6, "#2a2a33") + C(112, 76, 3.6, "#2a2a33") + P("M90 94 Q100 102 110 94", "none", 'stroke="#2a2a33" stroke-width="3" stroke-linecap="round"')
-            + R(70, 200, 60, 4, shade, 0))
+    o, lit = shade(s, 0.72), shade(s, 1.18)
+    line = f'stroke="{o}" stroke-width="2" stroke-linejoin="round"'
+    return G(
+        R(77, 196, 21, 66, s, 9, line), R(102, 196, 21, 66, s, 9, line),                                   # legs
+        R(53, 126, 16, 66, s, 8, line), R(131, 126, 16, 66, s, 8, line),                                   # arms
+        C(61, 195, 8.5, s, line), C(139, 195, 8.5, s, line),                                               # hands
+        P("M70 136 Q70 120 86 120 H114 Q130 120 130 136 V194 Q130 204 120 204 H80 Q70 204 70 194Z", s, line),  # torso
+        R(91, 104, 18, 22, s, 6, line), R(91, 112, 18, 8, o, 3, 'opacity=".35"'),                           # neck and its shadow
+        E(66, 80, 5.5, 9, s, line), E(134, 80, 5.5, 9, s, line),                                           # ears
+        E(100, 78, 34, 37, s, line), E(90, 58, 14, 8, lit, 'opacity=".45"'),                                # head and a highlight
+        P("M80 66 Q88 62 95 66", "none", f'stroke="{o}" stroke-width="2.6" stroke-linecap="round"'),          # brows
+        P("M105 66 Q112 62 120 66", "none", f'stroke="{o}" stroke-width="2.6" stroke-linecap="round"'),
+        E(88, 77, 4.2, 5.2, INK), E(112, 77, 4.2, 5.2, INK), C(89.6, 75, 1.5, "#fff"), C(113.6, 75, 1.5, "#fff"),  # eyes
+        P("M98 84 Q100 87 102 84", "none", f'stroke="{o}" stroke-width="2" stroke-linecap="round"'),            # nose
+        P("M90 93 Q100 102 110 93", "none", f'stroke="{INK}" stroke-width="3" stroke-linecap="round"'),        # smile
+        E(78, 89, 6, 3.6, "#ff7a8a", 'opacity=".28"'), E(122, 89, 6, 3.6, "#ff7a8a", 'opacity=".28"'),       # cheeks
+    )
 
 
-CROPS = {"hat": "44 0 112 96", "hair": "44 20 112 96", "face": "56 52 88 56", "top": "36 100 128 120", "bottom": "50 180 100 100", "shoes": "56 236 88 52", "held": "104 120 96 110", "pet": "128 206 72 84"}
+GROUND = E(100, 279, 52, 7, "#000", 'opacity=".18"')
+CROPS = {"hat": "44 0 112 96", "hair": "44 20 112 96", "face": "56 52 88 56", "top": "36 100 128 120", "bottom": "50 180 100 100",
+         "shoes": "56 236 88 52", "held": "104 120 96 110", "pet": "128 206 72 84"}
 
 
 def avatar_svg(outfit, skin=None, size=None, crop=None):
@@ -276,7 +307,7 @@ def avatar_svg(outfit, skin=None, size=None, crop=None):
     layers = []
     for slot in LAYER_ORDER:
         if slot == "BODY":
-            layers.append(body(skin))
+            layers.append(GROUND + body(skin))
             continue
         item_id = outfit.get(slot)
         if item_id in CATALOG and CATALOG[item_id]["slot"] == slot:
@@ -290,16 +321,27 @@ def _wrap(inner, view, size=None):
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view}"{dims}>{DEFS}{inner}</svg>'
 
 
+GHOST = '<g opacity=".22" filter="url(#grey)">{}</g>'
+
+
 def item_svg(item_id, skin=None):
-    """An item on its own: a card for trinkets, the item on the default character (cropped to the item) for everything else."""
+    """An item on its own, on a transparent ground so the page can colour it by rarity: trinkets as a card, wearables on a faded
+    mannequin cropped to where the item sits, backgrounds as a small scene."""
     item = CATALOG[item_id]
     slot = item["slot"]
     if slot == "trinket":
         pale = item["colour"] in LIGHT_COLOURS
-        card = R(8, 8, 184, 284, "#2c2a3a" if pale else "#f6f4ee", 18, 'stroke="#d8d2c2" stroke-width="3"')
+        top, bottom = ("#3a3550", "#221f33") if pale else ("#fffdf6", "#efe9da")
+        card = (f'<linearGradient id="card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>'
+                + R(10, 10, 180, 280, "url(#card)", 20, 'stroke="#000" stroke-opacity=".13" stroke-width="2"') + R(20, 20, 160, 260, "none", 14, 'stroke="#fff" stroke-opacity=".35" stroke-width="2"'))
         return _wrap(card + drawing(item_id, skin), "0 0 200 300")
-    plate = R(-20, -20, 260, 340, "#eef0f6")
+    mannequin = GHOST.format(GROUND + body(skin))
     if slot == "background":
-        return _wrap(drawing(item_id) + body(skin), "0 0 200 300")
-    inner = plate + body(skin) + (drawing(item_id, skin) if slot not in ("pet",) else drawing(item_id, skin))
-    return _wrap(inner, CROPS.get(slot, "0 0 200 300"))
+        return _wrap(drawing(item_id) + '<g opacity=".5">' + GROUND + body(skin) + "</g>", "0 0 200 300")
+    return _wrap(mannequin + drawing(item_id, skin), CROPS.get(slot, "0 0 200 300"))
+
+
+def png(svg, width):
+    """The SVG drawn as a PNG `width` pixels wide (for the Android app, which has no SVG renderer)."""
+    import cairosvg
+    return cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=width)
