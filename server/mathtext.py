@@ -208,6 +208,21 @@ def display_label(label):
 CONTEXT_ONLY = re.compile(r"^\s*question\s+\w+\s*$", re.I)
 
 
+def _tidy(text, label=None):
+    """A part's text for a review question: no leading "QUESTION TWO" heading or repeated "(b)" label (the title says which
+    part it is), and lines the PDF broke mid-sentence joined back up."""
+    lines = text.strip().split("\n")
+    while lines and (CONTEXT_ONLY.match(lines[0]) or (label and lines[0].strip() == f"({label})")):
+        lines.pop(0)
+    out = []
+    for line in lines:
+        if out and out[-1].strip() and line[:1].islower() and out[-1][-1:] not in ".?:;!)":
+            out[-1] += " " + line.lstrip()
+        else:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
 def review_parts(db, question_id):
     """[(label, text)] for a question with two or more labelled parts, each with its restored maths, so a review question can
     be one part. Shared opening text, and a sub-part's parent wording, are added to each; a bare "QUESTION ONE" heading is not. [] when it has no parts."""
@@ -227,16 +242,16 @@ def review_parts(db, question_id):
         if not text or not isinstance(label, str) or not label:
             continue
         if label == "context":
-            context = "" if CONTEXT_ONLY.match(text) else text
+            context = "" if CONTEXT_ONLY.match(text) else _tidy(text)
         else:
-            labelled.append((label, text))
+            labelled.append((label, _tidy(text, label.split("(")[-1].rstrip(")") if "(" in label else label)))
     texts = dict(labelled)
     children = {label.split("(")[0] for label, _ in labelled if "(" in label}
     asked = []
     for label, text in labelled:
         if label in children:
             continue    # a part that only introduces its sub-parts is not asked on its own
-        parent = texts.get(label.split("(")[0]) if "(" in label else None
+        parent = _tidy(texts.get(label.split("(")[0]) or "", label.split("(")[0]) if "(" in label else None
         asked.append((label, "\n\n".join(piece for piece in (context, parent, text) if piece)))
     return asked if len(labelled) > 1 else []
 

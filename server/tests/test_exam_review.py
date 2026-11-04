@@ -69,7 +69,7 @@ def test_a_question_with_parts_becomes_one_review_question_for_each_missed_part(
     queue_exam_review(lambda: db, 7, 2, ROW, json.loads(marking_json()), ROW[6], model_reply=model)
     assert asked == ["exam-missed-parts"]
     assert [(i[1], i[5], i[6]) for i in db.inserts] == [
-        ("(a)\n$p$ restored", "Exam question 1(a), part (a)", "7:2:a"), ("(c)\nProve it.", "Exam question 1(a), part (c)", "7:2:c")]
+        ("$p$ restored", "Exam question 1(a), part (a)", "7:2:a"), ("Prove it.", "Exam question 1(a), part (c)", "7:2:c")]
 
 
 def test_every_part_is_reviewed_when_the_judgement_fails():

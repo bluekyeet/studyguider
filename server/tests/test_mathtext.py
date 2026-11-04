@@ -85,7 +85,9 @@ def test_review_parts_are_single_asks_with_their_parents_wording():
              {"label": "b(i)", "text": "(i)\nDraw two arrows."}, {"label": "b(ii)", "text": "(ii)\nCircle the polar one."}]
     db = MagicMock()
     db.execute.return_value.fetchone.return_value = (parts, None, "")
-    assert mathtext.review_parts(db, 1) == [("a", "(a)\nCalculate x."), ("b(i)", "(b)\nThe products are CO2 and H2O.\n\n(i)\nDraw two arrows."),
-                                            ("b(ii)", "(b)\nThe products are CO2 and H2O.\n\n(ii)\nCircle the polar one.")]
+    assert mathtext.review_parts(db, 1) == [("a", "Calculate x."), ("b(i)", "The products are CO2 and H2O.\n\nDraw two arrows."),
+                                            ("b(ii)", "The products are CO2 and H2O.\n\nCircle the polar one.")]
+    parts[0]["text"] = "QUESTION TWO\nEthanol is a fuel. The\ncombustion is shown."
+    assert mathtext.review_parts(db, 1)[0][1] == "Ethanol is a fuel. The combustion is shown.\n\nCalculate x."
     db.execute.return_value.fetchone.return_value = ([{"label": "a", "text": "(a) only"}], None, "")
     assert mathtext.review_parts(db, 1) == []
