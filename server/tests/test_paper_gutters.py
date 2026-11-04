@@ -34,3 +34,16 @@ def test_a_table_of_numbers_is_kept_as_a_markdown_table_and_a_page_number_is_not
     with doc:
         texts = [line['text'] for line in page_lines(page)]
     assert texts == ['(a) Use the table below.', '| Bond | Energy |\n| --- | --- |\n| C-C | 348 |\n| C-H | 413 |']
+
+
+def test_atom_symbols_of_a_structural_formula_become_a_figure_not_a_sentence():
+    from paper_parser import structure_regions
+    with fitz.open() as doc:
+        page = doc.new_page(width=595, height=842)
+        page.insert_text((100, 200), 'The Lewis structure is shown below.', fontsize=11)
+        page.insert_text((200, 300), 'H   S   H', fontsize=11)
+        page.draw_line((214, 297), (226, 297))
+        page.draw_line((243, 297), (258, 297))
+        page.insert_text((100, 400), 'Water is H2O and I think so.', fontsize=11)
+        regions = structure_regions(page)
+    assert len(regions) == 1 and regions[0].x0 <= 201 and regions[0].x1 >= 258 and regions[0].y0 < 300 < regions[0].y1

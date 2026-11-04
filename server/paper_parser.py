@@ -75,6 +75,41 @@ def page_tables(page):
     return found
 
 
+ELEMENT = re.compile(r"(?:H|He|Li|Be|B|C|N|O|F|Ne|Na|Mg|Al|Si|P|S|Cl|Ar|K|Ca|Br|I|Xe|Fe|Cu|Zn|Pd|Ag|Sn|Pb)\d*[+\-–]?")
+
+
+def structure_regions(page):
+    """Boxes around Lewis and structural formulae drawn as atom symbols joined by bond lines ("H   S   H", "O   C   O").
+    Their symbols are text but the structure is a picture, so they are shown as a figure instead of running into the sentence.
+    Atom symbols that sit close together form one structure; the bond lines drawn around them are included."""
+    atoms = []
+    for line in page_lines(page):
+        tokens = line["text"].split()
+        if tokens and all(ELEMENT.fullmatch(token) for token in tokens):
+            atoms.append(fitz.Rect(line["bbox"]))
+    groups = []
+    for box in atoms:
+        near = [g for g in groups if any(abs(box.x0 - o.x1) < 30 and abs(box.y0 - o.y1) < 28 or (box + (-30, -28, 30, 28)).intersects(o) for o in g)]
+        merged = [box] + [o for g in near for o in g]
+        groups = [g for g in groups if g not in near] + [merged]
+    width, height = page.rect.width, page.rect.height
+    bonds = [d["rect"] + (-1, -1, 1, 1) for d in page.get_drawings()
+             if d["rect"].x1 >= width * .1 and d["rect"].x0 <= width * .9 and d["rect"].width < width * .5 and d["rect"].height < height * .3
+             and not (d.get("type") == "f" and len(d.get("items", ())) >= 20)]
+    regions = []
+    for group in groups:
+        if len(group) < 2 and len(page.get_text("text", clip=group[0]).split()) < 2:
+            continue    # a lone symbol is more likely a word than a structure
+        box = fitz.Rect(group[0])
+        for other in group[1:]:
+            box |= other
+        for bond in bonds:
+            if (box + (-20, -20, 20, 20)).intersects(bond):
+                box |= bond
+        regions.append(box)
+    return regions
+
+
 def page_lines(page, ocr=False):
     """Keep physical lines and coordinates; exclude running headers and footer. Ruled tables of plain text become one
     Markdown table in the line where they start."""
@@ -233,8 +268,9 @@ def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
                 regions = [fitz.Rect(image["bbox"]) for image in page.get_image_info()] + drawing_regions(page)
                 # The ruling of a table that was read as a table is not a figure.
                 regions = [r for r in regions if not any((r & t).get_area() >= r.get_area() * .6 for t in tables)]
-                for region in regions:
-                    if region.width > 45 and region.height > 35 and region.get_area() < page.rect.get_area() * .7:
+                structures = [r for r in structure_regions(page) if not any((r & d).get_area() >= r.get_area() * .5 for d in regions)]
+                for region in regions + structures:
+                    if region in structures or (region.width > 45 and region.height > 35) and region.get_area() < page.rect.get_area() * .7:
                         box = [max(0, region.x0 - 8), max(0, region.y0 - 8), min(page.rect.width, region.x1 + 8), min(page.rect.height, region.y1 + 8)]
                         q["diagram_regions"].append({"page": number, "bbox": box, "association": "geometric reading order; labels need checking"})
             for part in q['parts']:
