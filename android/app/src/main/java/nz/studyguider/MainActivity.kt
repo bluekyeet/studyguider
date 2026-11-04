@@ -1456,7 +1456,11 @@ private fun ResourceHub(
     onAddSubject: () -> Unit, onAddTopic: () -> Unit, onUpload: (String) -> Unit, uploadNotice: String, onRefresh: () -> Unit,
     onExtract: (String, Boolean) -> Unit, onOpenPdf: (String) -> Unit, onClosePdf: () -> Unit, onDelete: (List<JSONObject>) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // The document opens above the file list, so bring the page back to the top when one is opened (otherwise a file chosen
+    // far down the list opens out of sight).
+    val resourcesScroll = rememberScrollState()
+    LaunchedEffect(topicSourceId) { if (topicSourceId.isNotEmpty()) resourcesScroll.animateScrollTo(0) }
+    Column(Modifier.fillMaxSize().verticalScroll(resourcesScroll).padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (selected != 0L) TextButton(enabled = !busy, onClick = onBack) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
         // Going into a subject or a topic arrives from the right; going back arrives from the left.
         val stage = if (selected == 0L) 0 else if (selectedTopic == 0L) 1 else 2
