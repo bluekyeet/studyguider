@@ -437,7 +437,8 @@ button.danger:disabled{opacity:.45}
 .segmented a:hover,.segmented button:hover:not(:disabled){color:var(--text);background:rgba(148,163,184,.08)}
 .segmented a[aria-current=page],.segmented button.on{background:var(--brand-soft);color:var(--brand-soft-text)}
 .segmented.small{margin:0 0 14px}.segmented.small button{padding:4px 14px;min-height:34px;font-size:13px}
-.segmented.wrap{flex-wrap:wrap;width:auto;border-radius:18px}
+.game .segmented{flex-wrap:nowrap}
+.game .segmented.wrap{flex-wrap:wrap;width:auto;border-radius:18px}
 
 /* Character page */
 .game-grid{display:grid;grid-template-columns:minmax(260px,330px) minmax(0,1fr);gap:18px;align-items:start}
@@ -464,7 +465,7 @@ button.danger:disabled{opacity:.45}
 .slot small{position:absolute;top:4px;right:6px;font-family:var(--mono);font-size:10px;color:var(--faint)}
 .slot.on{border-color:var(--teal-line);background:var(--brand-soft);color:var(--brand-soft-text)}
 .slot.none:not(.on){opacity:.55}
-.builds{margin:0;width:100%}.builds button{flex:1;justify-content:center}
+.builds{margin:0;width:100%;overflow:hidden}.builds button{flex:1;justify-content:center}
 .empty{text-align:center;padding:26px 12px;border:1px dashed var(--line-strong);border-radius:14px;color:var(--muted)}
 .empty .toolbar{justify-content:center}
 
@@ -576,7 +577,7 @@ button.danger:disabled{opacity:.45}
 @media(max-width:800px){
   .game-hero{grid-template-columns:auto 1fr;padding:16px;gap:14px}.hero-portrait{width:72px;height:108px}.hero-text h1{font-size:22px;line-height:28px;margin-bottom:8px}
   .hero-figures{grid-column:1/-1}.figure{flex:1;min-width:0;padding:8px 12px}.figure b{font-size:20px;line-height:26px}
-  .segmented:not(.small){width:100%}.segmented:not(.small) a{flex:1;justify-content:center;padding:8px 10px}
+  .segmented:not(.small){width:100%}.segmented:not(.small) a{flex:1;justify-content:center;padding:8px 6px;font-size:14px}
   .stage{grid-template-columns:120px 1fr}
   .item-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .shelf{grid-template-columns:repeat(3,minmax(0,1fr))}
