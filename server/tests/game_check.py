@@ -89,6 +89,14 @@ assert client.put("/game/outfit", json={"slot": "top", "item_id": "hat.cap.red"}
 state = client.put("/game/outfit", json={"skin": "cocoa"}, headers=ann).json()
 assert state["outfit"] == {"hat": "hat.cap.red"} and state["skin"] == "cocoa"
 
+# the body choice is saved, validated, published to the boards and drawn
+assert client.put("/game/outfit", json={"build": "feminine"}, headers=ann).json()["build"] == "feminine"
+assert client.put("/game/outfit", json={"build": "robot"}, headers=ann).status_code == 422
+assert {b["id"] for b in client.get("/game/me", headers=ann).json()["catalog"]["builds"]} == {"masculine", "feminine"}
+fem = client.get("/game/art/avatar.svg?build=feminine").text
+assert fem != client.get("/game/art/avatar.svg?build=masculine").text and "#d9566b" in fem      # lips on the feminine face
+assert client.get("/game/art/avatar.png?build=feminine&w=120").headers["content-type"] == "image/png"
+
 # duplicates stack and spare copies recycle; the last one stays
 client.post("/game/shop/buy", json={"item_id": "hat.cap.red"}, headers=ann)
 before = client.get("/game/me", headers=ann).json()
@@ -116,6 +124,8 @@ assert "ann" in [r["username"] for r in client.get("/game/leaderboard/networth",
 assert client.get(f"/game/players/{ids[0]}", headers=ben).status_code == 404
 client.put("/game/settings", json={"visible": True}, headers=ann)
 card = client.get(f"/game/players/{ids[0]}", headers=ben).json()
+assert card["build"] == "feminine"
+assert client.get("/game/leaderboard/networth", headers=ben).json()["rows"][0]["build"] == "feminine"
 assert card["username"] == "ann" and card["showcase"] and card["outfit"] == {"hat": "hat.cap.red"} and card["collection"]["total"] == len(items.CATALOG)
 
 # art
