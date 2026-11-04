@@ -142,7 +142,72 @@ private suspend fun upload(context: android.content.Context, base: String, token
  * Uploads one file or several at once. Several files are wrapped in a zip on
  * the device and sent to the batch endpoint, so one request covers the lot.
  */
+private val RECORDING_SUFFIXES = setOf("mp3", "mp4", "m4a", "wav")
+private const val MAX_RECORDING_BYTES = 500L * 1024 * 1024
+
+private fun displayName(context: android.content.Context, uri: Uri): String =
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+        if (!it.moveToFirst()) throw IllegalStateException("Cannot read file details")
+        it.getString(it.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+    } ?: throw IllegalStateException("Cannot read file details")
+
+/**
+ * A recording (mp3, mp4, m4a, wav) goes on its own, streamed from the file rather than held in memory, because it can be far
+ * larger than a document. The server transcribes it, keeps only the transcript and deletes the recording.
+ */
+private fun uploadRecording(context: android.content.Context, base: String, token: String, topic: Long, uri: Uri, name: String, category: String): JSONObject {
+    val boundary = "studyguider-" + java.util.UUID.randomUUID()
+    val safeName = name.replace("\"", "_").replace("\r", "_").replace("\n", "_")
+    val connection = URL(base.trimEnd('/') + "/topics/$topic/resources").openConnection() as HttpURLConnection
+    try {
+        connection.connectTimeout = 15000; connection.readTimeout = 300000
+        connection.requestMethod = "POST"; connection.doOutput = true
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        connection.setChunkedStreamingMode(1024 * 1024)
+        connection.outputStream.use { out ->
+            out.write("--$boundary\r\nContent-Disposition: form-data; name=\"category\"\r\n\r\n$category\r\n".toByteArray())
+            out.write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$safeName\"\r\nContent-Type: application/octet-stream\r\n\r\n".toByteArray(Charsets.UTF_8))
+            var sent = 0L
+            (context.contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open $name")).use { input ->
+                val chunk = ByteArray(1024 * 1024)
+                while (true) {
+                    val count = input.read(chunk)
+                    if (count < 0) break
+                    sent += count
+                    if (sent > MAX_RECORDING_BYTES) throw IllegalStateException("$name exceeds 500 MiB")
+                    out.write(chunk, 0, count)
+                }
+            }
+            out.write("\r\n--$boundary--\r\n".toByteArray())
+        }
+        val status = connection.responseCode
+        val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (status !in 200..299) throw IllegalStateException("Upload of $name failed ($status): $text")
+        return JSONObject(text)
+    } finally { connection.disconnect() }
+}
+
 private suspend fun uploadMany(context: android.content.Context, base: String, token: String, topic: Long, uris: List<Uri>, category: String = "auto"): String = withContext(Dispatchers.IO) {
+    // Recordings are sent one by one and streamed; documents go together through the batch endpoint as before.
+    val (recordings, documents) = uris.map { it to displayName(context, it) }.partition { (_, name) -> name.substringAfterLast('.', "").lowercase() in RECORDING_SUFFIXES }
+    val accepted = JSONArray()
+    var duplicates = 0
+    recordings.forEach { (uri, name) ->
+        val stored = uploadRecording(context, base, token, topic, uri, name, category)
+        if (stored.optBoolean("duplicate")) duplicates++
+        accepted.put(stored)
+    }
+    if (documents.isEmpty()) return@withContext JSONObject().put("accepted", accepted).put("skipped", JSONArray()).put("duplicates", duplicates)
+        .put("queued", accepted.length() - duplicates).toString()
+    val reply = JSONObject(uploadDocuments(context, base, token, topic, documents.map { it.first }, category))
+    val batch = reply.optJSONArray("accepted") ?: JSONArray()
+    for (i in 0 until batch.length()) accepted.put(batch.get(i))
+    reply.put("accepted", accepted).put("duplicates", reply.optInt("duplicates") + duplicates)
+        .put("queued", reply.optInt("queued") + recordings.size - duplicates).toString()
+}
+
+private fun uploadDocuments(context: android.content.Context, base: String, token: String, topic: Long, uris: List<Uri>, category: String): String {
     fun read(uri: Uri): Triple<String, ByteArray, String?> {
         val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (!it.moveToFirst()) throw IllegalStateException("Cannot read file details")
@@ -203,7 +268,7 @@ private suspend fun uploadMany(context: android.content.Context, base: String, t
         val status = connection.responseCode
         val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (status !in 200..299) throw IllegalStateException("Upload failed ($status): $text")
-        text
+        return text
     } finally { connection.disconnect() }
 }
 
@@ -515,7 +580,7 @@ private fun StudyApp() {
                         request(base, "/subjects/$selected/topics", token, JSONObject().put("name", topicName))
                         topicName = ""; topics = JSONArray(request(base, "/subjects/$selected/topics", token))
                     } },
-                    onUpload = { category -> uploadCategory = category; uploadNotice = ""; picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/zip", "text/*", "image/*")) },
+                    onUpload = { category -> uploadCategory = category; uploadNotice = ""; picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/zip", "text/*", "image/*", "audio/*", "video/mp4")) },
                     uploadNotice = uploadNotice,
                     onRefresh = { run { resources = JSONArray(request(base, "/topics/$selectedTopic/resources", token)); resourceRefreshError = "" } },
                     onExtract = { id, retry -> run {

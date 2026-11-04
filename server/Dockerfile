@@ -5,6 +5,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Speech-to-text model for uploaded recordings (transcribe.py), fetched once at build time so the server never downloads at run time.
+ARG WHISPER_MODEL=base
+ENV WHISPER_MODEL=${WHISPER_MODEL} WHISPER_MODEL_DIR=/app/models HF_HUB_OFFLINE=1
+RUN HF_HUB_OFFLINE=0 python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root='/app/models')"
 COPY app.py .
 COPY library_global.py .
 COPY reviews.py .
@@ -28,7 +32,7 @@ COPY check_formula.cjs .
 COPY --from=katex_assets / /app/katex/
 ENV KATEX_ASSET_DIR=/app/katex
 ENV XDG_CACHE_HOME=/tmp/studyguider-cache
-COPY game.py game_items.py .
+COPY game.py game_items.py transcribe.py ./
 COPY set_password.py .
 COPY manage.html .
 COPY web.html web.css web*.js ./

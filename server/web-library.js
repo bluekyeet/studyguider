@@ -202,10 +202,10 @@ function files(body, { api, subject, topic, params }) {
 
   const upload = el('form', '', 'card stack');
   const input = el('input'); input.type = 'file'; input.multiple = true; input.setAttribute('aria-label', 'Choose files to upload');
-  input.accept = '.zip,.pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.png,.jpg,.jpeg';
+  input.accept = '.zip,.pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.png,.jpg,.jpeg,.mp3,.mp4,.m4a,.wav';
   const category = el('select');
   for (const [value, label] of [['auto', 'Detect automatically'], ['exam_paper', 'Exam paper'], ['exam_answers', 'Exam answers or schedule'], ['slides', 'Slides'], ['extra', 'Extra resource']]) category.add(new Option(label, value));
-  const zone = el('div', '', 'dropzone'); zone.append(el('p', 'Drop files or a ZIP here, or choose them below. Up to 50 MiB per upload; duplicates are kept once.'), input);
+  const zone = el('div', '', 'dropzone'); zone.append(el('p', 'Drop files or a ZIP here, or choose them below. Up to 50 MiB per document; duplicates are kept once. Recordings (mp3, mp4, m4a, wav, up to 500 MiB and 2 hours) are transcribed on the server, and only the transcript is kept.'), input);
   zone.ondragover = event => { event.preventDefault(); zone.classList.add('over'); };
   zone.ondragleave = () => zone.classList.remove('over');
   zone.ondrop = event => { event.preventDefault(); zone.classList.remove('over'); if (event.dataTransfer.files.length) input.files = event.dataTransfer.files; };

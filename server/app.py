@@ -5,6 +5,7 @@ import os
 import secrets
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from zipfile import BadZipFile, ZipFile
@@ -44,6 +45,7 @@ import ocr
 import logging
 import userspace
 import library_global
+import transcribe
 from accounts import accounts_router, create_account_tables, make_auth, migrate_legacy, move_legacy_files
 
 
@@ -604,7 +606,7 @@ def delete_note(topic_id: int, note_id: int):
     return {"status": "ok"}
 
 
-SUPPORTED_UPLOAD_SUFFIXES = {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".txt", ".md", ".html", ".png", ".jpg", ".jpeg"}
+SUPPORTED_UPLOAD_SUFFIXES = {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".txt", ".md", ".html", ".png", ".jpg", ".jpeg"} | transcribe.MEDIA_SUFFIXES
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_BATCH_BYTES = 200 * 1024 * 1024
 MAX_BATCH_FILES = 50
@@ -644,6 +646,35 @@ def detect_resource_category(filename, content=""):
         return category if category in {"exam_paper", "exam_answers", "slides", "extra"} else "extra"
     except HTTPException:
         return "extra"
+
+
+def _store_recording(db, directory: Path, topic_id: int, filename: str, source, category: str):
+    """Stream one uploaded recording to disk (up to transcribe.MAX_MEDIA_BYTES), then record it like _store_resource does."""
+    partial = directory / f".upload-{uuid.uuid4()}"
+    digest, size = hashlib.sha256(), 0
+    try:
+        with partial.open("xb") as destination:
+            while chunk := source.read(1024 * 1024):
+                size += len(chunk)
+                if size > transcribe.MAX_MEDIA_BYTES:
+                    raise HTTPException(413, f"{filename} exceeds {transcribe.MAX_MEDIA_BYTES // (1024 * 1024)} MiB")
+                digest.update(chunk)
+                destination.write(chunk)
+        if not size:
+            raise HTTPException(400, f"{filename} is empty")
+        duplicate = db.execute("SELECT id, filename, size, status, category, page_count FROM resources WHERE topic_id = %s AND sha256 = %s AND status != 'deleting'",
+                               (topic_id, digest.hexdigest())).fetchone()
+        if duplicate:
+            return {"id": str(duplicate[0]), "filename": duplicate[1], "size": duplicate[2], "status": duplicate[3], "category": duplicate[4],
+                    "page_count": duplicate[5], "display_status": display_status(duplicate[3]), "duplicate": True}
+        resource_id = uuid.uuid4()
+        partial.rename(directory / str(resource_id))
+        db.execute("INSERT INTO resources (id, topic_id, filename, size, status, category, sha256, mime) VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s)",
+                   (resource_id, topic_id, filename, size, category, digest.hexdigest(), None))
+        return {"id": str(resource_id), "filename": filename, "size": size, "status": "pending", "category": category, "page_count": 0,
+                "display_status": "Queued", "duplicate": False, "suffix": Path(filename).suffix.lower()}
+    finally:
+        partial.unlink(missing_ok=True)
 
 
 def _store_resource(db, directory: Path, topic_id: int, filename: str, data: bytes, category: str):
@@ -697,6 +728,12 @@ def upload_resources_batch(topic_id: int, files: list[UploadFile] = File(...), c
         for upload in files:
             filename = (upload.filename or "").replace("\\", "/").split("/")[-1]
             try:
+                if transcribe.is_media(filename):
+                    stored = _store_recording(db, directory, topic_id, filename, upload.file, category)
+                    if stored.pop("duplicate", False):
+                        duplicates += 1
+                    accepted.append(stored)
+                    continue
                 data = upload.file.read(MAX_UPLOAD_BYTES + 1)
                 if len(data) > MAX_UPLOAD_BYTES:
                     raise HTTPException(413, f"{filename} exceeds 50 MiB")
@@ -753,8 +790,9 @@ def upload_resource(topic_id: int, file: UploadFile = File(...), category: str =
         raise HTTPException(400, "Invalid resource category")
     if category in {"auto", "extra"}:
         category = filename_resource_category(filename) or category
-    if not filename or len(filename) > 255 or Path(filename).suffix.lower() not in {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".txt", ".md", ".html", ".png", ".jpg", ".jpeg"}:
+    if not filename or len(filename) > 255 or Path(filename).suffix.lower() not in SUPPORTED_UPLOAD_SUFFIXES:
         raise HTTPException(400, "Unsupported or invalid filename")
+    limit = transcribe.MAX_MEDIA_BYTES if transcribe.is_media(filename) else 50 * 1024 * 1024
     directory = userspace.upload_root()
     directory.mkdir(parents=True, exist_ok=True)
     resource_id = uuid.uuid4()
@@ -770,8 +808,8 @@ def upload_resource(topic_id: int, file: UploadFile = File(...), category: str =
                 created = True
                 while chunk := file.file.read(1024 * 1024):
                     size += len(chunk)
-                    if size > 50 * 1024 * 1024:
-                        raise HTTPException(413, "File exceeds 50 MiB")
+                    if size > limit:
+                        raise HTTPException(413, f"File exceeds {limit // (1024 * 1024)} MiB")
                     digest.update(chunk)
                     destination.write(chunk)
             if not size:
@@ -903,6 +941,14 @@ def download_resource(resource_id: uuid.UUID):
     if not row:
         raise HTTPException(404, "Resource not found")
     path = userspace.upload_root() / str(resource_id)
+    if transcribe.is_media(row[0]) and not path.is_file():
+        with connect() as db:
+            text = db.execute("SELECT content FROM resource_text WHERE resource_id = %s", (resource_id,)).fetchone()
+        if not text:
+            raise HTTPException(404, "This recording has no transcript yet")
+        name = Path(row[0]).stem + " (transcript).txt"
+        return Response(text[0], media_type="text/plain; charset=utf-8",
+                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(name)}"})
     if not path.is_file():
         raise HTTPException(500, "Stored file missing; restore from backup")
     return FileResponse(path, filename=row[0], media_type="application/octet-stream")
@@ -1065,8 +1111,28 @@ def _docx_text(document):
 
 @app.post("/resources/{resource_id}/extract", dependencies=[Depends(authorised)])
 def extract_resource(resource_id: uuid.UUID):
+    recording = None
     try:
-        result = _extract_into_database(resource_id)
+        with connect() as db:
+            row = db.execute("""SELECT r.filename, s.name, t.name FROM resources r JOIN topics t ON t.id = r.topic_id
+                LEFT JOIN subjects s ON s.id = t.subject_id WHERE r.id = %s AND r.status != 'deleting'""", (resource_id,)).fetchone()
+        prepared = None
+        if row and transcribe.is_media(row[0]):
+            recording = userspace.upload_root() / str(resource_id)
+            if recording.is_file():
+                started = time.monotonic()
+                try:
+                    prepared = transcribe.transcribe(recording, transcribe.hint(row[1] or "", row[2] or ""))
+                except ValueError as error:
+                    log_run("transcription", os.environ.get("WHISPER_MODEL", "base"), 0, 0, "error", str(error)[:500])
+                    raise HTTPException(422, str(error))
+                log_run("transcription", os.environ.get("WHISPER_MODEL", "base"), 0, sum(len(text) for _, text in prepared), "ok",
+                        f"{round(time.monotonic() - started)} s to transcribe")
+        result = _extract_into_database(resource_id, prepared)
+        if prepared:
+            # Only the transcript is kept: the recording goes as soon as its text is safely stored.
+            recording.unlink(missing_ok=True)
+            result["recording_deleted"] = True
     except HTTPException as exc:
         # Record the failure on a fresh transaction: the extraction transaction has
         # already rolled back and released its row lock, so this cannot deadlock.
@@ -1107,13 +1173,13 @@ def backfill_cut_scores_endpoint():
     return {"results": backfill_cut_scores(connect)}
 
 
-def _extract_into_database(resource_id: uuid.UUID):
+def _extract_into_database(resource_id: uuid.UUID, prepared=None):
     with connect() as db:
         row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting' FOR UPDATE", (resource_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Resource not found")
         suffix = Path(row[0]).suffix.lower()
-        if suffix not in {".txt", ".md", ".csv", ".pdf", ".pptx", ".docx", ".html", ".xlsx", ".png", ".jpg", ".jpeg"}:
+        if suffix not in SUPPORTED_UPLOAD_SUFFIXES:
             raise HTTPException(422, "Extraction is not available for this file type")
         path = userspace.upload_root() / str(resource_id)
         warnings = []
@@ -1185,6 +1251,14 @@ def _extract_into_database(resource_id: uuid.UUID):
                     raise HTTPException(422, "Image has no OCR text; install Tesseract or use a text-based file")
                 pages = [(1, content)]
                 warnings.append("Text came from OCR and may contain errors; diagrams and handwriting are not interpreted.")
+            elif suffix in transcribe.MEDIA_SUFFIXES:
+                # Transcribed beforehand (extract_resource); once the recording is deleted, re-extraction reuses the saved transcript.
+                pages = prepared or db.execute("SELECT page, content FROM resource_pages WHERE resource_id = %s ORDER BY page", (resource_id,)).fetchall()
+                if not pages:
+                    raise HTTPException(422, "The recording is gone and there is no saved transcript; upload it again")
+                pages = [(number, text) for number, text in pages]
+                content = "\n\n".join(text for _, text in pages)
+                warnings.append("Transcribed automatically on this server; names and technical terms may be misheard. The original recording is deleted and only the transcript is kept.")
             else:
                 content = path.read_bytes().decode("utf-8-sig")
                 pages = [(1, content)]
@@ -1227,6 +1301,8 @@ def get_page_image(resource_id: uuid.UUID, page: int):
         row = db.execute("SELECT filename FROM resources WHERE id = %s AND status != 'deleting'", (resource_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Resource not found")
+    if transcribe.is_media(row[0]):
+        raise HTTPException(422, "Recordings are kept as transcripts and have no page images")
     path = userspace.upload_root() / str(resource_id)
     if not path.is_file():
         raise HTTPException(500, "Stored file missing; restore from backup")
