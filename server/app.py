@@ -39,6 +39,7 @@ from explain import explain_router
 from review_generation import review_generation_router
 from styles import create_style_tables, style_router
 from pages import page_router, safe_dpi
+from game import create_game_tables, create_public_game_tables, game_router, refresh_all
 import ocr
 import logging
 import userspace
@@ -123,6 +124,7 @@ def init_schema(db):
     create_rapid_tables(db)
     create_revision_tables(db)
     create_scheduler_tables(db)
+    create_game_tables(db)
     # The global library (library_global.py): rows an account holds as read-only copies carry the library's id.
     for table in ("subjects", "topics", "exam_questions"):
         db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
@@ -153,6 +155,7 @@ async def lifespan(app):
     with connect_account() as db:
         db.execute("SET client_encoding = 'UTF8'")
         create_account_tables(db)
+        create_public_game_tables(db)
         migrate_legacy(db, hasher)
     try:
         move_legacy_files(userspace.upload_base())
@@ -189,6 +192,10 @@ async def lifespan(app):
             log.exception("Could not re-read papers with the newer parser")
         library_global.sync_active(connect)     # new global subjects, topics and files reach each account
         prepare_daily_reviews()
+        try:
+            refresh_all(connect, accounts_db, all_user_ids)
+        except Exception:
+            log.exception("Could not refresh the rewards leaderboards")
     stop, thread = start_scheduler(connect, scheduled_generate, prepare_reviews=tick, user_ids=all_user_ids)
     # The global library's own files are read like any account's.
     extraction_stop, extraction_thread = start_worker(connect, extract_resource, user_ids=lambda: [library_global.LIBRARY] + all_user_ids())
@@ -399,6 +406,7 @@ app.include_router(worker_router(connect, authorised))
 app.include_router(style_router(connect, authorised, model_reply))
 app.include_router(page_router(connect, authorised))
 app.include_router(usage_router(connect, admin_only, model_reply, model_reply_vision))
+app.include_router(game_router(connect, accounts_db, authorised))
 app.include_router(diagram_router(connect, authorised, model_reply, model_reply_vision))
 
 
@@ -468,7 +476,7 @@ def study_styles():
 
 @app.get('/{module_name}.js', include_in_schema=False)
 def study_module(module_name: str):
-    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings'}:
+    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings', 'web-game'}:
         raise HTTPException(404, 'Module not found')
     return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript')
 

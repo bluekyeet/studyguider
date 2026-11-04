@@ -257,6 +257,7 @@ private fun StudyApp() {
     var topicsReload by remember { mutableIntStateOf(0) }
     // Picking the topics to study, opened from Lessons and from Settings.
     var showTopicPicker by remember { mutableStateOf(false) }
+    var showRewards by remember { mutableStateOf(false) }
     // True until the saved session has been checked, so the sign-in form never flashes.
     var restoring by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
@@ -556,6 +557,7 @@ private fun StudyApp() {
                 5 -> HomeScreen(base, token,
                     onOpenLesson = { topic, title, lesson -> selectedLesson = lesson; openTopic(topic, title); subjectTitle = findSubject(topic); tab = 1 },
                     onGoTo = { destination -> if (examDirty && destination != tab) { pendingTab = destination; confirmExamExit = true } else tab = destination },
+                    onOpenRewards = { showRewards = true },
                 )
                 4 -> LearningScreen(base, token, topicsReload, onManageCourses = { showTopicPicker = true }, onOpenLesson = { topic, title, lesson ->
                     selectedLesson = lesson; openTopic(topic, title); subjectTitle = findSubject(topic); tab = 1
@@ -606,6 +608,7 @@ private fun StudyApp() {
     if (token.isNotEmpty() && error.isNotEmpty()) {
         Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
     }
+    if (showRewards) RewardsScreen(base, token, onDismiss = { showRewards = false })
     if (showTopicPicker) TopicPickerSheet(
         base = base,
         token = token,

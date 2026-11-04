@@ -44,7 +44,7 @@ private class HomeSnapshot(val token: String, val summary: JSONObject, val today
 private var homeCache: HomeSnapshot? = null
 
 @Composable
-fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit, onGoTo: (Int) -> Unit) {
+fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit, onGoTo: (Int) -> Unit, onOpenRewards: () -> Unit = {}) {
     // What Home showed last time appears at once and is refreshed quietly, so switching back to it never starts from empty.
     val cached = homeCache?.takeIf { it.token == token }
     var summary by remember { mutableStateOf<JSONObject?>(cached?.summary) }
@@ -172,6 +172,11 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
             }
             val unfinished = exams.firstOrNull { it.optBoolean("unfinished") && it.optInt("answered") > 0 }
             if (unfinished != null) FilledTonalButton(onClick = { onGoTo(3) }) { Text("Resume exam (${unfinished.optInt("answered")} of ${unfinished.optInt("questions")} answered)") }
+        }
+
+        Section("Rewards", Modifier.staggeredEnter(5, data)) {
+            Text("Earn points for correct work, then spend them on collectables for your character.", style = MaterialTheme.typography.bodyMedium)
+            FilledTonalButton(onClick = onOpenRewards) { Text("Open Rewards") }
         }
     }
 }
