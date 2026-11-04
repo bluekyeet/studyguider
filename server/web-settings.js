@@ -107,7 +107,21 @@ async function usage(card, api) {
   const days = el('select'); for (const n of [1, 7, 30, 90, 365]) days.add(new Option(n === 1 ? 'Last 24 hours' : `Last ${n} days`, n, n === 30, n === 30));
   const label = el('label', 'Period', 'stack'); label.append(days);
   const out = el('div', '', 'stack'); const recent = el('ul', '', 'list');
-  card.append(label, out, el('h3', 'Recent calls'), recent);
+  // Only the first three calls show; the rest sit behind a blur until "View more".
+  const fold = el('div', '', 'fold'); const veil = el('div', '', 'fold-veil'); veil.setAttribute('aria-hidden', 'true');
+  const more = el('button', 'View more', 'fold-more'); more.type = 'button'; more.hidden = true;
+  fold.append(recent, veil);
+  card.append(label, out, el('h3', 'Recent calls'), fold, more);
+  let open = false;
+  const fit = () => {
+    const rows = [...recent.children];
+    const folds = rows.length > 3;
+    more.hidden = !folds; veil.hidden = !folds || open;
+    more.textContent = open ? 'Show less' : 'View more'; more.setAttribute('aria-expanded', String(open));
+    // A sliver of the fourth row stays under the blur so it is clear there is more.
+    fold.style.maxHeight = !folds || open ? `${recent.scrollHeight}px` : `${rows[3].offsetTop - rows[0].offsetTop + 40}px`;
+  };
+  more.onclick = () => { open = !open; fit(); };
   async function load() {
     const data = await api(`/usage?days=${encodeURIComponent(days.value)}`);
     out.replaceChildren();
@@ -131,6 +145,7 @@ async function usage(card, api) {
       text.append(el('strong', row.task), el('div', `${row.model} · ${when(row.created_at)}${row.error ? ` · ${row.error}` : ''}`, 'muted'));
       li.append(text, el('span', row.outcome, `chip ${row.outcome === 'error' ? 'bad' : 'ok'}`)); recent.append(li);
     }
+    open = false; requestAnimationFrame(fit);
   }
   days.onchange = () => load().catch(error => out.replaceChildren(el('p', error.message, 'error')));
   await load();
