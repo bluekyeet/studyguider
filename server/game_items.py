@@ -5,7 +5,7 @@ Every item is a style (a shape such as "wizard hat") in a colour (such as "Galax
 the website and the Android app show exactly the same thing. Colour placeholders in a drawing: @c main, @d dark, @l light, @s skin.
 """
 
-ART_VERSION = 4          # bump when drawings change, so cached pictures are fetched again
+ART_VERSION = 5          # bump when drawings change, so cached pictures are fetched again
 
 RARITIES = ["common", "uncommon", "rare", "epic", "legendary", "mythic"]
 VALUE = [10, 25, 60, 150, 400, 1000]
@@ -348,10 +348,11 @@ INK = "#2a2338"
 
 BUILDS = {"masculine": "Masculine", "feminine": "Feminine"}
 DEFAULT_BUILD = "masculine"
-# What a character wears in a slot it has nothing equipped in, so nobody is a bare mannequin: (style, colour) per build.
+# What a character has in a slot with nothing equipped: (style, colour) per build. Under everything both builds wear swimwear
+# (`swimwear`), so an undressed character is in board shorts or a sporty two-piece.
 STARTER = {
-    "masculine": {"hair": ("short", "brown"), "top": ("tee", "teal"), "bottom": ("jeans", "blue"), "shoes": ("sneakers", "white")},
-    "feminine": {"hair": ("long", "brown"), "top": ("tee", "teal"), "bottom": ("skirt", "purple"), "shoes": ("sneakers", "white")},
+    "masculine": {"hair": ("short", "brown"), "shoes": ("sneakers", "white")},
+    "feminine": {"hair": ("long", "brown"), "shoes": ("sneakers", "white")},
 }
 # Each build's outline of the parts clothes follow, and where its hands are.
 GEOMETRY = {
@@ -432,6 +433,21 @@ def body(skin, build=None, face=True):
     ) if face else "")
 
 
+def swimwear(build):
+    """The base layer every character wears under their clothes: board shorts, or a sporty two-piece (crop top and swim shorts)."""
+    ink = 'stroke="#1b1830" stroke-opacity=".38" stroke-width="1.6" stroke-linejoin="round"'
+    if build == "feminine":
+        suit, trim = "#e0607e", "#b3405c"
+        top = TORSO_CLIP(R(60, 128, 80, 34, suit)) + L(86, 121, 84, 132, suit, 5) + L(114, 121, 116, 132, suit, 5) + R(76, 157, 48, 5, trim, 2)
+        legs = "".join(f'<path d="{part}" fill="{suit}" clip-path="url(#k-short)"/>' for part in ("@LEGL", "@LEGR"))
+        bottoms = P("M71 194 H129 L130 212 H70Z", suit) + legs + R(71, 194, 58, 5, trim, 2)
+        return geometry(f"<g {ink}>{top}{bottoms}</g>", build)
+    shorts, stripe = "#2b5aa8", "#f2c230"
+    return geometry(f'<g {ink}>' + P("M73 193 H127 L129 212 H71Z", shorts) + '<path d="@LEGL" fill="' + shorts + '" clip-path="url(#k-short)"/>'
+                    + '<path d="@LEGR" fill="' + shorts + '" clip-path="url(#k-short)"/>' + L(78, 200, 78, 226, stripe, 3) + L(122, 200, 122, 226, stripe, 3)
+                    + R(73, 193, 54, 6, "#1e3f78", 2) + "</g>", build)
+
+
 def hair_layers(item_id, skin=None, build=None):
     """(behind the head, in front of it) for a hair item."""
     markup = fill(STYLES["hair"][CATALOG[item_id]["style"]][2], item_id, skin, build)
@@ -459,7 +475,7 @@ def avatar_svg(outfit, skin=None, size=None, crop=None, build=None):
     layers = []
     for slot in LAYER_ORDER:
         if slot == "BODY":
-            layers.append(back + GROUND + body(skin, build))
+            layers.append(back + GROUND + body(skin, build) + swimwear(build))
         elif slot == "hair":
             layers.append(front)
         elif wearing(slot):
