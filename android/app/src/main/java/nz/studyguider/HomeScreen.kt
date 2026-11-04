@@ -83,10 +83,10 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
 
         // Headline numbers
         val estimated = topics.count { !it.isNull("estimated_grade") }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Stat((data.optDouble("overall_mastery") * 100).toFloat(), { "${Math.round(it)}%" }, "Overall mastery", Modifier.weight(1f).staggeredEnter(0, data))
-            Stat((todayCount - todo.size).toFloat(), { "${Math.round(it)}/$todayCount" }, "Lessons done today", Modifier.weight(1f).staggeredEnter(1, data))
-            Stat(due.toFloat(), { "${Math.round(it)}" }, "Reviews due", Modifier.weight(1f).staggeredEnter(2, data))
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Stat((data.optDouble("overall_mastery") * 100).toFloat(), { "${Math.round(it)}%" }, "Overall mastery", Modifier.weight(1f).fillMaxHeight().staggeredEnter(0, data))
+            Stat((todayCount - todo.size).toFloat(), { "${Math.round(it)}/$todayCount" }, "Lessons done today", Modifier.weight(1f).fillMaxHeight().staggeredEnter(1, data))
+            Stat(due.toFloat(), { "${Math.round(it)}" }, "Reviews due", Modifier.weight(1f).fillMaxHeight().staggeredEnter(2, data))
         }
 
         // Lessons to do: a plain list, not cards
