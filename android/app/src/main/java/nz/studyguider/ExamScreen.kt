@@ -297,6 +297,11 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                                 }
                             }
                             val parentOnly = label.isNotEmpty() && parts.any { it.first.startsWith(label + "(") }
+                            if (label.isNotEmpty() && !parentOnly && answerMode == "digital") TableAnswer(wording, partAnswers[label].orEmpty(), { value ->
+                                partAnswers[label] = value
+                                answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
+                                feedback.remove(id)
+                            }, enabled = !busy)
                             if (label.isNotEmpty() && !parentOnly && answerMode == "digital") MathField(partAnswers[label].orEmpty(), { value ->
                                 partAnswers[label] = value
                                 answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
@@ -345,6 +350,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                             partAnswers["diagram"] = value; answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
                             feedback.remove(id)
                         }, label = "Check diagram recognition", enabled = !busy, minLines = 2)
+                        if (answerMode == "digital" && parts.none { it.first.isNotEmpty() }) TableAnswer(text, answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, enabled = !busy)
                         if (answerMode == "handwritten" || parts.none { it.first.isNotEmpty() } || (answers[id].orEmpty().isNotBlank() && !answers[id].orEmpty().startsWith("{\"parts\":"))) MathField(answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, label = if (answerMode == "handwritten") "Check recognised answer" else "Your answer", enabled = !busy, minLines = 4, maxLines = 14, supportingText = "Maximum 100,000 characters")
                         if (answers[id] != saved[id]) Text("Unsaved changes", style = MaterialTheme.typography.labelSmall, color = colours.amber)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

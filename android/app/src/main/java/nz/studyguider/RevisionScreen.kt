@@ -153,7 +153,9 @@ private fun PackQuestion(base: String, token: String, packId: Long, number: Int,
     StudyCard(modifier = Modifier.animateContentSize()) {
         Text("Question $number", style = MaterialTheme.typography.labelLarge)
         MathText(q.str("question"))
+        TableAnswer(q.str("question"), answer, { answer = it }, enabled = !busy)
         MathField(answer, { answer = it }, label = "Your answer", enabled = !busy, minLines = 3, maxLines = 12)
+        HintButton(base, token, "review", qid.toString(), answer = { answer })
         Button(enabled = !busy && answer.isNotBlank(), shape = RoundedCornerShape(50), onClick = {
             busy = true
             scope.launch {

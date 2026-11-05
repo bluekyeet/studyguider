@@ -95,7 +95,9 @@ fun ReviewScreen(base: String, token: String) {
                         Text(question.optString("topic").ifBlank { "Topic ${question.getLong("topic_id")}" }.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     MathText(question.getString("question"), formulaStyle = true)
+                    TableAnswer(question.getString("question"), answer, { answer = it }, enabled = !busy)
                     MathField(answer, { answer = it }, label = "Your working", enabled = !busy, minLines = 3, maxLines = 10)
+                    HintButton(base, token, "review", id.toString(), answer = { answer })
                     Text("How confident are you? $confidence / 5", style = MaterialTheme.typography.labelMedium)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (level in 1..5) {

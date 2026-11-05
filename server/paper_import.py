@@ -8,7 +8,7 @@ from paper_parser import file_identity, parse_pair, cut_scores
 
 
 # Raised whenever the paper parser learns to read more of a paper; papers read by an older version are read again.
-PARSER_VERSION = 8
+PARSER_VERSION = 9
 
 
 def create_import_tables(db):

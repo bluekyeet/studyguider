@@ -77,8 +77,11 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
+        val appearance = getSharedPreferences("appearance", MODE_PRIVATE)
+        Appearance.mode = appearance.getString("mode", "system") ?: "system"
+        Appearance.save = { mode -> appearance.edit().putString("mode", mode).apply() }
         setContent {
-            val dark = isSystemInDarkTheme()
+            val dark = Appearance.dark()
             StudyTheme(dark) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { StudyApp() } }
         }
     }
@@ -270,6 +273,17 @@ private fun uploadDocuments(context: android.content.Context, base: String, toke
         if (status !in 200..299) throw IllegalStateException("Upload failed ($status): $text")
         return text
     } finally { connection.disconnect() }
+}
+
+/** Light, dark, or whatever the phone uses; chosen in Settings and kept on this device. */
+object Appearance {
+    var mode by mutableStateOf("system")
+    var save: (String) -> Unit = {}
+
+    fun choose(value: String) { mode = value; save(value) }
+
+    @Composable
+    fun dark(): Boolean = when (mode) { "light" -> false; "dark" -> true; else -> isSystemInDarkTheme() }
 }
 
 private val tabOrder = listOf(1 to "Today's Lesson", 2 to "Daily Review", 3 to "Monthly Exam", 0 to "Resources")
@@ -687,7 +701,7 @@ private fun StudyApp() {
         token = token,
         signedIn = token.isNotEmpty(),
         busy = busy,
-        dark = isSystemInDarkTheme(),
+        dark = Appearance.dark(),
         onDismiss = { showSettings = false },
         onSignOut = { if (!busy && !examDirty) { showSettings = false; signOutConfirm = true } },
         canSignOut = !busy && !examDirty,
@@ -1495,7 +1509,15 @@ private fun SettingsSheet(
             StudyCard(tone = CardTone.Low) {
                 SectionLabel("Library", "YOUR CONTENT")
                 Text("$subjectCount subject(s) · $topicCount topic(s) loaded", style = MaterialTheme.typography.bodyMedium)
-                Text(if (dark) "Appearance: dark (follows the system)" else "Appearance: light (follows the system)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            StudyCard(tone = CardTone.Low) {
+                SectionLabel("Appearance", if (dark) "DARK" else "LIGHT")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("light" to "Light", "dark" to "Dark", "system" to "System").forEach { (mode, label) ->
+                        FilterChip(selected = Appearance.mode == mode, onClick = { Appearance.choose(mode) }, label = { Text(label) })
+                    }
+                }
+                Text("System follows your phone's setting.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             }
             if (page == "About") {

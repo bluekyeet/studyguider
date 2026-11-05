@@ -63,7 +63,7 @@ def test_completed_lessons_automatically_get_reviews_once():
                 self.inserted.append(params)
             elif "UPDATE lessons" in sql:
                 self.generated = True
-            elif "WHERE q.due_date" in sql:
+            elif "FROM review_questions q" in sql:
                 return Result([])
             return Result()
 
@@ -187,3 +187,20 @@ def test_estimated_grade_needs_enough_answers_and_uses_fixed_bands():
     assert estimate_grade(0.9, 4) is None
     assert [estimate_grade(m, 5) for m in (0.0, 0.39, 0.4, 0.59, 0.6, 0.79, 0.8, 1.0)] == [
         "Not achieved", "Not achieved", "Achieved", "Achieved", "Merit", "Merit", "Excellence", "Excellence"]
+
+
+def test_review_only_asks_new_questions():
+    from reviews import fresh_due
+    # (id, topic, question, due, concept, standard, mastery, topic name, origin)
+    due = [(1, 7, "What is the magnitude of the electrical force on a charge of $2$ C in a field?", None, "", None, 0, "E", ""),
+           (2, 7, "Explain why alkanes are saturated.", None, "", None, 0, "E", ""),
+           (3, 7, "Explain why alkanes are saturated!", None, "", None, 0, "E", "pack:3:0.1"),
+           (4, 7, "Ethanol burns. Complete the table below.", None, "", None, 0, "E", "49:28:c(i)"),
+           (5, 7, "Ethanol burns. Explain the high melting point of palladium.", None, "", None, 0, "E", "49:28:c(ii)"),
+           (6, 8, "Explain why alkanes are saturated.", None, "", None, 0, "F", "")]
+    answered = [(7, "What is the magnitude of the electrical force experienced by a charge of $5$ C in a field?", "")]
+
+    class Db:
+        def execute(self, sql, params=()):
+            return Result(answered if "SELECT DISTINCT" in sql else due)
+    assert [row[0] for row in fresh_due(Db(), date.today())] == [2, 4, 5, 6]     # near-repeats go; exam parts and other topics stay

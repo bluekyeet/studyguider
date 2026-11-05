@@ -1,4 +1,4 @@
-import { mathText, mathInput, autosave, stash, sha256Hex, aiBox, readable, inlineMath } from './web-common.js';
+import { mathText, mathInput, autosave, stash, sha256Hex, aiBox, readable, inlineMath, hintButton } from './web-common.js';
 
 const element = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -369,7 +369,8 @@ export async function renderLessons(container, api, params) {
       } finally { draft.busy = false; }
     });
     label.append(mathInput(input));
-    const actions = element('div', '', 'toolbar'); actions.append(mark);
+    const actions = element('div', '', 'toolbar');
+    actions.append(mark, hintButton(api, { kind: 'lesson', ref: `${lesson.id}:${draft.key}`, answer: () => draft.answer, question: () => draft.question }));
     card.append(label, actions, status, choices, feedback);
   }
 

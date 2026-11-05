@@ -1,7 +1,7 @@
 // Exam revision: pick a topic and get a pack built from the mistakes you have made in it.
 // A pack is a short re-teach plus questions for each weak concept. Answers are marked straight away (the daily review marking),
 // and a wrong answer comes back through spaced repetition. Everything in a pack is AI-written and unofficial.
-import { mathText, mathInput, aiBox, countUp } from './web-common.js';
+import { mathText, mathInput, aiBox, countUp, hintButton, tableAnswer } from './web-common.js';
 import { el, json } from './web-exam-shared.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -116,7 +116,9 @@ export async function renderRevision(container, api, params) {
         check.disabled = false;
       };
       if (q.result) { answer.value = q.result.your_answer || ''; show(q.result); }
-      box.append(label, check, out);
+      const actions = el('div', '', 'toolbar'); actions.append(check, hintButton(api, { kind: 'review', ref: q.id, answer: () => answer.value }));
+      const grid = tableAnswer(q.question, answer);
+      box.append(...(grid ? [grid] : []), label, actions, out);
       return box;
     };
 

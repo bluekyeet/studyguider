@@ -313,7 +313,9 @@ private fun RapidPlayer(base: String, token: String, start: RapidPhase.Play, onE
                 Text(sourceLine(question), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 QuestionView(base, token, question)
             }
+            TableAnswer(fullQuestionText(question), answer, { answer = it }, enabled = !busy)
             MathField(answer, { answer = it }, label = "Your answer", enabled = !busy, minLines = 5, maxLines = 16)
+            HintButton(base, token, "rapid", "${start.id}:${question.getLong("question_id")}", answer = { answer })
         }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }

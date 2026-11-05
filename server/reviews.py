@@ -1,9 +1,11 @@
 """Daily review questions with AI marking, confidence and spaced repetition.
 
-The AI mark is advisory. A wrong answer always brings the item back tomorrow and
-records the concept so the next lesson can revisit it.
+The AI mark is advisory. Each question is asked once: answering it, right or wrong, takes it off the Review list, and
+near-repeats of answered questions are left out (fresh_due). A wrong answer records the concept so the next lesson revisits it.
 """
+import difflib
 import json
+import re
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -73,6 +75,45 @@ def _clean_json(reply):
 
 
 MIN_ANSWERS_FOR_ESTIMATE = 5
+SIMILAR = 0.85      # questions this alike (ignoring maths and punctuation) count as the same question asked again
+
+
+def _plain(text):
+    return re.sub(r"[^a-z0-9]+", " ", re.sub(r"\$[^$]*\$", " ", text.lower())).strip()
+
+
+def _exam_part(origin):
+    """Questions made from a past-paper part ("49:28:c(i)") share their question's context, so only identical text is a repeat."""
+    return bool(origin) and not origin.startswith("pack:")
+
+
+def _repeats(question, origin, seen):
+    plain = _plain(question)
+    for other, other_origin in seen:
+        if plain == other or (not _exam_part(origin) and not _exam_part(other_origin)
+                              and difflib.SequenceMatcher(None, plain, other).ratio() >= SIMILAR):
+            return True
+    return False
+
+
+def fresh_due(db, as_of):
+    """Review only ever asks something new: a question leaves the list once it is answered, right or wrong, and a question that
+    repeats one already answered (or one earlier in today's list) in the same topic is left out."""
+    rows = db.execute("""SELECT q.id, q.topic_id, q.question, q.due_date, q.concept, q.standard_number, q.mastery, t.name, q.exam_origin
+        FROM review_questions q LEFT JOIN topics t ON t.id = q.topic_id
+        WHERE q.due_date <= %s AND NOT EXISTS (SELECT 1 FROM review_answers a WHERE a.question_id = q.id)
+        ORDER BY q.due_date, q.id""", (as_of,)).fetchall()
+    seen = {}
+    for topic_id, question, origin in db.execute("""SELECT DISTINCT q.topic_id, q.question, q.exam_origin FROM review_questions q
+            WHERE EXISTS (SELECT 1 FROM review_answers a WHERE a.question_id = q.id)""").fetchall():
+        seen.setdefault(topic_id, []).append((_plain(question), origin))
+    fresh = []
+    for row in rows:
+        here = seen.setdefault(row[1], [])
+        if not _repeats(row[2], row[8], here):
+            fresh.append(row)
+            here.append((_plain(row[2]), row[8]))
+    return fresh
 
 
 def estimate_grade(mastery, answers):
@@ -130,8 +171,7 @@ def review_router(connect, authorised, model_reply):
                         (topic_id, mathtext.normalise_maths(item["question"]), mathtext.normalise_maths(item["expected_answer"]), json.dumps(sources), item["concept"]))
                 db.execute("UPDATE lessons SET review_generated_at = now() WHERE id = %s", (lesson_id,))
         with connect() as db:
-            rows = db.execute("""SELECT q.id, q.topic_id, q.question, q.due_date, q.concept, q.standard_number, q.mastery, t.name
-                FROM review_questions q LEFT JOIN topics t ON t.id = q.topic_id WHERE q.due_date <= %s ORDER BY q.due_date, q.id""", (as_of,)).fetchall()
+            rows = fresh_due(db, as_of)
         return [{"id": row[0], "topic_id": row[1], "question": row[2], "due_date": row[3],
                  "concept": row[4], "standard_number": row[5], "mastery": row[6], "topic": row[7]} for row in rows]
 
@@ -147,7 +187,8 @@ def review_router(connect, authorised, model_reply):
                     count(*) FILTER (WHERE {nz % 'completed_at'} > %s - 7)
                 FROM lessons""", (today, today, today, today)).fetchone()
             reviews = db.execute("""SELECT count(*) FILTER (WHERE due_date <= %s), count(*) FILTER (WHERE due_date > %s), count(*)
-                FROM review_questions""", (today, today)).fetchone()
+                FROM review_questions q WHERE NOT EXISTS (SELECT 1 FROM review_answers a WHERE a.question_id = q.id)""", (today, today)).fetchone()
+            reviews = (len(fresh_due(db, today)), reviews[1], reviews[2])
             answers = dict(db.execute("""SELECT outcome, count(*) FROM review_answers
                 WHERE answered_at > now() - interval '30 days' GROUP BY outcome""").fetchall())
             topics = db.execute("""SELECT t.id, s.name, t.name, t.mastery, t.status,

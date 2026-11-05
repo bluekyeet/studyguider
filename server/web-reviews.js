@@ -1,4 +1,4 @@
-import { mathText, mathInput, stash, aiBox } from './web-common.js';
+import { mathText, mathInput, stash, aiBox, hintButton, tableAnswer } from './web-common.js';
 
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -148,6 +148,7 @@ export async function renderReviews(container, api) {
     answer.value = draft.answer;
     answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); answer.setCustomValidity(''); });
     answerLabel.append(mathInput(answer));
+    const hint = element('div', undefined, 'toolbar'); hint.append(hintButton(api, { kind: 'review', ref: question.id, answer: () => answer.value }));
     const scale = element('fieldset', undefined, 'scale');
     scale.append(element('legend', 'How confident are you?'));
     const row = element('div', undefined, 'segmented');
@@ -169,7 +170,8 @@ export async function renderReviews(container, api) {
     const toolbar = element('div', undefined, 'toolbar'); toolbar.append(submit);
     if (back === 'all') { const cancel = button('Back to list'); cancel.onclick = () => { mode = 'all'; show(); }; toolbar.append(cancel); }
     const feedback = element('div', undefined, 'stack'); feedback.setAttribute('role', 'status');
-    form.append(answerLabel, scale, toolbar);
+    const grid = tableAnswer(question.question, answer);
+    form.append(...(grid ? [grid] : []), answerLabel, hint, scale, toolbar);
     card.append(form, feedback);
     content.append(card);
     if (focus) answer.focus();

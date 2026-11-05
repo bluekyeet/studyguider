@@ -55,3 +55,19 @@ def test_the_printed_symbol_pattern_is_not_question_text():
         page.insert_text((60, 90), '#$%&*!!?', fontsize=11)
         page.insert_text((60, 120), 'Calculate the force.', fontsize=11)
         assert [line['text'] for line in page_lines(page)] == ['Calculate the force.']
+
+
+def test_a_table_to_fill_in_keeps_its_empty_cells_and_joins_wrapped_labels():
+    from paper_parser import page_tables
+    with fitz.open() as doc:
+        page = doc.new_page(width=595, height=842)
+        rows = [['Substance', 'Type of solid', 'Attractive forces'], [('Carbon monoxide,', 'CO(s)'), '', ''], [('Palladium,', 'Pd(s)'), '', '']]
+        for r, row in enumerate(rows):
+            for c, cell in enumerate(row):
+                box = fitz.Rect(60 + c * 150, 120 + r * 50, 210 + c * 150, 170 + r * 50)
+                page.draw_rect(box, width=1)
+                for n, text in enumerate(cell if isinstance(cell, tuple) else (cell,) if cell else ()):
+                    page.insert_text((box.x0 + 6, box.y0 + 16 + n * 14), text, fontsize=10)
+        tables = page_tables(page)
+    assert [markdown for _, markdown in tables] == ['| Substance | Type of solid | Attractive forces |\n| --- | --- | --- |\n'
+                                                     '| Carbon monoxide, CO(s) |  |  |\n| Palladium, Pd(s) |  |  |']

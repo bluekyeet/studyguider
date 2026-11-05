@@ -1,4 +1,4 @@
-import { mathText, mathInput, autosave, aiBox } from './web-common.js';
+import { mathText, mathInput, autosave, aiBox, tableAnswer } from './web-common.js';
 import { el, field, option, json, reflow, withoutLabel, displayLabel, scanForm, mathsNote } from './web-exam-shared.js';
 import { renderRapid } from './web-rapid.js';
 import { renderRevision } from './web-revision.js';
@@ -273,7 +273,11 @@ async function renderClassicExams(container, api) {
           if (heading) body.append(el('h4', heading));
           if (wording) body.append(mathText(reflow(wording)));
           body.append(...extras);
-          if (input) body.append(mathField(`Your answer ${label}`.trim(), input));
+          if (input) {
+            const grid = tableAnswer(wording, input);
+            if (grid) body.append(grid);
+            body.append(mathField(`Your answer ${label}`.trim(), input));
+          }
           partsBox.append(part);
         };
         if (definitions.length) {

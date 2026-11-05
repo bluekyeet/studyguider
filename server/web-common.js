@@ -360,3 +360,92 @@ export function avatar(user, size = 32, src = '/me/avatar') {
   } else box.textContent = initial;
   return box;
 }
+
+// One saved hint per practice question (hints.py): the first press writes it from what has been answered so far, and every later
+// press, on any device, shows that same hint. Used in Review, lessons, revision and rapid questions; never in exams.
+export function hintButton(api, { kind, ref, answer = () => '', question = () => '' }) {
+  const button = el('button', 'Hint', 'small hint-button'); button.type = 'button';
+  const dialog = el('dialog', undefined, 'hint-dialog');
+  const path = `/hints/${kind}/${encodeURIComponent(ref)}`;
+  const show = (...content) => {
+    const close = el('button', 'Close', 'small'); close.type = 'button'; close.onclick = () => dialog.close();
+    dialog.replaceChildren(el('h3', 'Hint'), ...content, close);
+    if (!dialog.isConnected) document.body.append(dialog);
+    if (!dialog.open) dialog.showModal();
+  };
+  dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+  button.onclick = async () => {
+    button.disabled = true; const label = button.textContent; button.textContent = 'Thinking…';
+    try {
+      const result = await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer: answer(), question: question() }) });
+      button.textContent = 'Show hint';
+      show(mathText(result.hint), el('p', 'One hint per question. It stays the same here and on your other devices.', 'muted'));
+    } catch (error) {
+      button.textContent = label;
+      show(el('p', error.message, 'error'));
+    } finally { button.disabled = false; }
+  };
+  api(path).then(result => { if (result?.hint && !button.disabled) button.textContent = 'Show hint'; }).catch(() => {});
+  return button;
+}
+
+// A "complete the table" question: the first Markdown table in the question that has empty cells becomes a grid to fill in. The
+// filled table is written into the answer box as a Markdown table (replacing an earlier one there), so it is saved, marked and
+// restored like any other answer.
+const tableLine = line => /^\s*\|.*\|\s*$/.test(line);
+const tableCells = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map(cell => cell.trim());
+function firstTable(text) {
+  const lines = String(text || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (!tableLine(lines[i])) continue;
+    let end = i; while (end < lines.length && tableLine(lines[end])) end++;
+    const block = lines.slice(i, end);
+    const rows = block.filter(line => !/^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/.test(line)).map(tableCells);
+    if (rows.length >= 2) return { start: i, end, rows };
+    i = end;
+  }
+  return null;
+}
+export function tableAnswer(question, textarea) {
+  const template = firstTable(question);
+  if (!template) return null;
+  const [header, ...body] = template.rows;
+  if (!body.some(row => row.slice(1).some(cell => !cell))) return null;
+  const width = header.length;
+  const saved = firstTable(textarea.value);
+  const values = body.map((row, r) => Array.from({ length: width }, (_, c) => row[c] || (saved?.rows[r + 1]?.[c] ?? '')));
+  const write = () => {
+    const line = row => `| ${row.map(cell => cell.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ')).join(' | ')} |`;
+    const table = [line(header), `| ${header.map(() => '---').join(' | ')} |`, ...values.map(line)].join('\n');
+    const lines = textarea.value.split('\n');
+    const current = firstTable(textarea.value);
+    textarea.value = current ? [...lines.slice(0, current.start), table, ...lines.slice(current.end)].join('\n')
+      : textarea.value.trim() ? `${table}\n\n${textarea.value}` : table;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const wrap = el('div', undefined, 'table-answer');
+  wrap.append(el('p', 'Fill in the table. It is added to your answer below.', 'muted'));
+  const scroll = el('div', undefined, 'table-scroll');
+  const table = el('table', undefined, 'table fill-table');
+  const head = el('tr');
+  for (const cell of header) { const th = el('th'); th.append(inlineMath(cell)); head.append(th); }
+  const thead = el('thead'); thead.append(head);
+  const tbody = el('tbody');
+  body.forEach((row, r) => {
+    const tr = el('tr');
+    for (let c = 0; c < width; c++) {
+      const td = el('td');
+      if (row[c]) td.append(inlineMath(row[c]));
+      else {
+        const input = el('textarea'); input.rows = 2; input.value = values[r][c];
+        input.setAttribute('aria-label', `${row[0] || `Row ${r + 1}`}: ${header[c] || `column ${c + 1}`}`);
+        input.addEventListener('input', () => { values[r][c] = input.value; write(); });
+        td.append(input);
+      }
+      tr.append(td);
+    }
+    tbody.append(tr);
+  });
+  table.append(thead, tbody); scroll.append(table); wrap.append(scroll);
+  return wrap;
+}

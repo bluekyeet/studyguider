@@ -56,8 +56,9 @@ def pair_files(directory):
 
 
 def page_tables(page):
-    """[(bbox, markdown)] for the ruled tables of plain text on a page (a table of bond energies, a data table). A table whose
-    cells hold several lines is a drawing of molecules or labels, not data, and is left to the figure handling."""
+    """[(bbox, markdown)] for the ruled tables of plain text on a page (a table of bond energies, a data table, a table to fill in,
+    whose empty cells stay empty). A table whose cells hold atom symbols on separate lines is a drawing of molecules, not data,
+    and is left to the figure handling."""
     found = []
     try:
         tables = page.find_tables().tables
@@ -66,9 +67,16 @@ def page_tables(page):
     for table in tables:
         rows = [[(cell or "").strip() for cell in row] for row in table.extract()]
         flat = [cell for row in rows for cell in row]
-        if len(rows) < 2 or len(rows[0]) < 2 or any("\n" in cell for cell in flat):
+        if len(rows) < 2 or len(rows[0]) < 2 or not all(rows[0]):
             continue
-        if not all(rows[0]) or sum(1 for cell in flat if cell) < len(flat) * .4:
+        # Wrapped words ("Carbon monoxide," / "CO(s)") are one cell; a cell of lone symbols on separate lines is a drawn structure.
+        if any(len(line.strip()) < 3 and not re.search(r"[a-z]{2}", line) for cell in flat if "\n" in cell for line in cell.split("\n")):
+            continue
+        rows = [[" ".join(cell.split()) for cell in row] for row in rows]
+        flat = [cell for row in rows for cell in row]
+        # An answer grid: labels down the first column and empty cells for the learner to fill in.
+        grid = all(row[0] for row in rows[1:]) and any(not cell for row in rows[1:] for cell in row[1:])
+        if not grid and sum(1 for cell in flat if cell) < len(flat) * .4:
             continue
         line = lambda row: "| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |"
         found.append((list(table.bbox), "\n".join([line(rows[0]), line(["---"] * len(rows[0]))] + [line(row) for row in rows[1:]])))

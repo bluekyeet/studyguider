@@ -613,7 +613,10 @@ private fun SectionQuestion(base: String, token: String, draft: JSONObject, chun
         if (questions.size > 1) Text("${index + 1} of ${questions.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     MathText(question.prompt)
-    if (question.choices.isEmpty()) MathField(answer, { answer = it; feedback = "" }, label = "Your answer", minLines = 3, maxLines = 12, enabled = !busy && answerLoaded)
+    if (question.choices.isEmpty()) {
+        MathField(answer, { answer = it; feedback = "" }, label = "Your answer", minLines = 3, maxLines = 12, enabled = !busy && answerLoaded)
+        HintButton(base, token, "lesson", "${draft.getLong("id")}:${questionKey(question.prompt)}", answer = { answer }, question = { question.prompt })
+    }
     else question.choices.forEach { choice ->
         Row(Modifier.fillMaxWidth().clickable(enabled = !busy && answerLoaded) { answer = choice; feedback = "" }, verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = answer == choice, onClick = { answer = choice; feedback = "" }, enabled = !busy && answerLoaded)
@@ -665,6 +668,8 @@ private fun PracticePanel(base: String, token: String, draft: JSONObject, chunk:
     HorizontalDivider()
     Text("Check your understanding", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
     MathField(working, { working = it; reply = "" }, label = "Your working", minLines = 3, maxLines = 12, enabled = !busy && answerLoaded)
+    val prompt = chunk.title + "\n" + chunk.body
+    HintButton(base, token, "lesson", "${draft.getLong("id")}:${questionKey(prompt)}", answer = { working }, question = { prompt })
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(shape = RoundedCornerShape(50), enabled = !busy && working.isNotBlank() && working.length <= 2000, onClick = {
             scope.launch {
@@ -694,7 +699,7 @@ private fun PracticePanel(base: String, token: String, draft: JSONObject, chunk:
 /** Device-independent drafts and feedback; the server keeps the latest saved version. */
 @Composable
 internal fun SavedAnswer(base: String, token: String, lessonId: Long, question: String, answer: String, feedback: String, restoreAnswer: (String) -> Unit, restoreFeedback: (String) -> Unit): Boolean {
-    val key = remember(question) { java.security.MessageDigest.getInstance("SHA-256").digest(question.toByteArray()).joinToString("") { "%02x".format(it) } }
+    val key = remember(question) { questionKey(question) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val recovery = remember { context.getSharedPreferences("lesson_answer_recovery", android.content.Context.MODE_PRIVATE) }
     val recoveryKey = "$base:$lessonId:$key"
@@ -931,3 +936,7 @@ private fun SavedLessons(
         }
     }
 }
+
+/** The key a lesson question's saved answer (and hint) is stored under: the SHA-256 of its text, as the website uses. */
+fun questionKey(question: String): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(question.toByteArray()).joinToString("") { "%02x".format(it) }

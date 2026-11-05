@@ -41,6 +41,7 @@ from review_generation import review_generation_router
 from styles import create_style_tables, style_router
 from pages import page_router, safe_dpi
 from game import create_game_tables, create_public_game_tables, game_router, refresh_all
+from hints import create_hint_tables, hint_router
 import ocr
 import logging
 import userspace
@@ -127,6 +128,7 @@ def init_schema(db):
     create_revision_tables(db)
     create_scheduler_tables(db)
     create_game_tables(db)
+    create_hint_tables(db)
     # The global library (library_global.py): rows an account holds as read-only copies carry the library's id.
     for table in ("subjects", "topics", "exam_questions"):
         db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
@@ -409,6 +411,7 @@ app.include_router(style_router(connect, authorised, model_reply))
 app.include_router(page_router(connect, authorised))
 app.include_router(usage_router(connect, admin_only, model_reply, model_reply_vision))
 app.include_router(game_router(connect, accounts_db, authorised))
+app.include_router(hint_router(connect, authorised, model_reply))
 app.include_router(diagram_router(connect, authorised, model_reply, model_reply_vision))
 
 
@@ -1331,7 +1334,8 @@ def topic_mastery(topic_id: int):
             raise HTTPException(404, "Topic not found")
         answers = db.execute("""SELECT COUNT(*), COUNT(*) FILTER (WHERE correct), COUNT(*) FILTER (WHERE NOT correct)
             FROM review_answers a JOIN review_questions q ON q.id = a.question_id WHERE q.topic_id = %s""", (topic_id,)).fetchone()
-        due = db.execute("SELECT COUNT(*) FROM review_questions WHERE topic_id = %s AND due_date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date", (topic_id,)).fetchone()
+        due = db.execute("""SELECT COUNT(*) FROM review_questions q WHERE topic_id = %s AND due_date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date
+            AND NOT EXISTS (SELECT 1 FROM review_answers a WHERE a.question_id = q.id)""", (topic_id,)).fetchone()
         weak = db.execute("""SELECT DISTINCT concept FROM review_questions
             WHERE topic_id = %s AND concept IS NOT NULL AND concept != '' AND id IN
             (SELECT question_id FROM review_answers WHERE NOT correct ORDER BY id DESC LIMIT 20) LIMIT 10""", (topic_id,)).fetchall()

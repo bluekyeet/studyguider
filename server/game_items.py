@@ -5,7 +5,7 @@ Every item is a style (a shape such as "wizard hat") in a colour (such as "Galax
 the website and the Android app show exactly the same thing. Colour placeholders in a drawing: @c main, @d dark, @l light, @s skin.
 """
 
-ART_VERSION = 5          # bump when drawings change, so cached pictures are fetched again
+ART_VERSION = 6          # bump when drawings change, so cached pictures are fetched again
 
 RARITIES = ["common", "uncommon", "rare", "epic", "legendary", "mythic"]
 VALUE = [10, 25, 60, 150, 400, 1000]
@@ -65,10 +65,12 @@ NECK = P("M90 119 Q100 129 110 119", "none", 'stroke="@d" stroke-width="2" strok
 CUFFS = '<path d="@ARML" fill="@d" clip-path="url(#k-cuff)"/><path d="@ARMR" fill="@d" clip-path="url(#k-cuff)"/>'
 HIPS = P("M73 193 H127 L129 212 H71Z") + R(73, 193, 54, 6, "@d", 2)
 # Hair has two layers split by "|||": what sits behind the head (volume, long lengths) and what frames the face.
-BACK = P("M61 88 C56 46 80 35 100 35 C120 35 144 46 139 88Z") + "|||"
-FRONT_SHORT = P("M63 84 C60 52 80 40 100 40 C122 40 140 52 137 84 C134 72 128 63 120 59 C108 66 90 67 78 61 C72 66 66 74 63 84Z")
-FRONT_PART = P("M63 88 C59 52 80 40 100 40 C120 40 141 52 137 88 C134 74 126 62 104 56 C100 62 92 66 80 66 C72 70 66 78 63 88Z")
-FRONT_SWEPT = P("M63 86 C60 52 80 40 100 40 C122 40 140 52 137 86 C132 70 120 58 98 60 C86 62 74 68 63 86Z")
+BACK = P("M60 90 C55 46 80 34 100 34 C120 34 145 46 140 90Z") + "|||"
+# Anime fringes: pointed locks over the forehead and side locks past the ears, with a band of shine across the crown.
+SHINE = P("M74 52 Q86 44 100 44 Q114 44 126 52", "none", 'stroke="@l" stroke-width="3.5" stroke-linecap="round" opacity=".55"')
+FRONT_SHORT = P("M61 90 C57 52 78 37 100 37 C122 37 143 52 139 90 L134 72 L129 81 L124 63 L116 76 L109 60 L101 74 L93 60 L86 76 L78 63 L72 81 L66 72Z") + SHINE
+FRONT_PART = P("M60 96 C56 52 78 37 100 37 C122 37 144 52 140 96 L134 74 L129 86 L123 64 L114 76 L106 56 L100 66 L94 56 L86 76 L77 64 L71 86 L66 74Z") + SHINE
+FRONT_SWEPT = P("M61 92 C57 52 78 37 100 37 C122 37 143 52 139 92 L135 72 L130 62 L120 74 L114 58 L102 72 L95 58 L85 74 L77 62 L70 80 L65 70Z") + SHINE
 
 # slot -> style key -> (name, tier, drawing)
 STYLES = {
@@ -197,22 +199,23 @@ STYLES = {
     "hair": {
         "short": ("Short hair", 0, BACK + FRONT_SHORT),
         "long": ("Long hair", 0, P("M60 84 C56 44 80 36 100 36 C120 36 144 44 140 84 C142 112 146 140 140 156 C120 162 80 162 60 156 C54 140 58 112 60 84Z") + BACK + FRONT_PART
-                 + P("M64 76 C60 100 62 126 66 146 L74 142 C70 120 69 98 71 80Z") + P("M136 76 C140 100 138 126 134 146 L126 142 C130 120 131 98 129 80Z")),
+                 + P("M62 78 C58 104 61 128 58 152 L67 140 L70 150 C72 122 70 100 72 84Z") + P("M138 78 C142 104 139 128 142 152 L133 140 L130 150 C128 122 130 100 128 84Z")),
         "bun": ("Bun", 0, C(100, 34, 15) + C(100, 34, 8, "@d", 'opacity=".25"') + BACK + FRONT_PART),
-        "spiky": ("Spiky hair", 1, BACK + P("M63 84 C61 66 62 56 66 48 L62 36 L76 42 L78 26 L90 38 L100 22 L110 38 L122 26 L124 42 L138 36 L134 48 C138 56 139 66 137 84 C132 72 126 64 118 60 C106 66 92 66 82 60 C74 64 68 72 63 84Z")),
+        "spiky": ("Spiky hair", 1, P("M60 70 L40 52 L62 50 L54 26 L78 38 L82 12 L98 32 L112 10 L118 36 L142 22 L138 50 L162 50 L140 72Z") + BACK
+                  + P("M61 90 C57 54 78 38 100 38 C122 38 143 54 139 90 L133 70 L127 82 L121 62 L112 78 L104 58 L96 76 L88 58 L80 78 L74 64 L68 82 L65 70Z") + SHINE),
         "mohawk": ("Mohawk", 1, P("M64 82 C62 60 72 48 86 44 L114 44 C128 48 138 60 136 82 C130 66 118 58 100 58 C82 58 70 66 64 82Z", "@c", 'opacity=".3"')
                    + P("M90 58 C88 40 92 24 100 14 C108 24 112 40 110 58Z")),
         "afro": ("Afro", 1, G(*[C(100 + 46 * __import__("math").cos(a / 10), 70 + 40 * __import__("math").sin(a / 10), 17) for a in range(-31, 1, 4)]) + C(100, 60, 40) + "|||"
                  + P("M66 84 C64 62 76 50 100 50 C124 50 136 62 134 84 C128 70 116 62 100 62 C84 62 72 70 66 84Z")),
         "bob": ("Bob", 0, P("M60 84 C56 44 80 36 100 36 C120 36 144 44 140 84 L142 116 C126 122 74 122 58 116Z") + "|||"
-                + P("M64 84 C60 50 80 40 100 40 C120 40 140 50 136 84 L134 68 C120 60 80 60 66 68Z")
-                + P("M62 80 L60 116 L72 116 L70 84Z") + P("M138 80 L140 116 L128 116 L130 84Z")),
+                + P("M62 88 C58 50 79 38 100 38 C121 38 142 50 138 88 L134 70 L128 74 L122 64 L114 72 L106 62 L100 70 L94 62 L86 72 L78 64 L72 74 L66 70Z")
+                + P("M62 80 L58 118 L66 110 L71 118 L71 86Z") + P("M138 80 L142 118 L134 110 L129 118 L129 86Z") + SHINE),
         "ponytail": ("Ponytail", 0, P("M124 52 C160 54 166 104 150 144 C146 120 144 90 128 70Z") + C(127, 58, 6, "@d") + BACK + FRONT_SWEPT),
         "pigtails": ("Pigtails", 0, E(54, 104, 12, 24) + E(146, 104, 12, 24) + C(60, 82, 5, "@d") + C(140, 82, 5, "@d") + BACK + FRONT_PART),
         "curly": ("Curly hair", 0, G(*[C(x, y, 13) for x, y in [(64, 76), (68, 56), (82, 44), (100, 39), (118, 44), (132, 56), (136, 76), (62, 96), (138, 96)]]) + "|||"
                   + G(*[C(x, y, 9) for x, y in [(72, 60), (86, 52), (100, 50), (114, 52), (128, 60)]])),
         "buzz": ("Buzz cut", 0, "|||" + P("M64 80 C62 56 78 44 100 44 C122 44 138 56 136 80 C128 64 116 58 100 58 C84 58 72 64 64 80Z", "@c", 'opacity=".7"')),
-        "fringe": ("Fringe", 0, BACK + P("M63 86 C59 50 80 38 100 38 C120 38 141 50 137 86 C136 76 134 70 132 68 C112 72 88 72 68 68 C66 72 64 78 63 86Z")),
+        "fringe": ("Fringe", 0, BACK + P("M61 90 C57 50 79 37 100 37 C121 37 143 50 139 90 L135 76 L130 74 L125 79 L119 73 L112 79 L106 73 L100 79 L94 73 L88 79 L81 73 L75 79 L70 74 L65 76Z") + SHINE),
     },
     "hat": {
         "cap": ("Cap", 0, P("M64 58 Q66 28 100 28 Q134 28 136 58Z") + P("M60 58 L128 58 Q150 58 154 66 L60 66Z", "@d")),
@@ -392,15 +395,24 @@ def defs(build):
     return DEFS.replace("</defs>", clips + "</defs>")
 
 
+IRIS_DEEP = "#3b2314"
+EYE_Y = 84
+# The anime face: a wide head that narrows to a small chin, set so hats still sit on the same crown (top ~43, sides 64-136).
+HEAD = "M64 79 C64 52 80 43 100 43 C120 43 136 52 136 79 C136 97 121 110 100 114 C79 110 64 97 64 79Z"
+
+
 def eye(x, feminine):
-    """One eye: white, iris, pupil and two highlights; a lid flick on the feminine build."""
-    flick = ""
-    if feminine:
-        side = -1 if x < 100 else 1
-        flick = P(f"M{x + side * 6} 74.5 Q{x + side * 8.5} 73.5 {x + side * 10} 71", "none", f'stroke="{INK}" stroke-width="2" stroke-linecap="round"')
-    return G(E(x, 79, 6.4, 7.4, "#fff", f'stroke="{INK}" stroke-opacity=".25" stroke-width="1"'), C(x + 0.6, 80, 4.8, IRIS), C(x + 0.6, 80, 2.5, INK),
-             C(x + 2.3, 77.4, 1.7, "#fff"), C(x - 1.2, 82.4, 0.8, "#fff"),
-             P(f"M{x - 6.6} 76 Q{x} 70.2 {x + 6.6} 76", "none", f'stroke="{INK}" stroke-width="{2.6 if feminine else 1.8}" stroke-linecap="round"'), flick)
+    """One big anime eye: white, a tall two-tone iris, pupil, a large and a small highlight, a heavy upper lash line and a light
+    lower lid; the feminine build adds a lash flick at the outer corner."""
+    y, side = EYE_Y, (-1 if x < 100 else 1)
+    lash = f'stroke="{INK}" stroke-width="{3.4 if feminine else 3}" stroke-linecap="round" stroke-linejoin="round"'
+    flick = P(f"M{x + side * 7.5} {y - 5} Q{x + side * 11} {y - 7} {x + side * 12} {y - 11}", "none", lash) if feminine else ""
+    return G(E(x, y, 7.2, 9, "#fff"),
+             E(x, y + 1, 5.8, 7.8, IRIS), P(f"M{x - 5.8} {y + 0.5} A5.8 7.8 0 0 1 {x + 5.8} {y + 0.5} Z", IRIS_DEEP, 'opacity=".75"'),
+             E(x, y + 1.5, 2.8, 4.2, INK), E(x - 2.2, y - 2.8, 2.3, 2.9, "#fff"), C(x + 2.6, y + 4.6, 1.1, "#fff", 'opacity=".9"'),
+             P(f"M{x - 8} {y - 3.5} Q{x - 1} {y - 11.5} {x + 8} {y - 4.5}", "none", lash),
+             P(f"M{x - 4} {y + 9.6} Q{x} {y + 10.6} {x + 4} {y + 9.6}", "none", f'stroke="{INK}" stroke-width="1" stroke-linecap="round" opacity=".45"'),
+             flick)
 
 
 def body(skin, build=None, face=True):
@@ -411,25 +423,27 @@ def body(skin, build=None, face=True):
     o, lit = shade(s, 0.72), shade(s, 1.16)
     feminine = build == "feminine"
     line = f'stroke="{o}" stroke-width="2" stroke-linejoin="round"'
-    brows = ("M80 66 Q87 61.5 95 65", "M105 65 Q113 61.5 120 66") if feminine else ("M79 67 Q87 63.5 95 66", "M105 66 Q113 63.5 121 67")
-    brow = f'stroke="{shade(s, 0.45)}" stroke-width="{2.2 if feminine else 3.2}" stroke-linecap="round"'
-    mouth = (P("M92 95 Q100 103 108 95 Q100 98.5 92 95Z", "#d9566b", f'stroke="{shade("#d9566b", 0.7)}" stroke-width="1.2" stroke-linejoin="round"') if feminine
-             else P("M91 95 Q100 103 109 95", "none", f'stroke="{INK}" stroke-width="2.8" stroke-linecap="round"'))
+    brows = ("M79 70 Q86 66 93 68", "M107 68 Q114 66 121 70") if feminine else ("M78 71 Q86 66.5 94 69", "M106 69 Q114 66.5 122 71")
+    brow = f'stroke="{shade(s, 0.4)}" stroke-width="{1.8 if feminine else 2.6}" stroke-linecap="round"'
+    mouth = (P("M96 101 Q100 104.5 104 101 Q100 102.5 96 101Z", "#d9566b", f'stroke="{shade("#d9566b", 0.7)}" stroke-width="1.4" stroke-linejoin="round"') if feminine
+             else P("M95.5 101 Q100 104 104.5 101", "none", f'stroke="{INK}" stroke-width="2.2" stroke-linecap="round"'))
     (lx, ly, lr), (rx, ry, rr) = shapes["hands"]
-    blush = .4 if feminine else .25
+    blush = .55 if feminine else .4
+    # Blush as short diagonal strokes over a faint glow, the anime way.
+    cheeks = G(*[G(E(cx, 96, 7, 3.6, "#ff7a8a", f'opacity="{blush * .45}"'),
+                   *[L(cx - 4 + k * 3.5, 98, cx - 2 + k * 3.5, 94, "#ff6b80", 1.3) for k in range(3)]) for cx in (79, 121)])
     return G(
         P(shapes["@LEGL"], s, line), P(shapes["@LEGR"], s, line),
         P(shapes["@ARML"], s, line), P(shapes["@ARMR"], s, line), C(lx, ly, lr, s, line), C(rx, ry, rr, s, line),
         P(shapes["@TORSO"], s, line),
         R(93, 106, 14, 18, s, 6, line), R(93, 114, 14, 6, o, 3, 'opacity=".35"'),                                # neck and its shadow
         E(64.5, 83, 5.5, 8.5, s, line), E(135.5, 83, 5.5, 8.5, s, line),                                        # ears
-        E(100, 79, 36, 35, s, line), E(88, 60, 15, 8, lit, 'opacity=".5"'), E(100, 107, 22, 5, o, 'opacity=".12"'),
+        P(HEAD, s, line), E(88, 58, 15, 7, lit, 'opacity=".5"'),
     ) + (G(
         P(brows[0], "none", brow), P(brows[1], "none", brow),
-        eye(88, feminine), eye(112, feminine),
-        P("M98.5 85 Q100 88.5 102 86.5", "none", f'stroke="{o}" stroke-width="2" stroke-linecap="round"'),          # nose
-        mouth,
-        E(77, 92, 6.5, 4, "#ff7a8a", f'opacity="{blush}"'), E(123, 92, 6.5, 4, "#ff7a8a", f'opacity="{blush}"'),
+        eye(86, feminine), eye(114, feminine),
+        P("M100 93 L101.2 95.5", "none", f'stroke="{o}" stroke-width="1.6" stroke-linecap="round"'),                  # nose
+        mouth, cheeks,
     ) if face else "")
 
 

@@ -15,11 +15,37 @@ export async function renderSettings(root, api) {
   left.append(el('h1', 'Settings'), el('p', 'Choose what you study and how it is taught.'));
   head.append(left); root.append(head);
   // Cards are placed in order up front, then each loads on its own so one failure does not hide the others.
-  await Promise.all([studyTopics, teaching, ...(session.user?.is_admin ? [usage, advanced] : [])].map(async build => {
+  await Promise.all([appearance, studyTopics, teaching, ...(session.user?.is_admin ? [usage, advanced] : [])].map(async build => {
     const card = el('section', '', 'card stack'); root.append(card);
     try { await build(card, api); } catch (error) { card.append(el('p', error.message, 'error')); }
   }));
 }
+
+// Light, dark, or the device's own setting. Kept in this browser only; the head of web.html applies it before the first paint.
+function appearance(card) {
+  card.append(el('h2', 'Appearance'), el('p', 'Choose light or dark, or follow this device’s setting.', 'muted'));
+  const read = () => { try { return localStorage.getItem('theme') || 'dark'; } catch { return 'dark'; } };
+  const group = el('div', '', 'segmented'); group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Theme');
+  const draw = () => {
+    group.replaceChildren();
+    for (const [value, label] of [['light', 'Light'], ['dark', 'Dark'], ['system', 'System']]) {
+      const b = el('button', label); b.type = 'button'; b.setAttribute('aria-pressed', String(value === read()));
+      b.onclick = () => { try { localStorage.setItem('theme', value); } catch {} applyTheme(); draw(); };
+      group.append(b);
+    }
+  };
+  draw();
+  card.append(group);
+}
+
+export function applyTheme() {
+  let choice = 'dark';
+  try { choice = localStorage.getItem('theme') || 'dark'; } catch {}
+  const theme = choice === 'system' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : choice;
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', theme === 'light' ? '#f5f6fa' : '#121318');
+}
+matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', applyTheme);
 
 async function studyTopics(card, api) {
   card.append(el('h2', 'Topics you’re learning'),

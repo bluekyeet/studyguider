@@ -1,7 +1,7 @@
 // Rapid exam questions.
 // A rapid session is one-way: questions flash up, you answer or skip and move on, and you see nothing about
 // how you are doing until you end the session. The server enforces that; this page just never asks for results early.
-import { mathText, mathInput, stash, aiBox, countUp } from './web-common.js';
+import { mathText, mathInput, stash, aiBox, countUp, hintButton, tableAnswer } from './web-common.js';
 import { el, field, option, json, scanForm, questionView } from './web-exam-shared.js';
 
 const GRADE = { not_achieved: 'Not achieved', achieved: 'Achieved', merit: 'Merit', excellence: 'Excellence' };
@@ -156,6 +156,7 @@ export async function renderRapid(container, api) {
       answer.setAttribute('aria-label', 'Your answer');
       answer.addEventListener('input', () => stash.write(stashKey, { text: answer.value }));
       const box = el('label', 'Your answer'); box.append(mathInput(answer, { collapsed: true }));
+      const hint = el('div', '', 'toolbar'); hint.append(hintButton(api, { kind: 'rapid', ref: `${id}:${current.question_id}`, answer: () => answer.value }));
       // Optional: a photo of handwriting fills the box; moving on confirms it.
       const photos = el('details');
       photos.append(el('summary', 'Answer on paper? Upload a photo instead'));
@@ -200,7 +201,8 @@ export async function renderRapid(container, api) {
         endSession(id, { question_id: current.question_id, answer: answer.value, scan_revision: scanRevision, seconds: Math.round((Date.now() - started) / 1000) });
       };
       answer.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); move('next'); } });
-      card.append(head, questionView(current), box, photos, controls, status);
+      const grid = tableAnswer([current.question_text, ...(current.parts || []).map(p => p?.text || '')].join('\n'), answer);
+      card.append(head, questionView(current), ...(grid ? [grid] : []), box, hint, photos, controls, status);
       return { card, focus: () => answer.focus({ preventScroll: true }) };
     };
     const swap = () => {

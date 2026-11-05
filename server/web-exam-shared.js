@@ -36,7 +36,8 @@ export const scienceText = text => String(text || '')
   .replace(/(?<![A-Za-z0-9])(\d*)([A-Z][A-Za-z0-9]*)/g, (all, coefficient, chunk) => isFormula(chunk) ? coefficient + chunk.replace(/\d+/g, d => digits(d, SUB)) : all)
   .replace(new RegExp(`(?<![A-Za-z])(${UNITS})\\s?[–−-]\\s?(\\d)(?!\\d)`, 'g'), (all, unit, n) => `${unit}⁻${digits(n, SUP)}`)
   .replace(/Δr(?=[A-Z])/g, 'Δᵣ');
-export const reflow = text => scienceText(String(text || '').replace(/[ \t]*\n(?!\s*\n)(?!\s*(?:Source|\([a-hivx]+\)))/gi, ' ')).trim();
+// Table rows ("| a | b |") keep their own lines, so a table in the question still renders as a table.
+export const reflow = text => scienceText(String(text || '').replace(/(?<!\|[ \t]*)[ \t]*\n(?!\s*\n)(?!\s*\|)(?!\s*(?:Source|\([a-hivx]+\)))/gi, ' ')).trim();
 // A part's wording often begins with its own label, which is already shown beside it.
 export const withoutLabel = text => String(text || '').replace(/^\s*\([a-hivx]+\)\s*/i, '');
 export const displayLabel = label => !label || label === 'context' ? ''
