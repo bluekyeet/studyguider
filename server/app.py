@@ -21,7 +21,7 @@ from docx import Document
 from pptx import Presentation
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, Request, Response
+from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -35,6 +35,7 @@ from parsing import create_parsing_tables, parsing_router
 from usage import create_usage_tables, usage_router, log_run
 from diagrams import create_diagram_tables, diagram_router
 from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
+import worker
 from worker import start_worker, worker_router
 from explain import explain_router
 from review_generation import review_generation_router
@@ -98,6 +99,8 @@ def init_schema(db):
     db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS page_count integer NOT NULL DEFAULT 0")
     db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS error text")
     db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS mime text")
+    db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS retry_at timestamptz")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS resources_topic_sha_idx ON resources(topic_id, sha256) WHERE sha256 IS NOT NULL")
     db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0")
     db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS mastery real NOT NULL DEFAULT 0")
@@ -1140,7 +1143,7 @@ def extract_resource(resource_id: uuid.UUID):
         # Record the failure on a fresh transaction: the extraction transaction has
         # already rolled back and released its row lock, so this cannot deadlock.
         with connect() as failed:
-            failed.execute("UPDATE resources SET status = 'failed', error = %s WHERE id = %s AND status != 'deleting'",
+            failed.execute("UPDATE resources SET status = 'failed', error = %s, " + worker.RETRY_SET + " WHERE id = %s AND status != 'deleting'",
                            (str(exc.detail)[:2000], resource_id))
         raise
     from paper_import import import_topic_papers
@@ -1433,6 +1436,27 @@ def get_resource_pages(resource_id: uuid.UUID):
             raise HTTPException(404, "Extracted text not found")
         rows = db.execute("SELECT page, content FROM resource_pages WHERE resource_id = %s ORDER BY page", (resource_id,)).fetchall()
     return [{"page": row[0], "content": row[1]} for row in rows]
+
+
+@app.patch("/resources/{resource_id}/category", dependencies=[Depends(authorised)])
+def set_resource_category(resource_id: uuid.UUID, body: dict = Body(...)):
+    category = body.get("category")
+    if category not in {"exam_paper", "exam_answers", "slides", "extra"}:
+        raise HTTPException(400, "Invalid resource category")
+    with connect() as db:
+        row = db.execute("SELECT topic_id FROM resources WHERE id = %s AND status != 'deleting' FOR UPDATE", (resource_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Resource not found")
+        library_global.refuse_if_global(db, "resources", resource_id, "file")
+        db.execute("UPDATE resources SET category = %s WHERE id = %s", (category, resource_id))
+    if category in {"exam_paper", "exam_answers"}:
+        try:
+            from paper_import import import_topic_papers
+            import_topic_papers(connect, row[0])       # the file is now a paper or schedule, so pair and import it
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Paper import after a category change failed")
+    return {"id": str(resource_id), "category": category}
 
 
 @app.delete("/resources/{resource_id}", dependencies=[Depends(authorised)])

@@ -14,7 +14,8 @@ const FOLDERS = [
   ['extra', 'Extra', r => r.category === 'extra'],
   ['pending', 'Sorting', r => r.category === 'auto'],
 ];
-const TABS = [['files', 'Files'], ['standards', 'Standards'], ['notes', 'Notes'], ['search', 'Search']];
+const CATEGORIES = [['exam_paper', 'Exam paper'], ['exam_answers', 'Exam answers'], ['slides', 'Slides'], ['extra', 'Extra']];
+const TABS =[['files', 'Files'], ['standards', 'Standards'], ['notes', 'Notes'], ['search', 'Search']];
 // Re-render the current route in place, keeping the sidebar and scroll position.
 const refresh = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 const size = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
@@ -284,6 +285,14 @@ function files(body, { api, subject, topic, params }) {
       if (item.is_global) { /* read-only: an administrator manages it in the global library */ }
       else if (item.status === 'failed') { const retry = el('button', 'Retry', 'small'); retry.onclick = () => act(retry, `/resources/${item.id}/retry`); actions.append(retry); }
       else if (item.status === 'extracted') { const again = el('button', 'Re-extract', 'small quiet'); again.onclick = () => act(again, `/resources/${item.id}/extract`); actions.append(again); }
+      if (!item.is_global) {
+        const move = el('select', '', 'small'); move.setAttribute('aria-label', `Folder for ${item.filename}`);
+        for (const [value, label] of CATEGORIES) { const option = el('option', label); option.value = value; move.append(option); }
+        if (item.category === 'auto') { const sorting = el('option', 'Sorting…'); sorting.value = 'auto'; sorting.disabled = true; move.prepend(sorting); }
+        move.value = item.category;
+        move.onchange = () => guard(move, note, async () => { await api(`/resources/${item.id}/category`, { method: 'PATCH', ...json({ category: move.value }) }); await load(); });
+        actions.append(move);
+      }
       if (!item.is_global) { const del = el('button', 'Delete', 'small danger'); del.onclick = () => removeFiles([item]); actions.append(del); }
       li.append(box, type, text, actions); list.append(li);
     }

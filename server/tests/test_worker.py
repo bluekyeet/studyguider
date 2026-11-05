@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from worker import process_one, recover_interrupted, start_worker
+from worker import MAX_ATTEMPTS, process_one, recover_interrupted, start_worker
 
 
 class Result:
@@ -19,6 +19,7 @@ class Result:
 class Database:
     def __init__(self, statuses):
         self.statuses = statuses
+        self.attempts = {}
         self.lock = threading.Lock()
 
     def __call__(self):
@@ -32,6 +33,11 @@ class Database:
         self.lock.release()
 
     def execute(self, query, params=()):
+        if "retry_at IS NULL" in query:
+            keys = [key for key, value in self.statuses.items() if value == "failed" and self.attempts.get(key, 0) < params[0]]
+            for key in keys:
+                self.statuses[key] = "pending"
+            return Result(rowcount=len(keys))
         if "SKIP LOCKED" in query:
             for key in sorted(self.statuses):
                 if self.statuses[key] == "pending":
@@ -42,6 +48,7 @@ class Database:
             key = params[-1]
             if self.statuses.get(key) == "extracting":
                 self.statuses[key] = "failed"
+                self.attempts[key] = self.attempts.get(key, 0) + 1
             return Result()
         if "status = 'pending'" in query:
             keys = [key for key, value in self.statuses.items() if value == "extracting"]
@@ -81,14 +88,43 @@ class WorkerTests(unittest.TestCase):
                 db.statuses[key] = "deleting"
             raise ValueError("unsupported format")
 
+        db.attempts[1] = MAX_ATTEMPTS - 1       # one try left, so it ends up failed rather than waiting
         with self.assertLogs("worker", level="ERROR"):
             self.assertTrue(process_one(db, fail))
             self.assertTrue(process_one(db, fail))
         self.assertEqual(db.statuses, {1: "failed", 2: "deleting"})
         self.assertFalse(process_one(db, fail))
 
+    def test_failed_resources_are_retried_until_they_work(self):
+        db = Database({1: "pending"})
+        tries = []
+
+        def flaky(key):
+            tries.append(key)
+            if len(tries) < 3:
+                raise ValueError("gateway timeout")
+            db.statuses[key] = "extracted"
+
+        with self.assertLogs("worker", level="ERROR"):
+            for _ in range(3):
+                self.assertTrue(process_one(db, flaky))
+        self.assertEqual((tries, db.statuses), ([1, 1, 1], {1: "extracted"}))
+
+    def test_gives_up_after_the_attempt_limit(self):
+        db = Database({1: "pending"})
+
+        def fail(key):
+            raise ValueError("bad file")
+
+        with self.assertLogs("worker", level="ERROR"):
+            runs = 0
+            while process_one(db, fail):
+                runs += 1
+        self.assertEqual((runs, db.statuses), (MAX_ATTEMPTS, {1: "failed"}))
+
     def test_explicit_recovery_and_shutdown(self):
         db = Database({1: "extracting", 2: "failed", 3: "deleting"})
+        db.attempts[2] = MAX_ATTEMPTS
         self.assertEqual(recover_interrupted(db), 1)
         done = threading.Event()
 

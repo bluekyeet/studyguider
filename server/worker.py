@@ -11,6 +11,19 @@ from fastapi import APIRouter, Depends, HTTPException
 logger = logging.getLogger(__name__)
 
 
+MAX_ATTEMPTS = 8
+# Counts the failure and schedules the next automatic try: 30 s, 1 min, 2 min ... capped at an hour.
+RETRY_SET = "attempts = attempts + 1, retry_at = now() + make_interval(secs => least(30 * power(2, attempts), 3600))"
+
+
+def requeue_failed(db):
+    """Put failed resources whose wait is over back in the queue; after MAX_ATTEMPTS they wait for a manual Retry."""
+    return db.execute(
+        "UPDATE resources SET status = 'pending' WHERE status = 'failed' AND attempts < %s AND (retry_at IS NULL OR retry_at <= now())",
+        (MAX_ATTEMPTS,),
+    ).rowcount
+
+
 def worker_router(connect, authorised):
     router = APIRouter(dependencies=[Depends(authorised)])
 
@@ -18,7 +31,7 @@ def worker_router(connect, authorised):
     def retry_resource(resource_id: UUID):
         with connect() as db:
             row = db.execute(
-                "UPDATE resources SET status = 'pending', error = NULL WHERE id = %s AND status = 'failed' RETURNING id",
+                "UPDATE resources SET status = 'pending', error = NULL, attempts = 0, retry_at = NULL WHERE id = %s AND status = 'failed' RETURNING id",
                 (resource_id,),
             ).fetchone()
             if row is None:
@@ -34,6 +47,7 @@ def worker_router(connect, authorised):
 def process_one(connect, extract):
     """Claim one pending resource, then invoke extract(id); return whether claimed."""
     with connect() as db:
+        requeue_failed(db)
         row = db.execute("""
             UPDATE resources SET status = 'extracting'
             WHERE id = (
@@ -49,7 +63,7 @@ def process_one(connect, extract):
     except Exception as exc:
         logger.exception("Resource extraction failed: %s", resource_id)
         with connect() as db:
-            db.execute("UPDATE resources SET status = 'failed', error = %s WHERE id = %s AND status = 'extracting'",
+            db.execute("UPDATE resources SET status = 'failed', error = %s, " + RETRY_SET + " WHERE id = %s AND status = 'extracting'",
                        (str(exc)[:2000], resource_id))
     return True
 
