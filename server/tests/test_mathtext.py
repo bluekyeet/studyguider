@@ -97,3 +97,12 @@ def test_model_maths_is_normalised_to_dollar_forms_and_degrees_leave_text():
     assert mathtext.normalise_maths(r"Use \( x + 1 \) and \[ y = 2 \].") == "Use $x + 1$ and $$y = 2$$."
     assert mathtext.normalise_maths(r"$200\text{^\circ C}$ and $/\text{^\circ C}$") == r"$200^\circ\text{C}$ and $/^\circ\text{C}$"
     assert mathtext.normalise_maths("Plain $x$ text") == "Plain $x$ text"
+
+
+def test_latex_commands_in_model_json_keep_their_backslash():
+    import json
+    reply = r'{"q": "Units: $\text{mol L}^{-1}$, $\frac{n}{V}$, $\beta$, $\rightarrow$, $a \neq b$, $\theta$", "a": "line one\nnot two\tok"}'
+    data = json.loads(mathtext.latex_json(reply))
+    assert data["q"] == r"Units: $\text{mol L}^{-1}$, $\frac{n}{V}$, $\beta$, $\rightarrow$, $a \neq b$, $\theta$"
+    assert data["a"] == "line one\nnot two\tok"          # real JSON escapes before ordinary words are left alone
+    assert mathtext.latex_json(r'"$\\text{x}$"') == r'"$\\text{x}$"'      # an already doubled backslash is untouched

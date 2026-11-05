@@ -207,6 +207,17 @@ def display_label(label):
 
 CONTEXT_ONLY = re.compile(r"^\s*question\s+\w+\s*$", re.I)
 
+# LaTeX commands that start like a JSON escape: in a model's JSON, "\text" would be read as a tab followed by "ext", "\frac" as a
+# form feed, "\beta" as a backspace, "\rightarrow" as a carriage return and "\neq" as a line break.
+LATEX_IN_JSON = re.compile(
+    r"(?<!\\)\\(?=(?:t(?:ext|imes|heta|au|an|ilde|frac|op|riangle|o\b)|f(?:rac|orall|lat)|b(?:eta|ar|f\b|inom|ig|egin|oxed|ullet|eta)"
+    r"|r(?:ight|ho|m\b|angle|aisebox)|n(?:u\b|eq|abla|ot\b|ewline|e\b|i\b|leq|geq|parallel)|u(?![0-9a-fA-F]{4})))")
+
+
+def latex_json(text):
+    """A model's JSON reply with the backslash of each LaTeX command doubled where JSON would otherwise read it as an escape."""
+    return LATEX_IN_JSON.sub(r"\\\\", text)
+
 
 def normalise_maths(text):
     """Model-written maths in the one form the apps read: $...$ and $$...$$, with a degree sign inside \\text moved out of it."""

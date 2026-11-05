@@ -71,7 +71,7 @@ def _clean_json(reply):
     if text.startswith("```"):
         text = text.split("\n", 1)[-1]
         text = text.rsplit("```", 1)[0]
-    return json.loads(text)
+    return json.loads(mathtext.latex_json(text))
 
 
 MIN_ANSWERS_FOR_ESTIMATE = 5

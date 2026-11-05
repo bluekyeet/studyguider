@@ -116,7 +116,8 @@ def parse_reply(reply):
     text = reply.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
-    return json.loads(text, strict=False)
+    from mathtext import latex_json      # imported here: mathtext imports this module
+    return json.loads(latex_json(text), strict=False)
 
 
 def split_one(model_reply, number, parts, question_text, schedule_text, has_figures):

@@ -1,4 +1,4 @@
-import { mathText, mathInput, stash, aiBox, hintButton, tableAnswer } from './web-common.js';
+import { mathText, mathInput, stash, aiBox, hintButton, tableAnswer, inlineMath } from './web-common.js';
 
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -100,7 +100,7 @@ export async function renderReviews(container, api) {
         const li = element('li');
         const text = element('div', undefined, 'grow');
         const snippet = q.question.replace(/\s+/g, ' ').replace(/\$/g, '');
-        text.append(element('strong', q.concept || snippet.slice(0, 80)));
+        text.append(q.concept ? inlineMath(q.concept, 'strong') : element('strong', snippet.slice(0, 80)));
         text.append(element('div', q.concept ? (snippet.length > 140 ? snippet.slice(0, 140) + '…' : snippet) : '', 'muted'));
         const meta = element('div', undefined, 'muted');
         meta.append(element('span', isDue(q) ? 'Due now' : `Due ${q.due_date}`, `chip ${isDue(q) ? 'warn' : ''}`),
@@ -136,7 +136,7 @@ export async function renderReviews(container, api) {
     meta.append(element('span', labelOf(question.topic_id), 'chip'), element('span', isDue(question) ? `Due ${question.due_date}` : `Not due until ${question.due_date}`, `chip ${isDue(question) ? 'warn' : ''}`));
     if (back === 'due') meta.append(element('span', `${questions.length} left`, 'muted'));
     card.append(meta);
-    if (question.concept) card.append(element('h2', question.concept));
+    if (question.concept) card.append(inlineMath(question.concept, 'h2'));     // titles can carry maths, such as $K_c$
     const prompt = element('div'); mathText(prompt, question.question); card.append(prompt);
 
     const form = element('form', undefined, 'stack');

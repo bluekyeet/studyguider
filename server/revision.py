@@ -117,11 +117,12 @@ def parse_pack(reply):
     """Validate the model's pack. Returns the list of sections or raises ValueError saying what is wrong."""
     from exams import _repair_latex_escapes
     from reviews import _clean_json
+    from mathtext import latex_json
     try:
         data = _clean_json(reply)
     except Exception:
         try:
-            data = json.loads(_repair_latex_escapes(reply.strip().removeprefix("```json").removeprefix("```").removesuffix("```")), strict=False)
+            data = json.loads(_repair_latex_escapes(latex_json(reply.strip().removeprefix("```json").removeprefix("```").removesuffix("```"))), strict=False)
         except Exception:
             raise ValueError("the reply was not valid JSON") from None
     sections = data.get("sections") if isinstance(data, dict) else None

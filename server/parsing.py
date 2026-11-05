@@ -190,6 +190,8 @@ def _clean_json(reply):
     # A fenced block may be followed by gateway chatter, so only the fences are
     # removed; the JSON decoder below then reads the first complete value.
     text = re.sub(r"```(?:json|JSON)?\s*", "", text)
+    from mathtext import latex_json
+    text = latex_json(text)
     try:
         return json.loads(text)
     except ValueError:

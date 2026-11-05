@@ -1,6 +1,8 @@
 """Optional AI-generated review question drafts with source-linked answers."""
 import json
 
+import mathtext
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -39,7 +41,7 @@ def review_generation_router(authorised, model_reply, search_resources, connect=
         try:
             if not isinstance(reply, str) or len(reply) > 30000:
                 raise ValueError
-            raw = json.loads(reply)
+            raw = json.loads(mathtext.latex_json(reply))
             if not isinstance(raw, list) or not 1 <= len(raw) <= 5:
                 raise ValueError
             questions = []
