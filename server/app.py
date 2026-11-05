@@ -159,8 +159,8 @@ async def lifespan(app):
     with connect_account() as db:
         db.execute("SET client_encoding = 'UTF8'")
         create_account_tables(db)
-        create_public_game_tables(db)
         migrate_legacy(db, hasher)
+        create_public_game_tables(db)       # after the migration, which moves every other table in `public` into the first account
     try:
         move_legacy_files(userspace.upload_base())
     except OSError:
