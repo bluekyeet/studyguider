@@ -54,7 +54,15 @@ export async function renderHome(container, api) {
   const [summary, lessons] = await Promise.all([api('/study-summary'), api('/lessons')]);
   const { reviews, topics, weak_concepts: weak, exams } = summary;
   const today = day(new Date());
-  const todays = lessons.filter(lesson => lesson.created_at && day(lesson.created_at) === today);
+  // The same list as the Lessons page: today's lessons, plus the newest unopened lesson from an earlier day for each topic
+  // that has none today (one that was started instead gets a fresh lesson, so it is not carried).
+  const fresh = lessons.filter(lesson => lesson.created_at && day(lesson.created_at) === today);
+  const carried = new Map();
+  for (const lesson of lessons) {
+    if (lesson.completed_at || lesson.started || fresh.some(f => f.topic_id === lesson.topic_id) || carried.has(lesson.topic_id)) continue;
+    carried.set(lesson.topic_id, lesson);
+  }
+  const todays = [...fresh, ...carried.values()];
   const todo = todays.filter(lesson => !lesson.completed_at);
   const where = await Promise.all(todo.map(lesson => api(`/lessons/${lesson.id}/progress`).catch(() => null)));
   const unfinished = exams.find(exam => exam.unfinished && exam.answered > 0);

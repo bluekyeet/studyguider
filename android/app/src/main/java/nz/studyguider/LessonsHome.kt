@@ -67,6 +67,22 @@ private suspend fun generateLesson(base: String, token: String, topicId: Long, r
 private class LessonsSnapshot(val token: String, val courses: List<JSONObject>, val lessons: List<JSONObject>)
 private var lessonsCache: LessonsSnapshot? = null
 
+/**
+ * Today's lessons, as (prepared today, carried over), used by both Home and the Lessons screen so they always agree; the same
+ * rule as the website. Carried over: the newest lesson nobody opened from an earlier day, for each topic with none today. A
+ * lesson that was started but not finished is not carried; its topic gets a fresh lesson instead.
+ */
+fun todaysLessons(lessons: List<JSONObject>): Pair<List<JSONObject>, List<JSONObject>> {
+    val zone = ZoneId.of("Pacific/Auckland")
+    fun date(item: JSONObject): LocalDate? = runCatching { Instant.parse(item.getString("created_at")).atZone(zone).toLocalDate() }.getOrNull()
+    val today = LocalDate.now(zone)
+    val fresh = lessons.filter { date(it) == today }
+    val carried = lessons.filter { it.isNull("completed_at") && !it.optBoolean("started") && date(it)?.isBefore(today) == true }
+        .filter { lesson -> fresh.none { it.optLong("topic_id") == lesson.optLong("topic_id") } }
+        .distinctBy { it.optLong("topic_id") }
+    return fresh to carried
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit) {
@@ -94,14 +110,7 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load lessons" }
         finally { loading = false }
     }
-    fun date(item: JSONObject): LocalDate? = runCatching { Instant.parse(item.getString("created_at")).atZone(ZoneId.of("Pacific/Auckland")).toLocalDate() }.getOrNull()
-    val today = LocalDate.now(ZoneId.of("Pacific/Auckland"))
-    // Same rule as the website: today's lessons, plus the newest lesson nobody opened from an earlier day for each topic that
-    // has none today. A lesson that was started but not finished is not carried; its topic gets a fresh lesson instead.
-    val fresh = lessons.filter { date(it) == today }
-    val carried = lessons.filter { it.isNull("completed_at") && !it.optBoolean("started") && date(it)?.isBefore(today) == true }
-        .filter { lesson -> fresh.none { it.optLong("topic_id") == lesson.optLong("topic_id") } }
-        .distinctBy { it.optLong("topic_id") }
+    val (fresh, carried) = todaysLessons(lessons)
     val toDo = fresh.filter { it.isNull("completed_at") } + carried
     val earlier = lessons.filter { it !in fresh && it !in carried }
     var showEarlier by remember { mutableStateOf(false) }

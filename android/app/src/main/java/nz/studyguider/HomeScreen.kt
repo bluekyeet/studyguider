@@ -59,9 +59,9 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
         try {
             val data = JSONObject(homeGet(base, token, "/study-summary"))
             val lessons = JSONArray(homeGet(base, token, "/lessons")).objects()
-            val zone = ZoneId.of("Pacific/Auckland")
-            val today = LocalDate.now(zone)
-            val todays = lessons.filter { runCatching { Instant.parse(it.getString("created_at")).atZone(zone).toLocalDate() == today }.getOrDefault(false) }
+            // The same list as the Lessons screen: today's lessons plus unopened ones carried over from earlier days.
+            val (fresh, carried) = todaysLessons(lessons)
+            val todays = fresh + carried
             val open = todays.filter { it.isNull("completed_at") }
             // A saved reading position past the first section means the lesson was started, perhaps on another device.
             val started = open.map { lesson ->

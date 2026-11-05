@@ -22,6 +22,8 @@ fun main() {
     check(withoutSourceMarkers("review [5d374a3f-74f2-412a-8f6a-b582963eb2e0, learner_answers].") == "review.")
     check(withoutSourceMarkers("review [S1, learner_answers].") == "review.")
     check(withoutSourceMarkers("carbon (, p. 1). series (, p. 1;, p. 2).") == "carbon. series.")
+    check(withoutSourceMarkers("AS 91166 (Resource ID: `abc3458d-b975-4d7f-8d04-35513966b94f`, p. 1), including") == "AS 91166, including")
+    check(withoutSourceMarkers("(\"Demonstrate\", Resource ID: `3206fc65-14f9-4563-a428-f7c18863a105`, p. 1)") == "(\"Demonstrate\")")
     check(withoutSourceMarkers("see (Data booklet, p. 4) ok") == "see (Data booklet, p. 4) ok")
     check(scienceText("Ca(OH)2 and Fe2O3 and 91164 Q1") == "Ca(OH)₂ and Fe₂O₃ and 91164 Q1")
     check(scienceText("keep ${'$'}H2O${'$'} as is") == "keep ${'$'}H2O${'$'} as is")

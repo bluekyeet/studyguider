@@ -87,6 +87,9 @@ export const LIBRARY_PATHS = /^\/(subjects|standards|resources)(\/|$)|^\/topics\
 // Presentation only: source snapshots and saved questions keep their citations.
 export function readable(text) {
   return String(text || '')
+    // "(Resource ID: `uuid`, p. 1)": the whole citation goes, backticks included, so no stray ` turns the rest into code.
+    .replace(/[ \t]*\(\s*(?:resource|source)\s+id:?\s*`?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}`?(?:\s*[,;]\s*(?:pp?\.|pages?)\s*\d+(?:\s*[-–,]\s*\d+)*)?\s*\)/gi, '')
+    .replace(/(?:[,;]\s*)?(?:(?:resource|source)\s+id:?\s*)?`[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}`(?:\s*[,;]\s*(?:pp?\.|pages?)\s*\d+(?:\s*[-–,]\s*\d+)*)?/gi, '')
     .replace(/[ \t]*[\[(](?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|S\d+)\s*[,;]\s*[a-z]+(?:_[a-z]+)+\s*[\])]/gi, '')
     .replace(/\[?\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b\]?/gi, '')
     // A citation that names the file instead of its id: "(Phy_91170_Waves.pdf, p. 6)" or "[notes.pdf, pp. 2-3; slides.pptx]".

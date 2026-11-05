@@ -28,7 +28,10 @@ fun shortCitations(text: String, ids: List<String>): String {
 fun withoutSourceMarkers(text: String): String {
     val uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     // Non-file evidence tags, e.g. `[S1, learner_answers]`, are internal labels, not reading content.
-    val tagged = text.replace(Regex("[ \\t]*[\\[(](?:`?$uuid`?|S\\d+)\\s*[,;]\\s*[a-z]+(?:_[a-z]+)+\\s*[\\])]", RegexOption.IGNORE_CASE), "")
+    // "(Resource ID: `uuid`, p. 1)": the whole citation goes, not just the id.
+    val named = text.replace(Regex("[ \\t]*\\(\\s*(?:resource|source)\\s+id:?\\s*`?$uuid`?(?:\\s*[,;]\\s*(?:pp?\\.|pages?)\\s*\\d+(?:\\s*[-–,]\\s*\\d+)*)?\\s*\\)", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("(?:[,;]\\s*)?(?:(?:resource|source)\\s+id:?\\s*)?`$uuid`(?:\\s*[,;]\\s*(?:pp?\\.|pages?)\\s*\\d+(?:\\s*[-–,]\\s*\\d+)*)?", RegexOption.IGNORE_CASE), "")
+    val tagged = named.replace(Regex("[ \\t]*[\\[(](?:`?$uuid`?|S\\d+)\\s*[,;]\\s*[a-z]+(?:_[a-z]+)+\\s*[\\])]", RegexOption.IGNORE_CASE), "")
     val citationsRemoved = tagged.replace(Regex("[ \\t]*[\\[(]`?$uuid`?(?:\\s*[,;]\\s*(?:`?$uuid`?|pp?\\.?\\s*\\d+(?:[–-]\\d+)?))*\\s*[\\])]", RegexOption.IGNORE_CASE), "")
         .replace(Regex("`?$uuid`?", RegexOption.IGNORE_CASE), "")
     // A citation that names the file instead of its id: "(Phy_91170_Waves.pdf, p. 6)".
