@@ -474,19 +474,20 @@ def manage():
 
 @app.get('/', include_in_schema=False)
 def study_website():
-    return FileResponse(Path(__file__).with_name('web.html'), media_type='text/html')
+    return FileResponse(Path(__file__).with_name('web.html'), media_type='text/html', headers={'Cache-Control': 'no-cache'})
 
 
 @app.get('/web.css', include_in_schema=False)
 def study_styles():
-    return FileResponse(Path(__file__).with_name('web.css'), media_type='text/css')
+    return FileResponse(Path(__file__).with_name('web.css'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
 
 @app.get('/{module_name}.js', include_in_schema=False)
 def study_module(module_name: str):
     if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings', 'web-game'}:
         raise HTTPException(404, 'Module not found')
-    return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript')
+    # no-cache: the browser re-checks on each load, so a new version shows without a hard refresh
+    return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript', headers={'Cache-Control': 'no-cache'})
 
 
 @app.get("/subjects", dependencies=[Depends(authorised)])
