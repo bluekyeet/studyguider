@@ -58,7 +58,11 @@ class Database:
             topic, day = params[0], params[1]
             run = self.runs.get((topic, day))
             self.result = None
-            if run and run["status"] == "completed" and run.get("flagged"):
+            if run and "'failed'" in sql:
+                if run["status"] == "failed" and run.get("lesson_id") is None and run.get("due_again") and run.get("attempts", 1) < params[2]:
+                    run.update(status="running", attempts=run.get("attempts", 1) + 1, due_again=False)
+                    self.result = (run["query"],)
+            elif run and run["status"] == "completed" and run.get("flagged"):
                 run.update(status="running", lesson_id=None, flagged=False)
                 self.result = (run["query"],)
             return self
@@ -231,3 +235,24 @@ def test_schedule_endpoints():
     assert client.put("/topics/2/schedule", headers=headers, json=body).status_code == 404
     assert client.get("/topics/2/schedule", headers=headers).status_code == 404
     assert client.get("/topics/2/schedule/runs", headers=headers).status_code == 404
+
+
+def test_a_run_that_failed_without_a_lesson_is_tried_again_until_it_works():
+    db = Database()
+    due = datetime(2026, 1, 1, 2, tzinfo=timezone.utc)
+    outcomes = iter([RuntimeError("503"), RuntimeError("503"), {"id": 5}])
+
+    def generate(topic, body):
+        result = next(outcomes)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    db.schedules = {1: ("algebra", 2, True)}
+    run_due(lambda: db, generate, due)
+    run_due(lambda: db, generate, due)             # the wait is not over yet: nothing happens
+    assert db.runs[1, due.date()]["status"] == "failed"
+    for _ in range(2):
+        db.runs[1, due.date()]["due_again"] = True
+        run_due(lambda: db, generate, due)
+    assert db.runs[1, due.date()]["status"] == "completed" and db.runs[1, due.date()]["attempts"] == 3

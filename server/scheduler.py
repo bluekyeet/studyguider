@@ -1,8 +1,8 @@
 """Opt-in UTC nightly lesson scheduling; the host owns startup and shutdown.
 
 Pass the existing lesson route's generation callable (topic_id, LessonGeneration)
-to run_due/start_scheduler. Claims are at-most-once: inspect running/failed runs
-after a crash rather than retrying a potentially already-created lesson.
+to run_due/start_scheduler. Claims are at-most-once for crashed (running) runs: inspect them rather than
+retrying a potentially already-created lesson. A run that failed with no lesson saved is retried with backoff.
 """
 import logging
 import threading
@@ -122,6 +122,7 @@ def create_scheduler_tables(db):
         finished_at timestamptz, PRIMARY KEY (topic_id, run_date)
     )""")
     db.execute("ALTER TABLE lesson_schedules ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'UTC'")
+    db.execute("ALTER TABLE lesson_schedule_runs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 1")
 
 
 MAX_FLAGGED_PER_DAY = 3
@@ -153,6 +154,21 @@ def reopen_flagged(db, topic_id, zone, today):
     return row
 
 
+MAX_RUN_ATTEMPTS = 10
+
+
+def retry_failed(db, topic_id, today):
+    """Today's run failed before any lesson was saved (the model gateway was down, say): claim it again once its wait
+    is over (1 min, 2 min, 4 min ... up to an hour), at most MAX_RUN_ATTEMPTS tries. A run the learner abandoned stays failed.
+    Returns the run's query, or None."""
+    return db.execute("""UPDATE lesson_schedule_runs r SET status = 'running', error = NULL, finished_at = NULL,
+        started_at = now(), attempts = r.attempts + 1
+        WHERE r.topic_id = %s AND r.run_date = %s AND r.status = 'failed' AND r.lesson_id IS NULL
+        AND r.error NOT LIKE 'Resolved by you%%' AND r.attempts < %s
+        AND r.finished_at <= now() - make_interval(secs => least(60 * power(2, r.attempts - 1), 3600))
+        RETURNING r.query""", (topic_id, today, MAX_RUN_ATTEMPTS)).fetchone()
+
+
 def run_due(connect, generate, now=None):
     """Run today's due schedules once; no catch-up for previous UTC days."""
     now = now or datetime.now(timezone.utc)
@@ -182,7 +198,7 @@ def run_due(connect, generate, now=None):
                 ON CONFLICT (topic_id, run_date) DO NOTHING RETURNING query""",
                 (local.date(), topic_id, local.hour)).fetchone()
             if not claim:
-                claim = reopen_flagged(db, topic_id, zone, local.date())
+                claim = reopen_flagged(db, topic_id, zone, local.date()) or retry_failed(db, topic_id, local.date())
         if not claim:
             continue
         body = LessonGeneration(query=claim[0])
