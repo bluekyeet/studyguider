@@ -128,13 +128,16 @@ MAX_FLAGGED_PER_DAY = 3
 
 
 def waiting_lesson(db, topic_id, zone, today):
-    """An earlier, reviewed lesson of this topic that was never opened (no reading position, no answers).
+    """Today's lesson is an earlier one of this topic: reviewed and never opened (it moves to today instead of piling up
+    another), or finished today after being carried over (today's one lesson is done, so no second).
     Lessons that were started but not finished are not carried: the topic gets a fresh lesson instead."""
     return db.execute("""SELECT 1 FROM lessons l WHERE l.topic_id = %s AND l.review_status IN ('passed', 'completed')
-        AND l.completed_at IS NULL AND (l.created_at AT TIME ZONE %s)::date < %s
-        AND NOT EXISTS (SELECT 1 FROM lesson_progress p WHERE p.lesson_id = l.id AND p.section > 0)
-        AND NOT EXISTS (SELECT 1 FROM lesson_answers a WHERE a.lesson_id = l.id) LIMIT 1""",
-                      (topic_id, zone, today)).fetchone()
+        AND (l.created_at AT TIME ZONE %s)::date < %s
+        AND ((l.completed_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM lesson_progress p WHERE p.lesson_id = l.id AND p.section > 0)
+              AND NOT EXISTS (SELECT 1 FROM lesson_answers a WHERE a.lesson_id = l.id))
+             OR (l.completed_at AT TIME ZONE %s)::date = %s) LIMIT 1""",
+                      (topic_id, zone, today, zone, today)).fetchone()
 
 
 def reopen_flagged(db, topic_id, zone, today):

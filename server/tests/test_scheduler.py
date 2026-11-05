@@ -122,6 +122,14 @@ def test_a_topic_with_an_unopened_lesson_waiting_gets_no_new_one():
     assert calls == [2] and (1, datetime(2026, 1, 1).date()) not in db.runs
 
 
+def test_finishing_a_carried_over_lesson_does_not_bring_a_second_one_that_day():
+    db = Database()
+    db.waiting = {1}                  # the carried lesson counts as today's lesson, whether unopened or finished today
+    calls = []
+    run_due(lambda: db, lambda topic, body: calls.append(topic) or {"id": 42}, datetime(2026, 1, 1, 2, tzinfo=timezone.utc))
+    assert calls == [2]
+
+
 def test_a_lesson_that_failed_its_review_is_written_again_the_same_day():
     db = Database()
     due = datetime(2026, 1, 1, 2, tzinfo=timezone.utc)
