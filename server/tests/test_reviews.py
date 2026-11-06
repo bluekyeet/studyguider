@@ -147,7 +147,7 @@ class ReviewTests(unittest.TestCase):
             pass
 
         router = review_router(None, authorised, lambda *args: "")
-        self.assertEqual(len(router.routes), 6)
+        self.assertEqual(len(router.routes), 7)
         self.assertTrue(all(route.dependencies[0].dependency is authorised for route in router.routes))
 
 
@@ -204,3 +204,84 @@ def test_review_only_asks_new_questions():
         def execute(self, sql, params=()):
             return Result(answered if "SELECT DISTINCT" in sql else due)
     assert [row[0] for row in fresh_due(Db(), date.today())] == [2, 4, 5, 6]     # near-repeats go; exam parts and other topics stay
+
+
+def test_review_skips_paperwork_questions():
+    from reviews import fresh_due, is_admin_question
+    assert is_admin_question("How many credits is this standard worth?", "NCEA assessment criteria")
+    assert is_admin_question("Which grades can you get?", "")
+    assert is_admin_question("Solve the equation.", "NCEA Level 2 Standard 91261 details")
+    assert not is_admin_question("Solve $x^2 = 9$.", "quadratics")
+    due = [(1, 7, "How many credits is this standard worth?", None, "NCEA assessment criteria", None, 0, "Algebra", ""),
+           (2, 7, "Solve $x^2 = 9$.", None, "quadratics", None, 0, "Algebra", "")]
+
+    class Db:
+        sql = []
+
+        def execute(self, sql, params=()):
+            self.sql.append(sql)
+            return Result([] if "SELECT DISTINCT" in sql else due)
+    db = Db()
+    assert [row[0] for row in fresh_due(db, date.today())] == [2]
+    assert "NOT sw.active" in db.sql[0]            # a topic switched off in Settings is not asked about
+
+
+def test_study_summary_leaves_out_switched_off_topics():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class Db:
+        sql = []
+
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params=()):
+            self.sql.append(sql)
+            if "SELECT (now()" in sql:
+                return Result((date(2026, 11, 6),))
+            if "FROM lessons l" in sql:
+                return Result((0, 0, 0, 0))
+            if "count(*) FILTER (WHERE due_date" in sql:
+                return Result((0, 0, 0))
+            if "SELECT q.concept, t.name" in sql:
+                return Result([("NCEA assessment criteria", "Algebra", 0.0, "How many credits?"), ("Factorising", "Algebra", 0.0, "Factorise $x^2-1$.")])
+            return Result([])
+    db = Db()
+    app = FastAPI()
+    app.include_router(review_router(lambda: db, lambda: None, None))
+    summary = TestClient(app).get("/study-summary").json()
+    assert [c["concept"] for c in summary["weak_concepts"]] == ["Factorising"]
+    checked = [sql for sql in db.sql if "FROM lessons l" in sql or "SELECT q.concept, t.name" in sql or "count(*) FILTER (WHERE due_date" in sql]
+    assert len(checked) == 3 and all("NOT sw.active" in sql for sql in checked)
+
+
+def test_review_photo_is_read_into_text_without_saving():
+    import io
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from PIL import Image
+
+    class Db:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params=()):
+            assert "SELECT question FROM review_questions" in sql
+            return Result(("Solve $x^2=9$.",) if params == (4,) else None)
+    prompts = []
+
+    def vision(model, prompt, image, mime="image/png", task="vision"):
+        prompts.append((prompt, task, image[:4]))
+        return "x = 3 or x = -3"
+    app = FastAPI()
+    app.include_router(review_router(lambda: Db(), lambda: None, None, vision))
+    client = TestClient(app)
+    picture = io.BytesIO(); Image.new("RGB", (40, 40), "white").save(picture, format="PNG")
+    page = ("files", ("a.png", picture.getvalue(), "image/png"))
+    reply = client.post("/review-questions/4/scan", files=[page])
+    assert reply.status_code == 200 and reply.json()["transcription"] == "x = 3 or x = -3"
+    assert "Solve $x^2=9$." in prompts[0][0] and prompts[0][1] == "review-handwriting" and prompts[0][2] == b"\x89PNG"
+    assert client.post("/review-questions/5/scan", files=[page]).status_code == 404
+    assert client.post("/review-questions/4/scan").status_code == 422
+    assert client.post("/review-questions/4/scan", files=[("files", ("a.txt", b"hello", "text/plain"))]).status_code == 422
+    unavailable = FastAPI(); unavailable.include_router(review_router(lambda: Db(), lambda: None, None))
+    assert TestClient(unavailable).post("/review-questions/4/scan", files=[page]).status_code == 503

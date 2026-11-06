@@ -5,16 +5,38 @@ import subprocess
 from pathlib import Path
 
 
+# Coding-harness notes the model gateway sometimes writes into a lesson: "`git status` → skipped: [no repo context provided]".
+_CONTAMINATION = (
+    r"(?im)^\s*ponytail\s*:",
+    r"(?im)^\s*skipped\s*:",
+    r"(?i)(?:→|->|—|-|:)\s*skipped\s*:",
+    r"(?i)\bskipped\s*:\s*\[",
+    r"(?i)\bno repo(?:sitory)? context\b",
+    r"(?i)\badd when\s*\[",
+    r"(?i)\bversion-controlled codebase\b",
+    r"(?im)^\s*[`*_ ]*git (?:status|diff|log|add|commit|push|pull|checkout|branch|init|clone)\b",
+    r"(?im)^\s*(?://|#)\s*(?:minimalist core|skipped:)",
+    r"(?i)\blazier alternative\s*:",
+    r"(?im)^\s*```(?:rust|python|javascript|typescript|c\+\+|c)\s*$",
+)
+
+
 def contamination_issues(text):
     """Reject recognisable coding-harness boilerplate, not ordinary science terms."""
-    patterns = (
-        r"(?im)^\s*ponytail\s*:",
-        r"(?im)^\s*skipped\s*:",
-        r"(?im)^\s*(?://|#)\s*(?:minimalist core|skipped:)",
-        r"(?i)\blazier alternative\s*:",
-        r"(?im)^\s*```(?:rust|python|javascript|typescript|c\+\+|c)\s*$",
-    )
-    return ["Contains coding-assistant instructions or boilerplate; remove it and return only the complete educational lesson."] if any(re.search(p, text) for p in patterns) else []
+    return ["Contains coding-assistant instructions or boilerplate; remove it and return only the complete educational lesson."] if any(re.search(p, text) for p in _CONTAMINATION) else []
+
+
+def strip_contamination(text):
+    """Drop whole lines of coding-harness boilerplate (fenced code is left alone); the reviewer then judges what remains."""
+    line_patterns = [re.compile(p) for p in _CONTAMINATION if "```" not in p]
+    kept, fence = [], False
+    for line in text.split("\n"):
+        if line.strip().startswith("```"):
+            fence = not fence
+        if not fence and any(p.search(line) for p in line_patterns):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def teaching_structure_issues(text):
@@ -106,6 +128,7 @@ def formula_issues(text):
 def review_and_revise(lesson, evidence, model_reply, progress=None):
     from reviews import _clean_json
     last_review = None
+    lesson = strip_contamination(lesson)
     for attempt in range(3):
         try:
             if progress:
@@ -135,7 +158,7 @@ def review_and_revise(lesson, evidence, model_reply, progress=None):
             ], task="lesson-revise")
             if not isinstance(revised, str) or not revised.strip() or len(revised) > 100000:
                 raise ValueError("Invalid revision")
-            lesson = revised
+            lesson = strip_contamination(revised)
         except Exception:
             # Preserve generated work on provider failure; never promote it to ready.
             return lesson, last_review, "unavailable"
