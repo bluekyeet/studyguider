@@ -405,7 +405,7 @@ authorised, admin_only = make_auth(accounts_db)
 app.include_router(accounts_router(accounts_db, authorised, admin_only, hasher, provision_account, deprovision_account))
 
 
-app.include_router(review_router(connect, authorised, model_reply))
+app.include_router(review_router(connect, authorised, model_reply, model_reply_vision))
 app.include_router(exam_router(connect, authorised, model_reply, lambda topic, query: search_resources(topic, query), admin_only, model_reply_vision))
 app.include_router(parsing_router(connect, admin_only, model_reply_reliable))
 app.include_router(scheduler_router(connect, authorised))

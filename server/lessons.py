@@ -12,6 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, PrivateAttr
 from styles import style_for_topic
+from reviews import SWITCHED_OFF, is_admin_question
 
 
 WARNING = "AI review is advisory, not verification; check the original sources."
@@ -144,7 +145,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
                  OR EXISTS (SELECT 1 FROM lesson_answers a WHERE a.lesson_id = l.id)) AS started
                 FROM lessons l JOIN topics t ON t.id = l.topic_id
                 JOIN subjects s ON s.id = t.subject_id
-                WHERE l.review_status IN ('passed', 'completed')
+                WHERE l.review_status IN ('passed', 'completed') AND """ + SWITCHED_OFF.format(topic="l.topic_id") + """
                 ORDER BY l.created_at DESC, l.id DESC LIMIT 200""").fetchall()
         return [dict(zip(("id", "topic_id", "query", "created_at", "topic", "subject", "completed_at", "started"), row)) for row in rows]
 
@@ -313,7 +314,8 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
             review_rows = db.execute("""SELECT question, concept, mastery, due_date
                 FROM review_questions WHERE topic_id = %s
                 AND (due_date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date OR mastery < 0.5)
-                 ORDER BY due_date, id LIMIT 12""", (topic_id,)).fetchall()
+                 ORDER BY due_date, id LIMIT 30""", (topic_id,)).fetchall()
+            review_rows = [r for r in review_rows if not is_admin_question(r[0], r[1])][:12]
             strengths = db.execute("""SELECT q.concept, count(*) FROM review_answers a
                 JOIN review_questions q ON q.id=a.question_id
                 WHERE q.topic_id=%s AND q.concept<>'' AND a.correct IS TRUE

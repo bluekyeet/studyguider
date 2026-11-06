@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from lesson_quality import review_and_revise, contamination_issues, formula_issues, teaching_structure_issues
+from lesson_quality import review_and_revise, contamination_issues, formula_issues, strip_contamination, teaching_structure_issues
 
 
 def practice_sections(count=3):
@@ -157,3 +157,13 @@ def test_unavailable_formula_validator_never_passes_lesson(monkeypatch):
     lesson, review, status = review_and_revise("Frequency $f=1/T$", {},
         lambda *args, **kwargs: '{"pass":true,"issues":[]}')
     assert status == "unavailable"
+
+
+def test_git_boilerplate_inside_a_lesson_is_caught_and_removed():
+    leaked = "## Overview\n`git status` → skipped: [no repo context provided], add when [working within a version-controlled codebase].\nAlkanes are saturated."
+    assert contamination_issues(leaked)
+    assert strip_contamination(leaked) == "## Overview\nAlkanes are saturated."
+    assert not contamination_issues(strip_contamination(leaked))
+    assert not contamination_issues("Skipped steps lose marks. Check the status of the reaction.")
+    fenced = "```text\ngit status\n```"
+    assert strip_contamination(fenced) == fenced

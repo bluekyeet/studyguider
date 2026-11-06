@@ -1,4 +1,5 @@
 import { mathText, mathInput, stash, aiBox, hintButton, tableAnswer, inlineMath } from './web-common.js';
+import { scanForm } from './web-exam-shared.js';
 
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -24,7 +25,7 @@ export async function renderReviews(container, api) {
   let queue = [];          // what the practice view is working through
   let mode = 'due';        // 'due' | 'all' | 'practice'
   let returnTo = 'due';
-  let loading = false, submitting = false;
+  let loading = false, submitting = false, scanning = false;
   const labels = new Map();
   const drafts = new Map();
   const filters = { topic: '', status: 'all', text: '' };
@@ -149,6 +150,30 @@ export async function renderReviews(container, api) {
     answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); answer.setCustomValidity(''); });
     answerLabel.append(mathInput(answer));
     const hint = element('div', undefined, 'toolbar'); hint.append(hintButton(api, { kind: 'review', ref: question.id, answer: () => answer.value }));
+    // Working done on paper: a photo (taken now, or from the gallery) is read into the box above, to be checked before it is submitted.
+    const photo = element('div', undefined, 'toolbar');
+    const scanned = (label, capture) => {
+      const input = element('input'); input.type = 'file'; input.hidden = true; input.multiple = !capture;
+      input.accept = capture ? 'image/*' : 'image/png,image/jpeg,application/pdf';
+      if (capture) input.setAttribute('capture', 'environment');
+      const open = button(label, 'small'); open.onclick = () => input.click();
+      input.addEventListener('change', async () => {
+        const files = [...input.files]; input.value = '';
+        if (!files.length || submitting || scanning) return;
+        try {
+          const form = scanForm(files);
+          if (answer.value.trim() && !window.confirm('Replace your answer with the text read from this photo?')) return;
+          scanning = true; for (const node of [open, ...photo.querySelectorAll('button')]) node.disabled = true;
+          status.textContent = 'Reading your handwriting. This can take a minute…';
+          const result = await api(`/review-questions/${question.id}/scan`, { method: 'POST', body: form });
+          answer.value = result.transcription; answer.dispatchEvent(new Event('input', { bubbles: true }));
+          status.textContent = result.notice;
+        } catch (error) { status.textContent = error.message || 'Could not read the photo.'; }
+        finally { scanning = false; for (const node of photo.querySelectorAll('button')) node.disabled = false; }
+      });
+      photo.append(open, input);
+    };
+    scanned('Take a photo', true); scanned('Upload photos', false);
     const scale = element('fieldset', undefined, 'scale');
     scale.append(element('legend', 'How confident are you?'));
     const row = element('div', undefined, 'segmented');
@@ -171,14 +196,14 @@ export async function renderReviews(container, api) {
     if (back === 'all') { const cancel = button('Back to list'); cancel.onclick = () => { mode = 'all'; show(); }; toolbar.append(cancel); }
     const feedback = element('div', undefined, 'stack'); feedback.setAttribute('role', 'status');
     const grid = tableAnswer(question.question, answer);
-    form.append(...(grid ? [grid] : []), answerLabel, hint, scale, toolbar);
+    form.append(...(grid ? [grid] : []), answerLabel, photo, hint, scale, toolbar);
     card.append(form, feedback);
     content.append(card);
     if (focus) answer.focus();
 
     form.addEventListener('submit', async event => {
       event.preventDefault();
-      if (submitting || loading) return;
+      if (submitting || loading || scanning) return;
       answer.setCustomValidity(answer.value.trim() ? '' : 'Please enter an answer.');
       if (!form.reportValidity()) return;
       saveDraft();
