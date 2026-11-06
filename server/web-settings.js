@@ -64,9 +64,33 @@ async function studyTopics(card, api) {
   }
   // Topics being learned are listed compactly; the ones not yet switched on sit in a dropdown, so many topics take little room.
   const list = el('div', '', 'switch-list'); const picker = el('div', '', 'topic-add');
-  const select = el('select'); select.setAttribute('aria-label', 'Add a topic to learn');
+  const levelSel = el('select'), subjectSel = el('select'), select = el('select');
+  levelSel.setAttribute('aria-label', 'Level'); subjectSel.setAttribute('aria-label', 'Subject'); select.setAttribute('aria-label', 'Topic to learn');
   const add = el('button', 'Add topic', 'primary'); add.type = 'button';
-  picker.append(select, add);
+  picker.append(levelSel, subjectSel, select, add);
+  // Only topics not yet switched on are offered, narrowed level → subject → topic so a long list stays short.
+  const fill = (sel, items, empty) => {
+    const keep = sel.value; sel.replaceChildren();
+    for (const [value, label] of items) { const o = el('option', label); o.value = String(value); sel.append(o); }
+    if (!items.length) { const o = el('option', empty); o.value = ''; sel.append(o); }
+    if (items.some(([value]) => String(value) === keep)) sel.value = keep;
+  };
+  const free = subject => groups.find(([s]) => s.id === subject.id)[1].filter(topic => !active.has(String(topic.id)));
+  const fillTopics = () => {
+    const subject = groups.map(([s]) => s).find(s => String(s.id) === subjectSel.value);
+    fill(select, subject ? free(subject).map(t => [t.id, t.name + (t.global ? ' (global)' : '')]) : [], 'Every topic is switched on');
+    select.disabled = add.disabled = !select.value;
+  };
+  const fillSubjects = () => {
+    const here = groups.map(([s]) => s).filter(s => String(s.level) === levelSel.value && free(s).length);
+    fill(subjectSel, here.map(s => [s.id, s.name]), '—'); fillTopics();
+  };
+  const fillLevels = () => {
+    const levels = [...new Set(groups.filter(([s]) => free(s).length).map(([s]) => s.level))].sort((a, b) => a - b);
+    fill(levelSel, levels.map(n => [n, `NCEA Level ${n}`]), '—'); fillSubjects();
+    levelSel.disabled = subjectSel.disabled = !levels.length;
+  };
+  levelSel.onchange = fillSubjects; subjectSel.onchange = fillTopics;
   const say = (text, bad) => { note.textContent = text; note.className = bad ? 'error' : 'muted'; };
   const draw = () => {
     list.replaceChildren();
@@ -84,17 +108,7 @@ async function studyTopics(card, api) {
         catch (error) { say(error.message, true); remove.disabled = false; }
       };
     }
-    select.replaceChildren(); let any = false;
-    for (const [subject, topics] of groups) {
-      const free = topics.filter(topic => !active.has(String(topic.id)));
-      if (!free.length) continue;
-      any = true;
-      const group = el('optgroup'); group.label = `Level ${subject.level} · ${subject.name}`;
-      for (const topic of free) { const option = el('option', topic.name + (topic.global ? ' (global)' : '')); option.value = String(topic.id); group.append(option); }
-      select.append(group);
-    }
-    if (!any) { const done = el('option', 'Every topic is switched on'); done.value = ''; select.append(done); }
-    select.disabled = add.disabled = !any;
+    fillLevels();
   };
   add.onclick = async () => {
     const id = select.value; if (!id) return;

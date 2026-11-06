@@ -64,26 +64,25 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
     var error by remember(base, token) { mutableStateOf("") }
     var busy by remember(base, token) { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
-    var topics by remember { mutableStateOf<List<Pair<String, Long>>>(emptyList()) }
-    var topic by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    var topics by remember { mutableStateOf<List<PickableTopic>>(emptyList()) }
+    var topic by remember { mutableStateOf<Long?>(null) }
     var papers by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var mode by remember { mutableStateOf("mixed") }
     var answerMode by remember { mutableStateOf("digital") }
     var paper by remember { mutableStateOf<JSONObject?>(null) }
-    var topicMenu by remember { mutableStateOf(false) }
     var paperMenu by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<ExamSummary?>(null) }
     var deleting by remember { mutableStateOf(false) }
     LaunchedEffect(base, token) {
         try {
             val subjects = JSONArray(examMenuRequest(base, token, "/subjects"))
-            val found = mutableListOf<Pair<String, Long>>()
+            val found = mutableListOf<PickableTopic>()
             for (i in 0 until subjects.length()) {
                 val subject = subjects.getJSONObject(i)
                 val list = JSONArray(examMenuRequest(base, token, "/subjects/${subject.getLong("id")}/topics"))
                 for (j in 0 until list.length()) {
                     val t = list.getJSONObject(j)
-                    found.add("${subject.optString("name")} · ${t.optString("name")}" to t.getLong("id"))
+                    found.add(PickableTopic(t.getLong("id"), subject.optInt("level"), subject.optString("name"), t.optString("name")))
                 }
             }
             topics = found
@@ -93,7 +92,7 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
         paper = null; papers = emptyList(); paperMenu = false
         topic?.let { t ->
             try {
-                val list = JSONArray(examMenuRequest(base, token, "/exam-papers?topic_id=${t.second}"))
+                val list = JSONArray(examMenuRequest(base, token, "/exam-papers?topic_id=$t"))
                 papers = (0 until list.length()).map { list.getJSONObject(it) }
             } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load papers" }
         }
@@ -117,12 +116,7 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
             FilterChip(selected = answerMode == "digital", onClick = { answerMode = "digital" }, label = { Text("Digital") })
             FilterChip(selected = answerMode == "handwritten", onClick = { answerMode = "handwritten" }, label = { Text("Handwritten") })
         }
-        Box {
-            OutlinedButton(enabled = !busy, onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) { Text(topic?.first ?: "Choose a topic") }
-            DropdownMenu(expanded = topicMenu, onDismissRequest = { topicMenu = false }) {
-                topics.forEach { t -> DropdownMenuItem(text = { Text(t.first) }, onClick = { topic = t; topicMenu = false }) }
-            }
-        }
+        TopicPicker(topics, topic, { topic = it }, enabled = !busy)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("original" to "Past paper", "mixed" to "Collated paper", "ai" to "AI-written practice").forEach { (value, label) ->
                 FilterChip(modifier = Modifier.weight(1f).heightIn(min = 56.dp), selected = mode == value, enabled = !busy,
@@ -154,7 +148,7 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
             scope.launch {
                 busy = true; error = ""
                 try {
-                    val body = JSONObject().put("topic_id", topic!!.second).put("mode", mode).put("answer_mode", answerMode).put("question_count", 3)
+                    val body = JSONObject().put("topic_id", topic!!).put("mode", mode).put("answer_mode", answerMode).put("question_count", 3)
                     paper?.takeIf { mode == "original" }?.let { body.put("year", it.getInt("year")).put("paper_resource_id", it.getString("paper_resource_id")) }
                     val result = JSONObject(examMenuRequest(base, token, "/exams/start", body))
                     onChooseExam(result.getLong("id"))

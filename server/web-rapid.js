@@ -2,7 +2,7 @@
 // A rapid session is one-way: questions flash up, you answer or skip and move on, and you see nothing about
 // how you are doing until you end the session. The server enforces that; this page just never asks for results early.
 import { mathText, mathInput, stash, aiBox, countUp, hintButton, tableAnswer } from './web-common.js';
-import { el, field, option, json, scanForm, questionView } from './web-exam-shared.js';
+import { el, field, option, json, levelPicker, scanForm, questionView } from './web-exam-shared.js';
 
 const GRADE = { not_achieved: 'Not achieved', achieved: 'Achieved', merit: 'Merit', excellence: 'Excellence' };
 const gradeChip = outcome => el('span', GRADE[outcome] || 'Unclear', `chip ${outcome === 'merit' || outcome === 'excellence' ? 'ok' : outcome === 'not_achieved' ? 'warn' : ''}`.trim());
@@ -58,14 +58,14 @@ export async function renderRapid(container, api) {
   async function setup() {
     stop();
     const form = el('form', '', 'card stack');
-    const subject = el('select'), topic = el('select'), source = el('select'), length = el('select');
+    const level = el('select'), subject = el('select'), topic = el('select'), source = el('select'), length = el('select');
     option(source, 'mix', 'Past-paper and AI mix');
     option(source, 'past', 'Past papers only');
     option(source, 'ai', 'AI-written only');
     for (const n of [10, 20, 30, 50]) option(length, n, `${n} questions`);
     option(length, 'unlimited', 'Unlimited, until I end the session');
     const fields = el('div', '', 'fields');
-    fields.append(field('Subject', subject), field('Topic', topic), field('Questions from', source), field('Session length', length));
+    fields.append(field('Level', level), field('Subject', subject), field('Topic', topic), field('Questions from', source), field('Session length', length));
     const start = el('button', 'Start session', 'primary'); start.type = 'submit'; start.disabled = true;
     form.append(el('h1', 'Start a rapid session', 'as-h2'),
       el('p', 'Questions flash up one after another and you cannot go back. You will not see any marks or feedback until you end the session; answers are marked quietly as you go. AI-written questions are unofficial practice.', 'muted'),
@@ -96,7 +96,7 @@ export async function renderRapid(container, api) {
     });
     try {
       const subjects = await api('/subjects');
-      subjects.forEach(s => option(subject, s.id, `${s.name} · Level ${s.level}`));
+      levelPicker(level, subject, subjects);
       await loadTopics();
     } catch (err) { report(err); }
     try {

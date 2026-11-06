@@ -206,7 +206,7 @@ fun RapidScreen(base: String, token: String, startWith: JSONObject?, onStartedWi
 
 @Composable
 private fun RapidSetup(base: String, token: String, onStarted: (Long, Int?, JSONObject) -> Unit) {
-    var topics by remember { mutableStateOf<List<Pair<Long, String>>>(emptyList()) }
+    var topics by remember { mutableStateOf<List<PickableTopic>>(emptyList()) }
     var topic by remember { mutableLongStateOf(0L) }
     var source by remember { mutableStateOf("mix") }
     var length by remember { mutableStateOf<Int?>(10) }
@@ -217,11 +217,11 @@ private fun RapidSetup(base: String, token: String, onStarted: (Long, Int?, JSON
     val scope = rememberCoroutineScope()
     LaunchedEffect(base, token) {
         try {
-            val found = mutableListOf<Pair<Long, String>>()
+            val found = mutableListOf<PickableTopic>()
             JSONArray(rapidCall(base, token, "/subjects")).objects().forEach { subject ->
-                JSONArray(rapidCall(base, token, "/subjects/${subject.getLong("id")}/topics")).objects().forEach { found += it.getLong("id") to "${subject.optString("name")} · ${it.optString("name")}" }
+                JSONArray(rapidCall(base, token, "/subjects/${subject.getLong("id")}/topics")).objects().forEach { found += PickableTopic(it.getLong("id"), subject.optInt("level"), subject.optString("name"), it.optString("name")) }
             }
-            topics = found; if (topic == 0L && found.isNotEmpty()) topic = found.first().first
+            topics = found
             history = JSONArray(rapidCall(base, token, "/rapid")).objects()
         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load topics" }
     }
@@ -232,12 +232,7 @@ private fun RapidSetup(base: String, token: String, onStarted: (Long, Int?, JSON
             Text("Questions flash up one after another and you cannot go back. You will not see any marks or feedback until you end the session; answers are marked quietly as you go. AI-written questions are unofficial practice.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text("Topic", style = MaterialTheme.typography.titleSmall)
-        topics.forEachIndexed { index, (id, label) ->
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { topic = id }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = topic == id, onClick = { topic = id })
-                Text(label, style = MaterialTheme.typography.bodyLarge)
-            }
-        }
+        TopicPicker(topics, topic.takeIf { it != 0L }, { topic = it ?: 0L })
         Text("Questions from", style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("mix" to "Mix", "past" to "Past papers", "ai" to "AI").forEach { (value, label) -> FilterChip(selected = source == value, onClick = { source = value }, label = { Text(label) }) }
