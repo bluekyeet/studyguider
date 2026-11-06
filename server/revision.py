@@ -262,10 +262,10 @@ def revision_router(connect, authorised, model_reply, search_resources):
     def topics():
         with connect() as db:
             counts = mistake_counts(db)
-            rows = db.execute("""SELECT t.id, t.name, s.name, (SELECT p.id FROM revision_packs p WHERE p.topic_id = t.id ORDER BY p.id DESC LIMIT 1),
+            rows = db.execute("""SELECT t.id, t.name, s.name, s.level, (SELECT p.id FROM revision_packs p WHERE p.topic_id = t.id ORDER BY p.id DESC LIMIT 1),
                     (SELECT p.status FROM revision_packs p WHERE p.topic_id = t.id ORDER BY p.id DESC LIMIT 1)
-                FROM topics t JOIN subjects s ON s.id = t.subject_id ORDER BY s.name, t.name""").fetchall()
-        return [{"topic_id": r[0], "topic": r[1], "subject": r[2], "mistakes": counts.get(r[0], 0), "latest_pack": r[3], "latest_status": r[4]} for r in rows]
+                FROM topics t JOIN subjects s ON s.id = t.subject_id ORDER BY s.level, s.name, t.name""").fetchall()
+        return [{"topic_id": r[0], "topic": r[1], "subject": r[2], "level": r[3], "mistakes": counts.get(r[0], 0), "latest_pack": r[4], "latest_status": r[5]} for r in rows]
 
     @router.post("/revision/packs", status_code=202)
     def start(body: PackStart):

@@ -1,5 +1,5 @@
 import { mathText, mathInput, autosave, aiBox, tableAnswer } from './web-common.js';
-import { el, field, option, json, reflow, withoutLabel, displayLabel, scanForm, mathsNote } from './web-exam-shared.js';
+import { el, field, option, json, levelPicker, reflow, withoutLabel, displayLabel, scanForm, mathsNote } from './web-exam-shared.js';
 import { renderRapid } from './web-rapid.js';
 import { renderRevision } from './web-revision.js';
 
@@ -19,6 +19,7 @@ async function renderClassicExams(container, api) {
   const report = (err) => { if (alive()) error.textContent = err.message || String(err); };
   const builder = el('form', '', 'card stack');
   const fields = el('div', '', 'fields');
+  const level = el('select');
   const subject = el('select');
   const topic = el('select');
   const mode = el('select');
@@ -33,7 +34,7 @@ async function renderClassicExams(container, api) {
   option(mode, 'ai', 'AI practice — generated questions and rubric (unofficial)');
   const paperField = field('Original year / paper', paper);
   const countField = field('Question count (1–10)', count);
-  fields.append(field('Subject', subject), field('Topic', topic), field('Exam mode', mode), paperField, countField, field('How will you answer?', answerMode));
+  fields.append(field('Level', level), field('Subject', subject), field('Topic', topic), field('Exam mode', mode), paperField, countField, field('How will you answer?', answerMode));
   const start = el('button', 'Start exam', 'primary');
   start.type = 'submit'; start.disabled = true;
   const modeNotice = el('p', '', 'muted');
@@ -501,7 +502,7 @@ async function renderClassicExams(container, api) {
       try {
         const subjects = await api('/subjects');
         if (!alive()) return;
-        subjects.forEach(s => option(subject, s.id, `${s.name} · Level ${s.level}`));
+        levelPicker(level, subject, subjects);
         if (!subjects.length) option(subject, '', 'Add subjects in management first');
         await loadTopics();
       } catch (err) { report(err); }

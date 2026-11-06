@@ -879,24 +879,11 @@ private fun TopicSwitcher(
         ModalBottomSheet(onDismissRequest = { open = false }, containerColor = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Change topic", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-                allTopics.groupBy({ it.first }, { it.second }).forEach { (subject, list) ->
-                    Text(subject, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
-                    list.forEach { topic ->
-                        val id = topic.getLong("id")
-                        val selected = id == topicId
-                        Surface(
-                            onClick = { open = false; onSwitchTopic(id, topic.optString("name")) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (selected) MaterialTheme.colorScheme.primaryContainer else colours.container,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(topic.optString("name"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                                if (selected) Text("Reading now", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    }
-                }
+                val byId = remember(allTopics) { allTopics.associateBy { it.second.getLong("id") } }
+                TopicPicker(allTopics.map { it.pickable() }, topicId, { id ->
+                    val picked = id?.let { byId[it] }
+                    if (picked != null) { open = false; onSwitchTopic(picked.second.getLong("id"), picked.second.optString("name")) }
+                })
                 OutlinedButton(onClick = { open = false; onOpenResources() }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth()) { Text("Manage topics and files") }
             }
         }

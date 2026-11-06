@@ -2,7 +2,7 @@
 // A pack is a short re-teach plus questions for each weak concept. Answers are marked straight away (the daily review marking),
 // and a wrong answer comes back through spaced repetition. Everything in a pack is AI-written and unofficial.
 import { mathText, mathInput, aiBox, countUp, hintButton, tableAnswer } from './web-common.js';
-import { el, json } from './web-exam-shared.js';
+import { el, json, field, option } from './web-exam-shared.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const when = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
@@ -27,16 +27,30 @@ export async function renderRevision(container, api, params) {
     const body = el('tbody');
     const header = el('tr'); for (const h of ['Topic', 'Mistakes', 'Latest pack', '']) header.append(el('th', h));
     table.append(el('thead')); table.firstChild.append(header); table.append(body);
-    root.replaceChildren(head, error, table);
+    const filters = el('div', '', 'fields'); const levelSel = el('select'), subjectSel = el('select');
+    filters.append(field('Level', levelSel), field('Subject', subjectSel));
+    root.replaceChildren(head, filters, error, table);
     let topics, packs;
     try { [topics, packs] = await Promise.all([api('/revision/topics'), api('/revision/packs?limit=50')]); } catch (err) { return report(err); }
     if (!alive()) return;
     error.textContent = '';
     const latest = new Map();
     for (const p of packs) if (!latest.has(p.topic_id)) latest.set(p.topic_id, p);
-    topics.sort((a, b) => b.mistakes - a.mistakes || a.subject.localeCompare(b.subject) || a.topic.localeCompare(b.topic));
+    topics.sort((a, b) => b.mistakes - a.mistakes || a.level - b.level || a.subject.localeCompare(b.subject) || a.topic.localeCompare(b.topic));
+    // Level, then subject, narrow the list; each row hides itself rather than being rebuilt.
+    const rows = [];
+    const applyFilter = () => { for (const [t, row] of rows) row.hidden = (levelSel.value !== '' && String(t.level) !== levelSel.value) || (subjectSel.value !== '' && t.subject !== subjectSel.value); };
+    const fillSubjects = () => {
+      subjectSel.replaceChildren(); option(subjectSel, '', 'All subjects');
+      [...new Set(topics.filter(t => levelSel.value === '' || String(t.level) === levelSel.value).map(t => t.subject))].sort().forEach(name => option(subjectSel, name, name));
+      applyFilter();
+    };
+    option(levelSel, '', 'All levels');
+    [...new Set(topics.map(t => t.level))].sort((a, b) => a - b).forEach(n => option(levelSel, n, `NCEA Level ${n}`));
+    levelSel.addEventListener('change', fillSubjects); subjectSel.addEventListener('change', applyFilter);
+    fillSubjects();
     for (const t of topics) {
-      const row = el('tr');
+      const row = el('tr'); rows.push([t, row]);
       const count = el('td', '', 'num'); count.append(el('span', '0'));
       countUp(count.firstChild, t.mistakes);
       const last = latest.get(t.topic_id);
@@ -53,10 +67,11 @@ export async function renderRevision(container, api, params) {
         catch (err) { report(err); build.disabled = false; }
       };
       action.append(build);
-      const name = el('td'); name.append(el('strong', t.topic), ' ', el('span', t.subject, 'muted'));
+      const name = el('td'); name.append(el('strong', t.topic), ' ', el('span', `Level ${t.level} · ${t.subject}`, 'muted'));
       row.append(name, count, status, action);
       body.append(row);
     }
+    applyFilter();
   }
 
   // ---- one pack -------------------------------------------------------------------------------
