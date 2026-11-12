@@ -17,6 +17,24 @@ export const option = (select, value, label) => {
   node.value = String(value);
   select.append(node);
 };
+// Level -> subject -> topic: the level select narrows the subject select, so a long subject list stays short.
+// Changing the level repopulates the subjects and fires 'change' on the subject select so the caller reloads its topics.
+// University papers (kind 'paper', set up in Plan) share one "Papers" choice instead of an NCEA level.
+export const levelPicker = (level, subject, subjects, { fire = true } = {}) => {
+  const shelf = s => s.kind === 'paper' ? 'papers' : String(s.level);
+  const levels = [...new Set(subjects.map(shelf))].sort((a, b) => (a === 'papers') - (b === 'papers') || a - b);
+  level.replaceChildren();
+  levels.forEach(n => option(level, n, n === 'papers' ? 'Papers' : `NCEA Level ${n}`));
+  if (!levels.length) option(level, '', 'No levels yet');
+  const fill = () => {
+    subject.replaceChildren();
+    const here = subjects.filter(s => shelf(s) === level.value).sort((a, b) => a.name.localeCompare(b.name));
+    here.forEach(s => option(subject, s.id, s.name));
+    if (!here.length) option(subject, '', 'No subjects yet');
+  };
+  level.addEventListener('change', () => { fill(); if (fire) subject.dispatchEvent(new Event('change')); });
+  fill();
+};
 // FastAPI only reads a JSON body when the request says it is JSON; fetch would otherwise send text/plain.
 export const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 

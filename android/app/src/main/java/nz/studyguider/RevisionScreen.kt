@@ -43,6 +43,8 @@ private fun RevisionTopics(base: String, token: String, onOpen: (Long) -> Unit) 
     var packs by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var error by remember { mutableStateOf("") }
     var building by remember { mutableStateOf<Long?>(null) }
+    var levelFilter by remember { mutableStateOf<Int?>(null) }
+    var subjectFilter by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(base, token) {
         try {
@@ -55,7 +57,15 @@ private fun RevisionTopics(base: String, token: String, onOpen: (Long) -> Unit) 
         Text("Pick a topic. A revision pack is built from the mistakes you have made in it (rapid questions, marked exams and the daily review): a short re-teach and questions on each weak concept.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-        topics.forEachIndexed { index, t ->
+        // Level, then subject, narrow the list so many topics stay easy to scan.
+        val levels = topics.map { it.optInt("level") }.distinct().sorted()
+        val subjects = topics.filter { levelFilter == null || it.optInt("level") == levelFilter }.map { it.str("subject") }.distinct().sortedBy { it.lowercase() }
+        if (topics.isNotEmpty()) {
+            PickerMenu("All levels", levelFilter?.let { "NCEA Level $it" }, listOf<Pair<Int?, String>>(null to "All levels") + levels.map { it to "NCEA Level $it" }) { levelFilter = it; subjectFilter = null }
+            PickerMenu("All subjects", subjectFilter?.takeIf { it in subjects }, listOf<Pair<String?, String>>(null to "All subjects") + subjects.map { it to it }) { subjectFilter = it }
+        }
+        val shown = topics.filter { (levelFilter == null || it.optInt("level") == levelFilter) && (subjectFilter == null || it.str("subject") == subjectFilter) }
+        shown.forEachIndexed { index, t ->
             val topicId = t.getLong("topic_id")
             val latest = packs.firstOrNull { it.getLong("topic_id") == topicId }
             val mistakes = t.optInt("mistakes")
@@ -64,7 +74,7 @@ private fun RevisionTopics(base: String, token: String, onOpen: (Long) -> Unit) 
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text(t.str("topic"), style = MaterialTheme.typography.titleMedium)
-                        Text("${t.str("subject")} · ${if (mistakes == 0) "no mistakes yet" else "$mistakes mistake${if (mistakes == 1) "" else "s"}"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Level ${t.optInt("level")} · ${t.str("subject")} · ${if (mistakes == 0) "no mistakes yet" else "$mistakes mistake${if (mistakes == 1) "" else "s"}"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Button(enabled = mistakes > 0 && building == null, shape = RoundedCornerShape(50), onClick = {
                         building = topicId

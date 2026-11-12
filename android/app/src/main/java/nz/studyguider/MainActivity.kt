@@ -805,22 +805,10 @@ private fun TopicPickerSheet(
             }
             if (learning.isEmpty() && !loading && allTopics.isNotEmpty()) Text("No topics yet. Add one below to get a lesson each night.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (allTopics.isNotEmpty()) {
-                var open by remember { mutableStateOf(false) }
-                Box {
-                    OutlinedButton(enabled = busyTopic == null && available.isNotEmpty(), onClick = { open = true }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text(if (available.isEmpty()) "Every topic is switched on" else "Add a topic  ▾")
-                    }
-                    DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.heightIn(max = 360.dp)) {
-                        var shownSubject: String? = null
-                        available.forEach { (subject, topic) ->
-                            val heading = "Level ${topic.optInt("subject_level")} · $subject"
-                            if (shownSubject != heading) {
-                                Text(heading, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-                                shownSubject = heading
-                            }
-                            DropdownMenuItem(text = { Text(topic.optString("name") + if (topic.optBoolean("global")) "  ·  Global" else "") }, onClick = { open = false; scope.launch { toggle(topic.getLong("id"), false) } })
-                        }
-                    }
+                if (available.isEmpty()) Text("Every topic is switched on", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else {
+                    Text("Add a topic", style = MaterialTheme.typography.titleSmall)
+                    TopicPicker(available.map { it.pickable() }, null, { id -> if (id != null) scope.launch { toggle(id, false) } }, enabled = busyTopic == null)
                 }
             }
             if (allTopics.isEmpty() && !loading) StudyCard(tone = CardTone.Low) {
@@ -1103,10 +1091,9 @@ internal fun NightlyStatus(base: String, token: String, topic: JSONObject, onDis
 
 @Composable
 internal fun TopicNotes(base: String, token: String) {
-    var topics by remember(base, token) { mutableStateOf<List<Pair<String, Long>>>(emptyList()) }
-    var topic by remember(base, token) { mutableStateOf<Pair<String, Long>?>(null) }
+    var topics by remember(base, token) { mutableStateOf<List<PickableTopic>>(emptyList()) }
+    var topic by remember(base, token) { mutableStateOf<Long?>(null) }
     var notes by remember(base, token) { mutableStateOf<List<JSONObject>>(emptyList()) }
-    var menu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
@@ -1121,13 +1108,13 @@ internal fun TopicNotes(base: String, token: String) {
         busy = true; error = ""
         try {
             val subjects = JSONArray(request(base, "/subjects", token))
-            val found = mutableListOf<Pair<String, Long>>()
+            val found = mutableListOf<PickableTopic>()
             for (i in 0 until subjects.length()) {
                 val subject = subjects.getJSONObject(i)
                 val rows = JSONArray(request(base, "/subjects/${subject.getLong("id")}/topics", token))
                 for (j in 0 until rows.length()) {
                     val item = rows.getJSONObject(j)
-                    found.add("${subject.optString("name")} · ${item.optString("name")}" to item.getLong("id"))
+                    found.add(PickableTopic(item.getLong("id"), subject.optInt("level"), subject.optString("name"), item.optString("name")))
                 }
             }
             topics = found
@@ -1140,19 +1127,14 @@ internal fun TopicNotes(base: String, token: String) {
         val selected = topic ?: return@LaunchedEffect
         busy = true; error = ""
         try {
-            val rows = JSONArray(request(base, "/topics/${selected.second}/notes", token))
+            val rows = JSONArray(request(base, "/topics/$selected/notes", token))
             notes = (0 until rows.length()).map { rows.getJSONObject(it) }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { error = e.message ?: "Could not load notes" }
         finally { busy = false }
     }
     Text("Topic notes", style = MaterialTheme.typography.titleLarge)
-    Box {
-        OutlinedButton(enabled = !deletingNote, onClick = { menu = true }, modifier = Modifier.fillMaxWidth()) { Text(topic?.first ?: "Choose a topic") }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            topics.forEach { item -> DropdownMenuItem(text = { Text(item.first) }, onClick = { topic = item; menu = false }) }
-        }
-    }
+    TopicPicker(topics, topic, { topic = it }, enabled = !deletingNote)
     TextButton(enabled = !busy && !deletingNote, onClick = { reload++ }) { Text("Refresh") }
     if (busy) LoadingBar(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
@@ -1182,7 +1164,7 @@ internal fun TopicNotes(base: String, token: String) {
                 Text("Edits preserve stored source citations unless you remove them. Discard closes without saving.", style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = { TextButton(enabled = !savingNote && noteDraft.isNotBlank() && noteDraft.length <= 50000, onClick = {
-                val topicId = topic?.second ?: return@TextButton
+                val topicId = topic ?: return@TextButton
                 noteScope.launch {
                     savingNote = true; noteEditError = ""
                     try {
@@ -1204,7 +1186,7 @@ internal fun TopicNotes(base: String, token: String) {
             title = { Text("Delete note?") },
             text = { Text("This permanently deletes this saved note. The original lesson and its sources are kept.") },
             confirmButton = { TextButton(enabled = !deletingNote, onClick = {
-                val topicId = topic?.second ?: return@TextButton
+                val topicId = topic ?: return@TextButton
                 noteScope.launch {
                     deletingNote = true; error = ""
                     try {
