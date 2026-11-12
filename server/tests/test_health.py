@@ -53,7 +53,8 @@ class HealthTest(unittest.TestCase):
 
     def test_subject_and_topic_validation(self):
         self.assertEqual(Subject(name="Physics", level=2).level, 2)
-        for data in ({"name": "  ", "level": 2}, {"name": "Physics", "level": 4}):
+        self.assertEqual(Subject(name="COMP500 Programming", level=5).level, 5)     # university paper levels are allowed
+        for data in ({"name": "  ", "level": 2}, {"name": "Physics", "level": 11}, {"name": "Physics", "level": -1}):
             with self.assertRaises(ValidationError):
                 Subject(**data)
         with self.assertRaises(ValidationError):

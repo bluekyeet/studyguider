@@ -6,6 +6,7 @@ import {renderLibrary} from './web-library.js';
 import {renderSettings} from './web-settings.js';
 import {renderAccount} from './web-account.js';
 import {renderGame} from './web-game.js';
+import {renderPlan} from './web-plan.js';
 import {session, avatar, library, LIBRARY_PATHS} from './web-common.js';
 
 const $ = id => document.getElementById(id);
@@ -26,7 +27,7 @@ let cleanup = null;
 // Where each page sits, so a page entered from further down the menu arrives from below and one from above arrives from above.
 // On a phone the menu runs sideways, so the same order becomes left and right. Going deeper in a page (a topic, a lesson) or to a
 // later tab arrives from the right; going back arrives from the left.
-const PAGES = ['home', 'lessons', 'reviews', 'exams', 'rewards', 'library', 'settings', 'account'];
+const PAGES = ['home', 'plan', 'lessons', 'reviews', 'exams', 'rewards', 'library', 'settings', 'account'];
 const SUBS = ['', 'rapid', 'revision', 'gacha', 'shop', 'boards'];
 const place = (page, sub, params) => ({ page: PAGES.indexOf(page), sub: Math.max(0, SUBS.indexOf(sub)), depth: ['subject', 'topic', 'lesson'].filter(key => params.get(key)).length });
 let lastPlace = null;
@@ -87,7 +88,7 @@ async function route() {
   $('view').append(container); $('view').dataset.loading = '1';
   const [ex, ey] = same ? [0, 0] : arrival(place(page, sub, params));
   container.style.setProperty('--ex', ex + 'px'); container.style.setProperty('--ey', ey + 'px');
-  try { const result = await ({home:renderHome,lessons:renderLessons,reviews:renderReviews,exams:renderExams,rewards:renderGame,library:renderLibrary,settings:renderSettings,account:renderAccount}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
+  try { const result = await ({home:renderHome,plan:renderPlan,lessons:renderLessons,reviews:renderReviews,exams:renderExams,rewards:renderGame,library:renderLibrary,settings:renderSettings,account:renderAccount}[page] || renderHome)(container,api,params); if (container.isConnected && typeof result === 'function') cleanup=result; else if (typeof result === 'function') result(); }
   catch(error) { if (container.isConnected) $('notice').textContent = error.message; }
   if (mine === routeId) {
     $('view').replaceChildren(container); container.hidden = false; delete $('view').dataset.loading;

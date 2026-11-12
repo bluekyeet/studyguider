@@ -45,13 +45,14 @@ function table(headings, rows, label) {
 }
 
 const gradeChip = grade => {
-  const tone = grade === 'Excellence' || grade === 'Merit' ? 'ok' : grade === 'Not achieved' ? 'warn' : '';
+  const tone = grade === 'Excellence' || grade === 'Merit' || /^A/.test(grade) ? 'ok' : grade === 'Not achieved' || /^D/.test(grade) ? 'warn' : '';
   return element('span', grade, `chip ${tone}`.trim());
 };
 
 // Counts of saved records, plus one labelled rough estimate; no streaks or predicted exam results.
 export async function renderHome(container, api) {
-  const [summary, lessons] = await Promise.all([api('/study-summary'), api('/lessons')]);
+  const [summary, lessons, curriculum, plan, estimates] = await Promise.all([api('/study-summary'), api('/lessons'),
+    api('/curriculum').catch(() => null), api('/review-plan').catch(() => null), api('/grade-estimates').catch(() => [])]);
   const { reviews, topics, weak_concepts: weak, exams } = summary;
   const today = day(new Date());
   // The same list as the Lessons page: today's lessons, plus the newest unopened lesson from an earlier day for each topic
@@ -72,14 +73,22 @@ export async function renderHome(container, api) {
   title.append(element('h1', 'Home'),
     element('p', new Intl.DateTimeFormat('en-NZ', { timeZone: 'Pacific/Auckland', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()), 'muted'));
   head.append(title); container.append(head);
+  // Existing learners are offered the new setup; nothing changes until they choose to.
+  if (curriculum && !curriculum.set_up) {
+    const offer = element('section', '', 'card stack');
+    offer.append(element('h2', 'New: plan around your assessment dates'),
+      element('p', 'Tell StudyGuider whether you are doing NCEA or university papers (AUT, University of Auckland or elsewhere) and when your assessments are. Reviews then come back on a schedule that keeps what you learn, and lessons switch to exam practice as a date gets close. Everything you already have stays as it is.', 'muted'),
+      link('Set up my plan', '#plan', 'primary'));
+    container.append(offer);
+  }
 
   // Headline numbers
-  const estimated = topics.filter(topic => topic.estimated_grade).length;
+  const graded = estimates.filter(e => e.estimate);
   const strip = element('div', '', 'stat-row');
-  strip.append(stat(percent(summary.overall_mastery), 'Overall mastery', { to: summary.overall_mastery * 100, format: n => `${Math.round(n)}%` }),
+  strip.append(stat(percent(summary.overall_mastery), 'Expected recall', { to: summary.overall_mastery * 100, format: n => `${Math.round(n)}%` }),
     stat(`${todays.length - todo.length} / ${todays.length}`, 'Lessons done today', { to: todays.length - todo.length, format: n => `${Math.round(n)} / ${todays.length}` }),
     stat(reviews.due, 'Reviews due', { to: reviews.due, format: n => String(Math.round(n)) }),
-    stat(`${estimated} / ${topics.length}`, 'Topics with a grade estimate', { to: estimated, format: n => `${Math.round(n)} / ${topics.length}` }));
+    stat(`${graded.length} / ${estimates.length}`, 'Subjects with a grade estimate', { to: graded.length, format: n => `${Math.round(n)} / ${estimates.length}` }));
   container.append(strip);
 
   // Lessons to do
@@ -95,19 +104,34 @@ export async function renderHome(container, api) {
   }
   const actions = element('div', '', 'toolbar');
   if (reviews.due) actions.append(link(`Start ${plural(reviews.due, 'review')}`, '#reviews', 'primary'));
+  if (reviews.left_out) actions.append(element('span', `${reviews.left_out} more due, kept for another day (daily limit ${reviews.cap})`, 'muted'));
   if (unfinished) actions.append(link(`Resume exam (${unfinished.answered} of ${unfinished.questions} answered)`, '#exams'));
   if (actions.children.length) container.append(actions);
 
-  // Topics, progress and estimated grade
+  // Coming assessments, with predicted recall on the day
+  const coming = (plan?.assessments || []).slice(0, 5);
+  if (coming.length) {
+    container.append(element('h2', 'Coming up'));
+    container.append(table(['Date', 'Assessment', 'Predicted recall on the day'], coming.map(a => [
+      `${day(a.due_date + 'T12:00:00')} (${a.days === 0 ? 'today' : a.days === 1 ? 'tomorrow' : `in ${a.days} days`})`, a.title,
+      a.predicted_recall == null ? element('span', 'No reviews yet', 'muted') : `${percent(a.predicted_recall)}${a.at_risk ? ` · ${a.at_risk} at risk` : ''}`]), 'Coming assessments'));
+  }
+  if (graded.length) {
+    container.append(element('h2', 'Grade estimates'));
+    container.append(table(['Subject', 'Estimate', 'From'], graded.map(e => [e.name, gradeChip(e.estimate), e.summary || '']), 'Grade estimates'));
+    container.append(element('p', 'NCEA: a full past paper, AI-marked, graded with that paper’s own cut scores. University: the marks you entered, weighted by each assessment. Neither is an official result.', 'muted'));
+  }
+
+  // Topics and how much of each is remembered
   container.append(element('h2', 'Topics'));
   if (topics.length) {
-    container.append(table(['Topic', 'Mastery', '', 'Estimated grade'], topics.map(topic => {
+    container.append(table(['Topic', 'Recall', '', 'Answered'], topics.map(topic => {
       const meter = element('div', '', 'bar'); const fill = element('i'); fill.style.setProperty('--v', String(Math.min(1, Math.max(0, topic.mastery)))); meter.append(fill);
       meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-label', `${topic.topic} mastery`);
       meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100'); meter.setAttribute('aria-valuenow', String(Math.round(topic.mastery * 100)));
-      return [`${topic.subject} · ${topic.topic}`, percent(topic.mastery), meter,
-        topic.estimated_grade ? gradeChip(topic.estimated_grade) : element('span', `Needs ${5 - Math.min(topic.review_answers, 5)} more review answers`, 'muted')];
-    }), 'Mastery and estimated grade by topic'));
+      return [`${topic.subject} · ${topic.topic}`, topic.reviewed_questions ? percent(topic.mastery) : '—', meter,
+        element('span', `${topic.reviewed_questions ?? 0} of ${plural(topic.questions ?? 0, 'question')}`, 'muted')];
+    }), 'Recall by topic'));
     container.append(element('p', summary.estimate_rule, 'muted'));
   } else container.append(element('p', 'Choose topics in Settings to see them here.', 'muted'));
 

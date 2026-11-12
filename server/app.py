@@ -243,7 +243,7 @@ async def limit_request_size(request, call_next):
 
 class Subject(BaseModel):
     name: str = Field(min_length=1, max_length=200, pattern=r"\S")
-    level: int = Field(ge=1, le=3)
+    level: int = Field(ge=0, le=10)      # NCEA 1-3; AUT paper levels 5-9 and UoA stages 1-7; 0 when not given
 
 
 class Topic(BaseModel):
@@ -498,8 +498,11 @@ def study_module(module_name: str):
 def subjects():
     with connect() as db:
         library_global.sync_catalog(db)
-        rows = db.execute("SELECT id, name, level, global_id IS NOT NULL FROM subjects ORDER BY id").fetchall()
-    return [{"id": row[0], "name": row[1], "level": row[2], "global": row[3]} for row in rows]
+        rows = db.execute("""SELECT s.id, s.name, s.level, s.global_id IS NOT NULL, COALESCE(d.code, ''), COALESCE(d.grade_scale, 'ncea')
+            FROM subjects s LEFT JOIN subject_details d ON d.subject_id = s.id ORDER BY s.id""").fetchall()
+    # kind: 'ncea' unless the subject is a paper on a university or percentage scale (curriculum.py).
+    return [{"id": row[0], "name": row[1], "level": row[2], "global": row[3], "code": row[4],
+             "kind": "ncea" if row[5] == "ncea" else "paper"} for row in rows]
 
 
 @app.post("/subjects", status_code=201, dependencies=[Depends(authorised)])
