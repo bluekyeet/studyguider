@@ -453,7 +453,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
     @router.get("/game/art/avatar.svg", include_in_schema=False)
     def avatar_art(request: Request):
         query = request.query_params
-        return Response(items.avatar_svg(art_outfit(query), query.get("skin", ""), build=query.get("build", "")), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
+        return Response(items.avatar_svg(art_outfit(query), query.get("skin", ""), crop=query.get("crop"), build=query.get("build", "")), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
 
     # The same art as PNG for the Android app, which has no SVG renderer. Widths are limited so a request cannot ask for a huge image.
     def png_response(svg, width):
@@ -469,7 +469,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
     @router.get("/game/art/avatar.png", include_in_schema=False)
     def avatar_png(request: Request, w: int = 400):
         query = request.query_params
-        return png_response(items.avatar_svg(art_outfit(query), query.get("skin", ""), build=query.get("build", "")), w)
+        return png_response(items.avatar_svg(art_outfit(query), query.get("skin", ""), crop=query.get("crop"), build=query.get("build", "")), w)
 
     return router
 

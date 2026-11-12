@@ -10,11 +10,12 @@ const num = n => Number(n).toLocaleString('en-NZ');
 const plural = (n, word) => `${num(n)} ${word}${n === 1 ? '' : 's'}`;
 
 let artVersion = '';      // from the server; part of every picture address so redrawn art is not served from the browser's cache
-export const avatarUrl = (outfit = {}, skin = '', build = '') => {
+export const avatarUrl = (outfit = {}, skin = '', build = '', crop = '') => {
   const query = new URLSearchParams(Object.entries(outfit || {}).filter(([, id]) => id));
   if (artVersion) query.set('v', artVersion);
   if (skin) query.set('skin', skin);
   if (build) query.set('build', build);
+  if (crop) query.set('crop', crop);      // 'bust' is head and shoulders, for pictures too small to show the whole character
   return `/game/art/avatar.svg?${query}`;
 };
 const itemUrl = (id, skin) => `/game/art/item/${encodeURIComponent(id)}.svg?v=${artVersion}${skin ? `&skin=${encodeURIComponent(skin)}` : ''}`;
@@ -335,7 +336,7 @@ export async function renderGame(container, api, params) {
   function boardRow(row, you) {
     const li = el('li');
     const b = button('', `board-row${row.user_id === you ? ' you' : ''}`, () => openPlayer(row.user_id));
-    b.append(el('span', `#${row.rank}`, 'rank'), picture(avatarUrl(row.outfit, row.skin, row.build), '', 'mini'), el('span', row.user_id === you ? `${row.username} (you)` : row.username, 'who'), el('b', row.text));
+    b.append(el('span', `#${row.rank}`, 'rank'), picture(avatarUrl(row.outfit, row.skin, row.build, 'bust'), '', 'mini'), el('span', row.user_id === you ? `${row.username} (you)` : row.username, 'who'), el('b', row.text));
     li.append(b);
     return li;
   }

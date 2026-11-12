@@ -89,8 +89,9 @@ private object ArtCache {
     var version = ""      // the server's art version, part of every picture address so redrawn art is fetched again
 }
 
-private fun avatarPath(outfit: JSONObject?, skin: String, width: Int, build: String = ""): String {
+private fun avatarPath(outfit: JSONObject?, skin: String, width: Int, build: String = "", crop: String = ""): String {
     val query = StringBuilder("w=$width&v=${ArtCache.version}")
+    if (crop.isNotEmpty()) query.append("&crop=").append(crop)      // "bust": head and shoulders, for the small pictures
     if (build.isNotEmpty()) query.append("&build=").append(Uri.encode(build))
     if (skin.isNotEmpty()) query.append("&skin=").append(Uri.encode(skin))
     outfit?.keys()?.forEach { slot -> query.append('&').append(Uri.encode(slot)).append('=').append(Uri.encode(outfit.optString(slot))) }
@@ -300,7 +301,7 @@ private fun CharacterTab(base: String, me: JSONObject, act: Act) {
     StudyCard(tone = CardTone.Container) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Art(base, avatarPath(outfit, skin, 480, me.optString("build")), "Your character",
-                Modifier.width(130.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(Brush.radialGradient(listOf(Color(0xFF3A3D52), Color(0xFF20212A)))), ContentScale.Crop)
+                Modifier.width(130.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(Brush.radialGradient(listOf(Color(0xFF5D6494), Color(0xFF23253C)))), ContentScale.Crop)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("BODY", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -579,7 +580,7 @@ private fun BoardsTab(base: String, token: String, onOpen: (Long) -> Unit, onErr
             Surface(onClick = { onOpen(row.optLong("user_id")) }, shape = RoundedCornerShape(14.dp), color = if (mine) MaterialTheme.colorScheme.primaryContainer else colours.containerHigh) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("#${row.optInt("rank")}", fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(36.dp))
-                    Art(base, avatarPath(row.optJSONObject("outfit"), row.optString("skin"), 96, row.optString("build")), null, Modifier.size(32.dp, 48.dp).clip(RoundedCornerShape(8.dp)).background(colours.containerHighest), ContentScale.Crop)
+                    Art(base, avatarPath(row.optJSONObject("outfit"), row.optString("skin"), 120, row.optString("build"), "bust"), null, Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF383C62)), ContentScale.Crop)
                     Text(if (mine) "${row.optString("username")} (you)" else row.optString("username"), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(row.optString("text"), color = colours.teal, fontWeight = FontWeight.Bold)
                 }
@@ -596,7 +597,7 @@ private fun PlayerCard(base: String, p: JSONObject, onDismiss: () -> Unit) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("PLAYER CARD", style = MaterialTheme.typography.labelSmall, color = colours.teal, fontFamily = FontFamily.Monospace, letterSpacing = 1.5.sp)
                 Art(base, avatarPath(p.optJSONObject("outfit"), p.optString("skin"), 400, p.optString("build")), p.optString("username"),
-                    Modifier.width(140.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(Brush.radialGradient(listOf(Color(0xFF3A3D52), Color(0xFF20212A)))), ContentScale.Crop)
+                    Modifier.width(140.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(Brush.radialGradient(listOf(Color(0xFF5D6494), Color(0xFF23253C)))), ContentScale.Crop)
                 Text(if (p.optBoolean("you")) "${p.optString("username")} (you)" else p.optString("username"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 val estimate = p.optJSONObject("estimate")
                 val facts = listOf(p.optInt("networth").grouped() to "Net worth", p.optInt("questions").grouped() to "Questions", p.optInt("lessons").grouped() to "Lessons",
