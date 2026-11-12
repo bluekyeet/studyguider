@@ -19,14 +19,16 @@ export const option = (select, value, label) => {
 };
 // Level -> subject -> topic: the level select narrows the subject select, so a long subject list stays short.
 // Changing the level repopulates the subjects and fires 'change' on the subject select so the caller reloads its topics.
+// University papers (kind 'paper', set up in Plan) share one "Papers" choice instead of an NCEA level.
 export const levelPicker = (level, subject, subjects, { fire = true } = {}) => {
-  const levels = [...new Set(subjects.map(s => s.level))].sort((a, b) => a - b);
+  const shelf = s => s.kind === 'paper' ? 'papers' : String(s.level);
+  const levels = [...new Set(subjects.map(shelf))].sort((a, b) => (a === 'papers') - (b === 'papers') || a - b);
   level.replaceChildren();
-  levels.forEach(n => option(level, n, `NCEA Level ${n}`));
+  levels.forEach(n => option(level, n, n === 'papers' ? 'Papers' : `NCEA Level ${n}`));
   if (!levels.length) option(level, '', 'No levels yet');
   const fill = () => {
     subject.replaceChildren();
-    const here = subjects.filter(s => String(s.level) === level.value).sort((a, b) => a.name.localeCompare(b.name));
+    const here = subjects.filter(s => shelf(s) === level.value).sort((a, b) => a.name.localeCompare(b.name));
     here.forEach(s => option(subject, s.id, s.name));
     if (!here.length) option(subject, '', 'No subjects yet');
   };

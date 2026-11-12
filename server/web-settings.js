@@ -53,7 +53,7 @@ async function studyTopics(card, api) {
   const note = el('p', '', 'muted'); note.setAttribute('role', 'status'); note.setAttribute('aria-live', 'polite');
   const [subjects, courses] = await Promise.all([api('/subjects'), api('/courses')]);
   const active = new Map(courses.map(course => [String(course.topic_id), course.id]));
-  const groups = await Promise.all(subjects.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
+  const groups = await Promise.all(subjects.sort((a, b) => (a.kind === 'paper') - (b.kind === 'paper') || a.level - b.level || a.name.localeCompare(b.name))
     .map(async subject => [subject, await api(`/subjects/${subject.id}/topics`)]));
   const topicsById = new Map();
   for (const [subject, topics] of groups) for (const topic of topics) topicsById.set(String(topic.id), { topic, subject });
@@ -81,13 +81,15 @@ async function studyTopics(card, api) {
     fill(select, subject ? free(subject).map(t => [t.id, t.name + (t.global ? ' (global)' : '')]) : [], 'Every topic is switched on');
     select.disabled = add.disabled = !select.value;
   };
+  // University papers sit under one "Papers" choice; NCEA subjects under their level.
+  const shelf = subject => subject.kind === 'paper' ? 'papers' : String(subject.level);
   const fillSubjects = () => {
-    const here = groups.map(([s]) => s).filter(s => String(s.level) === levelSel.value && free(s).length);
+    const here = groups.map(([s]) => s).filter(s => shelf(s) === levelSel.value && free(s).length);
     fill(subjectSel, here.map(s => [s.id, s.name]), '—'); fillTopics();
   };
   const fillLevels = () => {
-    const levels = [...new Set(groups.filter(([s]) => free(s).length).map(([s]) => s.level))].sort((a, b) => a - b);
-    fill(levelSel, levels.map(n => [n, `NCEA Level ${n}`]), '—'); fillSubjects();
+    const levels = [...new Set(groups.filter(([s]) => free(s).length).map(([s]) => shelf(s)))].sort((a, b) => (a === 'papers') - (b === 'papers') || a - b);
+    fill(levelSel, levels.map(n => [n, n === 'papers' ? 'Papers' : `NCEA Level ${n}`]), '—'); fillSubjects();
     levelSel.disabled = subjectSel.disabled = !levels.length;
   };
   levelSel.onchange = fillSubjects; subjectSel.onchange = fillTopics;
@@ -98,7 +100,7 @@ async function studyTopics(card, api) {
     if (!shown.length) list.append(el('p', 'No topics yet. Add one below to get a lesson each night.', 'muted'));
     for (const [id, { topic, subject }] of shown) {
       const row = el('div', '', 'topic-row'); const name = el('span', topic.name, 'topic-name');
-      const meta = el('span', `Level ${subject.level} · ${subject.name}`, 'muted topic-meta');
+      const meta = el('span', subject.kind === 'paper' ? subject.name : `Level ${subject.level} · ${subject.name}`, 'muted topic-meta');
       const text = el('div', '', 'topic-text'); text.append(name, meta);
       const remove = el('button', 'Switch off', 'danger'); remove.type = 'button'; remove.setAttribute('aria-label', `Stop learning ${topic.name}`);
       row.append(text, ...(topic.global ? [el('span', 'Global', 'chip')] : []), remove); list.append(row);
@@ -122,23 +124,45 @@ async function studyTopics(card, api) {
   card.append(note);
 }
 
+// How explanations read: tone, reading level and pace. Not a "learning style": matching lessons to a preferred modality
+// (visual, auditory...) has no experimental support, so the choices here never change what is taught or how it is practised.
 async function teaching(card, api) {
-  card.append(el('h2', 'Teaching style'),
-    el('p', 'One teaching method across every subject. Describe how you learn best, for example “short steps, a worked example first, then questions”. This shapes how lessons and explanations are written, not what counts as correct.', 'muted'));
-  const profile = await api('/style-profile');
-  const area = el('textarea'); area.rows = 6; area.maxLength = 50000; area.value = profile.content; area.setAttribute('aria-label', 'Teaching instructions');
-  const save = el('button', 'Save teaching style', 'primary'); const revert = el('button', 'Revert');
+  card.append(el('h2', 'How explanations read'),
+    el('p', 'Choose the tone, reading level and pace of lessons and explanations. Every lesson still uses what helps everyone remember: questions before and after reading, worked examples that fade, and spaced review.', 'muted'));
+  const [chosen, profile] = await Promise.all([api('/teaching-preferences'), api('/style-profile')]);
   const note = el('p', '', 'muted'); note.setAttribute('role', 'status'); note.setAttribute('aria-live', 'polite');
-  const bar = el('div', '', 'toolbar'); bar.append(save, revert, note);
-  let saved = profile.content;
-  revert.onclick = () => { area.value = saved; note.textContent = ''; };
+  const labels = { tone: 'Tone', reading_level: 'Reading level', pace: 'Pace' };
+  const names = { warm: 'Warm', neutral: 'Neutral', direct: 'Direct', plain: 'Plain words', standard: 'Standard', technical: 'Technical', small: 'Small steps', brisk: 'Brisk' };
+  const current = { tone: chosen.tone, reading_level: chosen.reading_level, pace: chosen.pace };
+  for (const key of Object.keys(labels)) {
+    const group = el('div', '', 'segmented'); group.setAttribute('role', 'group'); group.setAttribute('aria-label', labels[key]);
+    const draw = () => {
+      group.replaceChildren();
+      for (const value of Object.keys(chosen.options[key])) {
+        const b = el('button', names[value] || value); b.type = 'button'; b.title = chosen.options[key][value]; b.setAttribute('aria-pressed', String(current[key] === value));
+        b.onclick = async () => {
+          current[key] = value; draw(); note.textContent = 'Saving…'; note.className = 'muted';
+          try { await api('/teaching-preferences', { method: 'PUT', ...json(current) }); note.textContent = 'Saved'; }
+          catch (error) { note.textContent = error.message; note.className = 'error'; }
+        };
+        group.append(b);
+      }
+    };
+    draw();
+    const row = el('div', '', 'stack'); row.append(el('h3', labels[key]), group); card.append(row);
+  }
+  // Notes written before these choices existed are kept and still used, for tone, language and pace only.
+  const area = el('textarea'); area.rows = 3; area.maxLength = 50000; area.value = profile.content; area.setAttribute('aria-label', 'Other notes on language and tone');
+  const save = el('button', 'Save notes'); const bar = el('div', '', 'toolbar'); bar.append(save);
   save.onclick = async () => {
     save.disabled = true; note.textContent = 'Saving…'; note.className = 'muted';
-    try { const result = await api('/style-profile', { method: 'PUT', ...json({ content: area.value }) }); saved = result.content; note.textContent = 'Saved'; }
+    try { await api('/style-profile', { method: 'PUT', ...json({ content: area.value }) }); note.textContent = 'Saved'; }
     catch (error) { note.textContent = error.message; note.className = 'error'; }
     finally { save.disabled = false; }
   };
-  card.append(area, bar);
+  const details = el('details'); details.open = !!profile.content.trim();
+  details.append(el('summary', 'Other notes (language, examples you relate to)'), area, bar);
+  card.append(details, note);
 }
 
 async function usage(card, api) {

@@ -23,6 +23,8 @@ export async function renderReviews(container, api) {
   };
   let today = auckland();
   let all = [];            // every saved question, due or not
+  let dueList = [];        // today's list from the planner: capped, ordered, with wrong answers re-queued this session
+  let leftOut = 0;
   let queue = [];          // what the practice view is working through
   let mode = 'due';        // 'due' | 'all' | 'practice'
   let returnTo = 'due';
@@ -44,7 +46,7 @@ export async function renderReviews(container, api) {
   container.replaceChildren(head, stats, tabs, status, content);
 
   const isDue = question => question.due_date <= today;
-  const dueQuestions = () => all.filter(isDue);
+  const dueQuestions = () => dueList;
 
   async function loadLabels() {
     const subjects = await api('/subjects');
@@ -57,7 +59,7 @@ export async function renderReviews(container, api) {
   function drawChrome() {
     const due = dueQuestions().length;
     stats.replaceChildren();
-    for (const [value, name] of [[due, 'Due now'], [all.length - due, 'Coming up'], [all.length, 'Total questions']]) {
+    for (const [value, name] of [[due, 'Due now'], [all.filter(q => !isDue(q)).length, 'Coming up'], [all.length, 'Total questions']]) {
       const stat = element('div', undefined, 'stat'); stat.append(element('b', String(value)), element('span', name)); stats.append(stat);
     }
     tabs.replaceChildren();
@@ -106,7 +108,7 @@ export async function renderReviews(container, api) {
         text.append(element('div', q.concept ? (snippet.length > 140 ? snippet.slice(0, 140) + '…' : snippet) : '', 'muted'));
         const meta = element('div', undefined, 'muted');
         meta.append(element('span', isDue(q) ? 'Due now' : `Due ${q.due_date}`, `chip ${isDue(q) ? 'warn' : ''}`),
-          ` ${labelOf(q.topic_id)} · ${q.answer_count ? `answered ${q.answer_count}×` : 'not answered yet'} · mastery ${Math.round((q.mastery || 0) * 100)}%`);
+          ` ${labelOf(q.topic_id)} · ${q.answer_count ? `answered ${q.answer_count}×` : 'not answered yet'}`);
         text.append(meta);
         const go = button(isDue(q) ? 'Answer' : 'Practise now', 'small'); if (isDue(q)) go.classList.add('primary');
         go.onclick = () => { queue = [q]; mode = 'practice'; returnTo = 'all'; show(true); };
@@ -121,7 +123,7 @@ export async function renderReviews(container, api) {
   function practice(questions, focus, back) {
     if (!questions.length) {
       const empty = element('div', undefined, 'empty');
-      empty.append(element('p', back === 'due' ? 'Nothing is due. You are all caught up.' : 'No more questions.'));
+      empty.append(element('p', back === 'due' ? (leftOut ? `Today’s reviews are done. ${leftOut} more are due but were kept for another day so the load stays manageable.` : 'Nothing is due. You are all caught up.') : 'No more questions.'));
       if (back === 'due' && all.length) {
         const more = button('Browse all questions', 'primary'); more.onclick = () => { mode = 'all'; show(); };
         empty.append(more);
@@ -137,6 +139,7 @@ export async function renderReviews(container, api) {
     const meta = element('div', undefined, 'toolbar');
     meta.append(element('span', labelOf(question.topic_id), 'chip'), element('span', isDue(question) ? `Due ${question.due_date}` : `Not due until ${question.due_date}`, `chip ${isDue(question) ? 'warn' : ''}`));
     if (back === 'due') meta.append(element('span', `${questions.length} left`, 'muted'));
+    if (question.relearning) meta.append(element('span', 'Again: you missed this earlier', 'chip warn'));
     card.append(meta);
     if (question.concept) card.append(inlineMath(question.concept, 'h2'));     // titles can carry maths, such as $K_c$
     const prompt = element('div'); mathText(prompt, question.question); card.append(prompt);
@@ -235,15 +238,19 @@ export async function renderReviews(container, api) {
         });
         drafts.delete(question.id); stash.clear(`review:${question.id}`); container.dataset.dirty = 'false';
         const stored = all.find(q => q.id === question.id);
-        if (stored) { stored.due_date = result.next_due; stored.answer_count = (stored.answer_count || 0) + 1; stored.mastery = Math.min(1, (stored.mastery || 0) * 0.75 + (result.correct ? 0.25 : 0)); }
+        if (stored) { stored.due_date = result.next_due; stored.answer_count = (stored.answer_count || 0) + 1; }
+        // Successive relearning: a miss comes back after a few other questions in this session, until it is answered right once.
+        dueList = dueList.filter(q => q.id !== question.id);
+        if (result.relearn && back === 'due') dueList.splice(Math.min(3, dueList.length), 0, { ...question, relearning: true });
         const outcome = result.outcome === 'correct' ? ['Correct', 'ok'] : result.outcome === 'incorrect' ? ['Not quite', 'bad'] : ['Not independently marked', 'warn'];
         const verdict = element('p'); verdict.append(element('span', outcome[0], `chip ${outcome[1]}`), element('span', ' AI judgement, advisory only.', 'muted'));
         feedback.append(verdict);
         if (result.outcome === 'confidence-based') feedback.append(element('p', 'Scheduled using your confidence.', 'muted'));
         if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(aiBox(explanation)); }
-        const mastery = typeof result.mastery === 'number' && Number.isFinite(result.mastery) ? `${Math.round(result.mastery * 100)}%` : 'not provided';
-        feedback.append(element('p', `Next due ${result.next_due || 'not provided'} · topic mastery estimate ${mastery}, a scheduling estimate and not proof of mastery.`, 'muted'));
-        const finished = back === 'due' ? questions.length <= 1 : true;
+        if (result.relearn && back === 'due') feedback.append(element('p', 'You will get this one again in a few questions, after the answer above has had a moment to settle.', 'muted'));
+        if (result.confident_miss) feedback.append(element('p', 'You were confident about this one. Misses like this are worth a careful look at the answer: they are often the easiest to fix.', 'muted'));
+        feedback.append(element('p', `Next review ${result.next_due || 'not provided'}, planned from how well you recalled it${result.relearn ? '' : ' and when your assessments are'}.`, 'muted'));
+        const finished = back === 'due' ? !dueList.length : true;
         const next = button(back === 'due' ? (finished ? 'Finish review' : 'Next question') : 'Back to all questions', 'primary');
         next.onclick = () => {
           status.textContent = '';
@@ -268,9 +275,13 @@ export async function renderReviews(container, api) {
     loading = true; refresh.disabled = true; status.textContent = 'Loading questions…';
     today = auckland();
     try {
-      // The due call also writes review questions for lessons completed since the last visit.
+      // The server's date wins, so its planner and this page agree on what "today" is.
+      today = (await api('/dev/clock').catch(() => null))?.today || today;
+      // The due call also writes review questions for lessons completed since the last visit; the plan then gives today's list.
       const [due] = await Promise.all([api(`/review-questions/due?as_of=${today}`), loadLabels().catch(() => { labels.clear(); status.dataset.names = 'failed'; })]);
       if (!Array.isArray(due)) throw new Error('Invalid due-question response.');
+      const plan = await api(`/review-plan?as_of=${today}`).catch(() => ({ items: due, left_out: 0 }));
+      dueList = plan.items; leftOut = plan.left_out || 0;
       all = await api('/review-questions?limit=500');
       if (!Array.isArray(all)) throw new Error('Invalid question list.');
       show();

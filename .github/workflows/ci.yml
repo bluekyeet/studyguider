@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: pip install -r server/requirements.txt pytest httpx
+      - run: pip install -r server/requirements.txt pytest httpx fsrs==6.3.2
       - run: python -m pytest server/tests -q
         env:
           PYTHONPATH: server
@@ -69,6 +69,8 @@ jobs:
         run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/accounts_check.py
       - name: Check the global library (shared read-only, personal additions, per-account search)
         run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/library_check.py
+      - name: Check the curriculum model, its migration, and spaced review planned over simulated days
+        run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/curriculum_check.py
       - name: Check rapid exam sessions
         run: docker compose -f compose.yaml exec -T api python - < server/tests/rapid_check.py
       - name: Check unprivileged font rendering

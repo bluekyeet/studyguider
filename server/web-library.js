@@ -101,12 +101,15 @@ async function subjects(root, api) {
   const { wrap } = head('Library', 'The global library, plus your own subjects, topics and study files.');
   root.append(wrap);
   if (!all.length) root.append(el('p', 'No subjects yet. Add your first one below.', 'empty'));
-  for (const level of [...new Set(all.map(s => s.level))]) {
-    root.append(el('h2', `NCEA Level ${level}`));
+  // NCEA subjects by level, then university papers (set up in Plan) together.
+  const shelves = [...new Set(all.filter(s => s.kind !== 'paper').map(s => s.level))].map(level => [`NCEA Level ${level}`, s => s.kind !== 'paper' && s.level === level]);
+  if (all.some(s => s.kind === 'paper')) shelves.push(['Papers', s => s.kind === 'paper']);
+  for (const [heading, belongs] of shelves) {
+    root.append(el('h2', heading));
     const grid = el('div', '', 'card-grid');
-    for (const subject of all.filter(s => s.level === level)) {
+    for (const subject of all.filter(belongs)) {
       const tile = el('a', '', 'tile'); tile.href = libraryUrl({ subject: subject.id });
-      tile.append(el('strong', subject.name), el('p', `Level ${subject.level}`, 'muted'));
+      tile.append(el('strong', subject.name), el('p', subject.kind === 'paper' ? (subject.level ? `Level ${subject.level}` : 'Paper') : `Level ${subject.level}`, 'muted'));
       if (subject.global) tile.append(chip('Global'));
       grid.append(tile);
     }
@@ -131,7 +134,7 @@ async function subjects(root, api) {
 
 async function topics(root, api, subject) {
   const list = await api(`/subjects/${subject.id}/topics`);
-  const { wrap, actions } = head(subject.name, `NCEA Level ${subject.level}`, crumbs([{ label: 'Library', href: libraryUrl() }, { label: subject.name }]));
+  const { wrap, actions } = head(subject.name, subject.kind === 'paper' ? 'Paper' : `NCEA Level ${subject.level}`, crumbs([{ label: 'Library', href: libraryUrl() }, { label: subject.name }]));
   const remove = el('button', 'Delete subject', 'danger small'); if (!subject.global) actions.append(remove);
   const note = status(); root.append(wrap);
   remove.onclick = () => guard(remove, note, async () => {
