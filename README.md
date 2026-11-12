@@ -2,7 +2,7 @@
 
 ![StudyGuider](server/branding/wordmark.png)
 
-A personal NCEA study companion for one learner (Physics and Chemistry so far). A FastAPI + PostgreSQL
+A personal study companion for NCEA and university papers (AUT, the University of Auckland or elsewhere). A FastAPI + PostgreSQL
 server, an Android app and a website all share the same data, so lessons, answers and reading position
 follow you between devices.
 
@@ -16,17 +16,23 @@ unverified, and AI-written practice is kept separate from real past papers.
 - **Lessons:** one lesson per topic you are learning is prepared overnight (New Zealand time) from your own
   sources, reviewed by a second model and bounded rewrites. Practice sections save your answers and give
   AI feedback. Explain answers questions about a section and can save the reply to topic notes.
-- **Review:** short spaced-repetition questions made from completed lessons and wrong exam answers, with
-  confidence ratings, due dates and a mastery estimate per topic.
+- **Plan:** an NCEA programme or university papers, with their learning outcomes or standards and dated, weighted
+  assessments. An AUT course code fetches the public paper descriptor; any other outline is pasted or uploaded; every
+  import is a draft to check. Lessons switch to mixed exam-style practice in the three weeks before an assessment and to a
+  weekly maintenance lesson after it.
+- **Review:** questions made from completed lessons and wrong exam answers come back on an FSRS-6 schedule driven by how
+  well each was recalled, pulled in before an assessment and kept at a maintenance level after it. A daily limit from your
+  study time, wrong answers asked again in the same session, and a predicted recall per topic.
 - **Exams:** original past-paper questions, mixed practice, or clearly unofficial AI practice. Typed or
   scanned answers, evidence-linked AI marking checked against the schedule, and your own override.
 - **Rapid questions:** pick a topic and flash through exam questions (past-paper and AI-written, prepared ahead), with no
   feedback until you end the session. Answers are marked in the background and the results are a grade breakdown. Misses go to
   **Exam revision**, where you pick a topic and get a pack of re-teaching and questions built from your mistakes there. Both live under Exams.
-- **Home:** today's lessons, reviews due, mastery per topic and a rough estimated grade (from review
-  answers only, not an NZQA grade), weak concepts and recent exams.
+- **Home:** today's lessons, reviews due, coming assessments with predicted recall, recall per topic, grade estimates
+  (NCEA from full past papers against that paper's cut scores; university from the marks you enter), weak concepts and
+  recent exams. None of it is an official result.
 
-Clients: the website at `/` (Home, Lessons, Review, Exams, Library, Settings), the Android app (same
+Clients: the website at `/` (Home, Plan, Lessons, Review, Exams, Library, Settings), the Android app (same
 areas), and `/manage`, a developer-style "Advanced tools" page for diagram review, question parsing and
 checks, exam assembly and schedule runs.
 
