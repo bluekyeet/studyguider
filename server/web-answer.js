@@ -447,6 +447,7 @@ function sketchBlock({ graph, form, saved, figure, upload, changed, number }) {
     const blob = await new Promise(resolve => out.toBlob(resolve, 'image/png'));
     const form = new FormData();
     form.append('image', blob, 'drawing.png');
+    // A field of the multipart form, not a request body, so no Content-Type header is set for it.
     form.append('drawing', JSON.stringify({ kind: graph ? 'graph' : 'drawing', background, items: state.items, ...(spec || {}) }));
     status.textContent = 'Saving drawing…';
     pending = upload(form).then(result => {
