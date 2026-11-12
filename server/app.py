@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from reviews import create_review_tables, review_router
 from lessons import create_lesson_tables, lesson_router
 from marking import create_marking_tables, marking_router
+from answer_media import create_answer_media_tables, media_router
 from rapid import create_rapid_tables, rapid_router
 from revision import create_revision_tables, revision_router
 from exams import create_exam_tables, exam_router
@@ -135,6 +136,7 @@ def init_schema(db):
     create_scheduler_tables(db)
     create_game_tables(db)
     create_hint_tables(db)
+    create_answer_media_tables(db)
     # The global library (library_global.py): rows an account holds as read-only copies carry the library's id.
     for table in ("subjects", "topics", "exam_questions"):
         db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
@@ -420,6 +422,7 @@ app.include_router(usage_router(connect, admin_only, model_reply, model_reply_vi
 app.include_router(game_router(connect, accounts_db, authorised))
 app.include_router(hint_router(connect, authorised, model_reply))
 app.include_router(diagram_router(connect, authorised, model_reply, model_reply_vision))
+app.include_router(media_router(connect, authorised, model_reply, model_reply_vision))
 
 
 @app.get("/health")
@@ -488,7 +491,7 @@ def study_styles():
 
 @app.get('/{module_name}.js', include_in_schema=False)
 def study_module(module_name: str):
-    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings', 'web-game', 'web-plan'}:
+    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings', 'web-game', 'web-plan', 'web-answer'}:
         raise HTTPException(404, 'Module not found')
     # no-cache: the browser re-checks on each load, so a new version shows without a hard refresh
     return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript', headers={'Cache-Control': 'no-cache'})

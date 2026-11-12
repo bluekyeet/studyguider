@@ -1,7 +1,8 @@
 // Rapid exam questions.
 // A rapid session is one-way: questions flash up, you answer or skip and move on, and you see nothing about
 // how you are doing until you end the session. The server enforces that; this page just never asks for results early.
-import { mathText, mathInput, stash, aiBox, countUp, hintButton, tableAnswer } from './web-common.js';
+import { mathText, stash, aiBox, countUp, hintButton } from './web-common.js';
+import { answerBox } from './web-answer.js';
 import { el, field, option, json, levelPicker, scanForm, questionView } from './web-exam-shared.js';
 
 const GRADE = { not_achieved: 'Not achieved', achieved: 'Achieved', merit: 'Merit', excellence: 'Excellence' };
@@ -151,11 +152,9 @@ export async function renderRapid(container, api) {
       const card = el('article', '', 'card stack');
       const head = el('div', '', 'toolbar');
       head.append(el('h2', `Question ${current.position}${target ? ` of ${target}` : ''}`), el('span', sourceLine(current), 'chip'));
-      const answer = el('textarea'); answer.rows = 6; answer.maxLength = 100000;
-      answer.value = stash.read(stashKey)?.text || '';
-      answer.setAttribute('aria-label', 'Your answer');
+      const answer = answerBox({ api, forms: current.answer_forms, value: stash.read(stashKey)?.text || '', collapsed: true, maxLength: 100000 });
       answer.addEventListener('input', () => stash.write(stashKey, { text: answer.value }));
-      const box = el('label', 'Your answer'); box.append(mathInput(answer, { collapsed: true }));
+      const box = el('div', '', 'stack'); box.append(el('span', 'Your answer', 'field-label'), answer);
       const hint = el('div', '', 'toolbar'); hint.append(hintButton(api, { kind: 'rapid', ref: `${id}:${current.question_id}`, answer: () => answer.value }));
       // Optional: a photo of handwriting fills the box; moving on confirms it.
       const photos = el('details');
@@ -169,8 +168,7 @@ export async function renderRapid(container, api) {
           const form = scanForm([...picker.files]);
           busy = true; read.disabled = true; status.textContent = 'Reading your handwriting…';
           const result = await api(`/exams/${id}/answers/${current.question_id}/scan`, { method: 'POST', body: form });
-          answer.value = result.transcription; scanRevision = result.scan_revision; stash.write(stashKey, { text: answer.value });
-          answer.dispatchEvent(new Event('input', { bubbles: true }));
+          scanRevision = result.scan_revision; answer.setText(result.transcription); stash.write(stashKey, { text: answer.value });
           status.textContent = 'Read from your page. Check it, then press Next.';
         } catch (err) { status.textContent = err.message; }
         finally { busy = false; read.disabled = false; }
@@ -185,6 +183,7 @@ export async function renderRapid(container, api) {
         if (busy) return;
         lock(true); status.textContent = '';
         try {
+          await answer.flush();
           const reply = await api(`/rapid/${id}/next`, json('POST', {
             question_id: current.question_id, answer: kind === 'skip' ? '' : answer.value, scan_revision: scanRevision,
             seconds: Math.round((Date.now() - started) / 1000), skip: kind === 'skip' }));
@@ -195,14 +194,14 @@ export async function renderRapid(container, api) {
       };
       next.onclick = () => move('next');
       skip.onclick = () => move('skip');
-      finish.onclick = () => {
+      finish.onclick = async () => {
         if (busy) return;
         if (!window.confirm('End the session now? Your results appear straight away.')) return;
+        await answer.flush();
         endSession(id, { question_id: current.question_id, answer: answer.value, scan_revision: scanRevision, seconds: Math.round((Date.now() - started) / 1000) });
       };
       answer.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); move('next'); } });
-      const grid = tableAnswer([current.question_text, ...(current.parts || []).map(p => p?.text || '')].join('\n'), answer);
-      card.append(head, questionView(current), ...(grid ? [grid] : []), box, hint, photos, controls, status);
+      card.append(head, questionView(current), box, hint, photos, controls, status);
       return { card, focus: () => answer.focus({ preventScroll: true }) };
     };
     const swap = () => {

@@ -34,6 +34,7 @@ ENV KATEX_ASSET_DIR=/app/katex
 ENV XDG_CACHE_HOME=/tmp/studyguider-cache
 COPY game.py game_items.py transcribe.py hints.py ./
 COPY fsrs_model.py clock.py curriculum.py review_plan.py ./
+COPY answer_forms.py answer_media.py ./
 COPY set_password.py .
 COPY manage.html .
 COPY web.html web.css web*.js ./

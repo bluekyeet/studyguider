@@ -138,6 +138,15 @@ export function mathText(target, content) {
       continue;
     }
 
+    // A drawing or graph in a saved answer (web-answer.js). Only this app's own answer images are shown.
+    const drawn = /^\s*!\[([^\]\n]{0,80})\]\((\/answer-images\/\d{1,18})\)\s*$/.exec(line);
+    if (drawn) {
+      const figure = el('figure', undefined, 'answer-drawing');
+      const image = el('img'); image.src = drawn[2]; image.alt = drawn[1] || 'Drawing'; image.loading = 'lazy';
+      figure.append(image, el('figcaption', drawn[1] || 'Drawing'));
+      root.append(figure); i++; continue;
+    }
+
     const heading = /^\s*(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
     if (heading) { root.append(withInline(el(`h${Math.min(6, heading[1].length + 1)}`), heading[2])); i++; continue; }
 
@@ -390,65 +399,4 @@ export function hintButton(api, { kind, ref, answer = () => '', question = () =>
   };
   api(path).then(result => { if (result?.hint && !button.disabled) button.textContent = 'Show hint'; }).catch(() => {});
   return button;
-}
-
-// A "complete the table" question: the first Markdown table in the question that has empty cells becomes a grid to fill in. The
-// filled table is written into the answer box as a Markdown table (replacing an earlier one there), so it is saved, marked and
-// restored like any other answer.
-const tableLine = line => /^\s*\|.*\|\s*$/.test(line);
-const tableCells = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map(cell => cell.trim());
-function firstTable(text) {
-  const lines = String(text || '').split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (!tableLine(lines[i])) continue;
-    let end = i; while (end < lines.length && tableLine(lines[end])) end++;
-    const block = lines.slice(i, end);
-    const rows = block.filter(line => !/^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/.test(line)).map(tableCells);
-    if (rows.length >= 2) return { start: i, end, rows };
-    i = end;
-  }
-  return null;
-}
-export function tableAnswer(question, textarea) {
-  const template = firstTable(question);
-  if (!template) return null;
-  const [header, ...body] = template.rows;
-  if (!body.some(row => row.slice(1).some(cell => !cell))) return null;
-  const width = header.length;
-  const saved = firstTable(textarea.value);
-  const values = body.map((row, r) => Array.from({ length: width }, (_, c) => row[c] || (saved?.rows[r + 1]?.[c] ?? '')));
-  const write = () => {
-    const line = row => `| ${row.map(cell => cell.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ')).join(' | ')} |`;
-    const table = [line(header), `| ${header.map(() => '---').join(' | ')} |`, ...values.map(line)].join('\n');
-    const lines = textarea.value.split('\n');
-    const current = firstTable(textarea.value);
-    textarea.value = current ? [...lines.slice(0, current.start), table, ...lines.slice(current.end)].join('\n')
-      : textarea.value.trim() ? `${table}\n\n${textarea.value}` : table;
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-  const wrap = el('div', undefined, 'table-answer');
-  wrap.append(el('p', 'Fill in the table. It is added to your answer below.', 'muted'));
-  const scroll = el('div', undefined, 'table-scroll');
-  const table = el('table', undefined, 'table fill-table');
-  const head = el('tr');
-  for (const cell of header) { const th = el('th'); th.append(inlineMath(cell)); head.append(th); }
-  const thead = el('thead'); thead.append(head);
-  const tbody = el('tbody');
-  body.forEach((row, r) => {
-    const tr = el('tr');
-    for (let c = 0; c < width; c++) {
-      const td = el('td');
-      if (row[c]) td.append(inlineMath(row[c]));
-      else {
-        const input = el('textarea'); input.rows = 2; input.value = values[r][c];
-        input.setAttribute('aria-label', `${row[0] || `Row ${r + 1}`}: ${header[c] || `column ${c + 1}`}`);
-        input.addEventListener('input', () => { values[r][c] = input.value; write(); });
-        td.append(input);
-      }
-      tr.append(td);
-    }
-    tbody.append(tr);
-  });
-  table.append(thead, tbody); scroll.append(table); wrap.append(scroll);
-  return wrap;
 }

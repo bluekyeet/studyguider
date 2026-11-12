@@ -1,4 +1,5 @@
-import { mathText, mathInput, autosave, aiBox, tableAnswer } from './web-common.js';
+import { mathText, mathInput, autosave, aiBox } from './web-common.js';
+import { answerBox } from './web-answer.js';
 import { el, field, option, json, levelPicker, reflow, withoutLabel, displayLabel, scanForm, mathsNote } from './web-exam-shared.js';
 import { renderRapid } from './web-rapid.js';
 import { renderRevision } from './web-revision.js';
@@ -268,36 +269,49 @@ async function renderClassicExams(container, api) {
           const open = el('a'); open.href = image.src; open.target = '_blank'; open.rel = 'noopener'; open.title = 'Open full size';
           open.append(image); return open;
         });
+        // A drawing over the question's figure uses the first figure of that part, from the original paper page.
+        const figureOf = p => {
+          const d = (p?.diagrams || []).find(item => q.paper_resource_id && Array.isArray(item.bbox) && item.bbox.length === 4);
+          return d ? `/resources/${encodeURIComponent(q.paper_resource_id)}/pages/${d.page}/diagram-image?${['x0', 'y0', 'x1', 'y1'].map((name, i) => `${name}=${d.bbox[i]}`).join('&')}` : null;
+        };
+        const formsFor = label => q.answer_forms?.[label] || q.answer_forms?.[''] || null;
         const addPart = (label, wording, extras = [], input = null, heading = '') => {
           const part = el('div', '', 'exam-part'); const body = el('div', '', 'stack');
           part.append(el('div', label, 'exam-part-label'), body);
           if (heading) body.append(el('h4', heading));
           if (wording) body.append(mathText(reflow(wording)));
           body.append(...extras);
-          if (input) {
-            const grid = tableAnswer(wording, input);
-            if (grid) body.append(grid);
-            body.append(mathField(`Your answer ${label}`.trim(), input));
-          }
+          if (input) body.append(el('span', `Your answer ${label}`.trim(), 'field-label'), input);
           partsBox.append(part);
         };
         if (definitions.length) {
           for (const p of definitions) {
             let input = null;
             if (partMode && answerable(p)) {
-              input = el('textarea'); input.rows = 4; input.maxLength = 100000;
-              input.value = documentAnswer.parts[p.label] || ''; partInputs.set(p.label, input);
+              const original = (q.parts || []).find(part => displayLabel(part.label || '') === p.label);
+              input = answerBox({ api, forms: formsFor(original?.label) || formsFor(p.label), value: documentAnswer.parts[p.label] || '',
+                figure: figureOf(original), collapsed: true, rows: 4, maxLength: 100000, label: `Answer ${p.label}` });
+              partInputs.set(p.label, input);
             }
             addPart(p.label, p.text, diagrams(p), input, p.heading);
           }
           // Keep saved answers whose part no longer exists in the question.
           for (const [label, value] of Object.entries(partMode ? documentAnswer.parts : {})) {
             if (partInputs.has(label)) continue;
-            const input = el('textarea'); input.rows = 4; input.value = value; partInputs.set(label, input);
+            const input = answerBox({ api, value, collapsed: true, rows: 4, maxLength: 100000 }); partInputs.set(label, input);
             addPart(label, '', [], input);
           }
         } else {
           partsBox.append(mathText(reflow(q.question_text || 'Question text unavailable. Open the original paper for the full wording and diagrams.')));
+        }
+        // A question without parts, typed: one answer box for the whole question, kept in step with the raw text.
+        let whole = null;
+        if (!partMode && !handwritten && !/^\s*\{/.test(raw.value)) {
+          whole = answerBox({ api, forms: formsFor(''), value: raw.value, figure: figureOf((q.parts || []).find(part => part.diagrams?.length)),
+            collapsed: true, maxLength: 100000 });
+          whole.addEventListener('input', () => { raw.value = whole.value; raw.dispatchEvent(new Event('input')); });
+          partsBox.append(el('span', 'Your answer', 'field-label'), whole);
+          rawField.hidden = true;
         }
         card.append(partsBox);
         const controls = el('div', '', 'toolbar');
@@ -363,12 +377,14 @@ async function renderClassicExams(container, api) {
           const buttons = root.querySelectorAll('button');
           const disabled = [...buttons].map(b => b.disabled);
           buttons.forEach(b => { b.disabled = true; });
-          raw.disabled = true; partInputs.forEach(i => { i.disabled = true; });
+          raw.disabled = true; partInputs.forEach(i => { i.disabled = true; }); if (whole) whole.disabled = true;
           status.textContent = action === 'feedback' ? 'Loading saved feedback…' : 'Saving…';
           try {
             const path = `/exams/${id}/answers/${q.id}`;
             if (action !== 'feedback') {
               if (draft.value().length > 100000) throw new Error('Answer exceeds 100,000 characters. Shorten it before saving.');
+              // Drawings still uploading become part of the answer before it is saved and marked.
+              await Promise.all([...partInputs.values(), ...(whole ? [whole] : [])].map(box => box.flush?.()));
               await saver.flush();   // the autosaver owns the revision, so a click never races it
               if (saver.conflicted || draft.value() !== draft.saved) throw new Error('Your answer could not be saved yet; see the message under the box.');
               container.dataset.dirty = String(dirty());
@@ -388,7 +404,7 @@ async function renderClassicExams(container, api) {
             container.dataset.busy = 'false';
             if (alive()) {
               buttons.forEach((b, i) => { b.disabled = disabled[i]; });
-              raw.disabled = false; partInputs.forEach(i => { i.disabled = false; });
+              raw.disabled = false; partInputs.forEach(i => { i.disabled = false; }); if (whole) whole.disabled = false;
             }
           }
         };

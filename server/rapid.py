@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 import rapid_state
 import userspace
 import splitting
-from exams import PRACTICE_SYSTEM, parse_practice_paper
+from exams import PRACTICE_SYSTEM, parse_practice_paper, with_forms
+import answer_forms
 
 log = logging.getLogger("uvicorn.error")
 
@@ -105,11 +106,14 @@ def _payload(db, exam_id, question_id):
     if not row:
         raise HTTPException(404, "Question not found")
     ai = row[2] == "ai"
-    return mathtext.overlay(db, [{"question_id": row[0], "position": row[1], "source": "ai" if ai else "past",
+    payload = mathtext.overlay(db, [{"question_id": row[0], "position": row[1], "source": "ai" if ai else "past",
             "standard_number": row[3], "year": None if ai else row[4], "parts": row[5],
             "question_text": row[6][:30000], "figure_pages": row[7],
             "paper_resource_id": None if ai or not row[8] else str(row[8]), "paper_page": None if ai else row[9],
             "label": row[11] if row[10] else None}])[0]
+    # A rapid question has one answer box, so the forms of its parts are offered together.
+    payload["answer_forms"] = answer_forms.merged(with_forms(db, [dict(payload, id=row[0])])[0]["answer_forms"])
+    return payload
 
 
 def _current(db, exam_id):
@@ -284,9 +288,10 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                 if db.execute("SELECT 1 FROM rapid_sessions WHERE exam_id = %s AND ended_at IS NULL", (exam_id,)).fetchone() is None:
                     return
                 qid = db.execute("""INSERT INTO exam_questions (topic_id, standard_number, year, question_number, paper_page, schedule_page,
-                        marks, question_text, schedule_text, source)
-                    VALUES (%s, %s, EXTRACT(YEAR FROM now()), 'AI', 1, 1, %s, %s, %s, 'ai') RETURNING id""",
-                                 (topic_id, standard[0], item["marks"], item["question"], item["rubric"])).fetchone()[0]
+                        marks, question_text, schedule_text, source, answer_forms)
+                    VALUES (%s, %s, EXTRACT(YEAR FROM now()), 'AI', 1, 1, %s, %s, %s, 'ai', %s::jsonb) RETURNING id""",
+                                 (topic_id, standard[0], item["marks"], item["question"], item["rubric"],
+                                  json.dumps({"": item.get("answer_forms") or answer_forms.infer(item["question"])}))).fetchone()[0]
                 db.execute("INSERT INTO rapid_queue (exam_id, question_id) VALUES (%s, %s)", (exam_id, qid))
 
     def fill_buffer(exam_id):

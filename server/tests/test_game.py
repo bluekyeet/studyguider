@@ -26,6 +26,36 @@ def test_art_is_valid_svg_for_a_sample_of_items_and_ignores_bad_outfits():
     assert svg.count("<svg") == 1
 
 
+def test_every_style_draws_on_both_bodies_with_no_placeholder_left():
+    for slot, styles in items.STYLES.items():
+        for style in styles:
+            item_id = f"{slot}.{style}.rainbow"
+            pictures = [items.item_svg(item_id)] + ([items.avatar_svg({slot: item_id}, build=build) for build in items.BUILDS] if slot in items.WORN else [])
+            for svg in pictures:
+                xml.dom.minidom.parseString(svg)
+                assert "@" not in svg and "|||" not in svg, item_id
+
+
+def test_small_pictures_are_head_and_shoulders_and_hats_flatten_tall_hair():
+    whole, bust = items.avatar_svg({}, "sand"), items.avatar_svg({}, "sand", crop="bust")
+    assert 'viewBox="0 0 200 300"' in whole and f'viewBox="{items.BUST}"' in bust
+    assert items.avatar_svg({}, "sand", crop="nonsense") == whole
+    bun = items.avatar_svg({"hair": "hair.bun.red"})
+    assert len(items.avatar_svg({"hair": "hair.bun.red", "hat": "hat.halo.gold"})) > len(bun)                 # an open hat keeps the bun
+    assert "<circle" in bun and len(items.hair_layers("hair.bun.red", crest=False)[0]) < len(items.hair_layers("hair.bun.red")[0])
+
+
+def test_art_renders_as_png_where_cairo_is_installed():
+    import pytest
+    try:
+        import cairosvg  # noqa: F401
+    except (ImportError, OSError):
+        pytest.skip("cairo is not installed here")
+    for svg in (items.avatar_svg({"hair": "hair.afro.galaxy", "top": "top.kimono.rainbow", "back": "back.backpack.holo", "held": "held.flask.green", "pet": "pet.owl.brown"}, "tan", build="feminine"),
+                items.avatar_svg({}, crop="bust"), items.item_svg("hat.wizard.galaxy"), items.item_svg("held.balloon.red"), items.item_svg("trinket.planet.blue")):
+        assert items.png(svg, 96)[1:4] == b"PNG"
+
+
 def test_pity_forces_a_rare_and_an_epic():
     rng = random.Random(3)
     assert all(game.roll_rarity(rng, game.RARE_PITY - 1, 0) >= 2 for _ in range(200))
