@@ -18,17 +18,17 @@ import game_items as items  # noqa: E402
 
 # The parts of server/web.css these pictures sit in, so the sheet shows them the way the Rewards page does.
 CSS = """
-:root{--bg:#121318;--surface:#1a1b21;--surface-2:#23242b;--surface-3:#2d2e35;--line:rgba(148,163,184,.18);--text:#e4e1e9;--muted:#a8abbb}
-:root[data-theme=light]{--bg:#f5f6fa;--surface:#fff;--surface-2:#f0f2f7;--surface-3:#e4e7ef;--line:rgba(30,41,59,.14);--text:#1a1c24;--muted:#525868}
+:root{--stage:STAGE;--bg:#121318;--surface:#1a1b21;--surface-2:#23242b;--surface-3:#2d2e35;--line:rgba(148,163,184,.18);--text:#e4e1e9;--muted:#a8abbb}
+:root[data-theme=light]{--stage:LIGHTSTAGE;--bg:#f5f6fa;--surface:#fff;--surface-2:#f0f2f7;--surface-3:#e4e7ef;--line:rgba(30,41,59,.14);--text:#1a1c24;--muted:#525868}
 body{margin:0;padding:18px;background:var(--bg);color:var(--text);font:13px/18px Inter,system-ui,"Segoe UI",sans-serif;
   --r0:#a1a7b5;--r1:#3ddc97;--r2:#5aa9ff;--r3:#b77cff;--r4:#ffc23d;--r5:#ff5fb7}
 h1{font-size:18px;margin:0 0 12px}h2{font-size:13px;margin:18px 0 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
 figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:4px}
 figcaption{font-size:11px;color:var(--muted);max-width:150px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.frame{border-radius:18px;overflow:hidden;background:STAGE;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.frame{border-radius:18px;overflow:hidden;background:var(--stage);box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .frame img,.plain img{display:block;width:100%;height:100%}
-.plain{border-radius:14px;overflow:hidden;background:var(--surface-3)}
+.plain{border-radius:14px;overflow:hidden;background:var(--stage)}
 .plate{--rc:var(--r0);width:120px;height:120px;border-radius:14px;display:grid;place-items:center;overflow:hidden;
   background:PLATE}
 .plate img{width:86%;height:86%;object-fit:contain;filter:drop-shadow(0 3px 4px rgba(0,0,0,.18))}
@@ -45,8 +45,8 @@ def _css_value(selector, prop):
 
 
 def css():
-    return (CSS.replace("STAGE", _css_value(".stage-frame", "background")).replace("PLATE", _css_value(".plate", "background"))
-            .replace("ICON", _css_value(".slot img", "background")))
+    return (CSS.replace("LIGHTSTAGE", _css_value(':root[data-theme="light"] .game', "--stage")).replace("STAGE", _css_value(".game", "--stage"))
+            .replace("PLATE", _css_value(".plate", "background")).replace("ICON", _css_value(".slot img", "background")))
 
 
 def img(svg, w, h=None, cls=""):
@@ -86,8 +86,9 @@ def base_sheet():
         out.append(f"<h2>{build}: every skin tone, nothing equipped</h2><div class=row>"
                    + "".join(fig(avatar({}, skin, build, 160), skin) for skin in SKINS) + "</div>")
     sizes = "".join(fig(avatar(OUTFITS[i % len(OUTFITS)][1], SKINS[i % 6], BUILDS[i % 2], w, "plain"), f"{w}px")
-                    for i, w in enumerate([104, 104, 84, 84, 64, 64, 32, 32, 32, 32]))
-    out.append(f"<h2>the sizes the app shows: podium 104 and 84, phone podium 64, leaderboard row 32</h2><div class=row>{sizes}</div>")
+                    for i, w in enumerate([104, 104, 84, 84, 64, 64]))
+    sizes += "".join(fig(avatar(OUTFITS[i][1], SKINS[i % 6], BUILDS[i % 2], 40, "plain", crop="bust"), "40px") for i in range(8))
+    out.append(f"<h2>the sizes the app shows: podium 104 and 84, phone podium 64, leaderboard row 40 (head and shoulders)</h2><div class=row>{sizes}</div>")
     return "".join(out)
 
 
@@ -104,9 +105,9 @@ def worn_sheet(slot):
     return f"<div class=row>{''.join(cells)}</div>"
 
 
-def icon_sheet():
+def icon_sheet(slots):
     out = []
-    for slot in items.SLOTS:
+    for slot in slots:
         cells = []
         for i, style in enumerate(items.STYLES[slot]):
             colour = COLOURS[(i * 3) % len(COLOURS)]
@@ -160,12 +161,13 @@ def zoom_sheet():
 def main(out):
     out = pathlib.Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    sheets = {"base": ("The character", base_sheet()), "combos": ("Whole outfits", combo_sheet()), "zoom": ("Close up", zoom_sheet()), "icons": ("Item icons, as the shop and wardrobe show them", icon_sheet())}
+    sheets = {"base": ("The character", base_sheet()), "combos": ("Whole outfits", combo_sheet()), "zoom": ("Close up", zoom_sheet()), "icons-a": ("Item icons, as the shop and wardrobe show them (1 of 2)", icon_sheet(items.SLOTS[:6])),
+              "icons-b": ("Item icons, as the shop and wardrobe show them (2 of 2)", icon_sheet(items.SLOTS[6:]))}
     for slot in items.WORN:
         sheets[f"worn-{slot}"] = (f"Every {slot} style, worn", worn_sheet(slot))
     for name, (title, body) in sheets.items():
         (out / f"{name}.html").write_text(page(title, body), encoding="utf-8")
-    (out / "icons-light.html").write_text(page("Item icons, light theme", icon_sheet(), "light"), encoding="utf-8")
+    (out / "icons-light.html").write_text(page("Item icons, light theme", icon_sheet(items.SLOTS), "light"), encoding="utf-8")
     (out / "base-light.html").write_text(page("The character, light theme", base_sheet() + combo_sheet(), "light"), encoding="utf-8")
     print(f"wrote {len(sheets) + 2} sheets to {out}")
 

@@ -44,3 +44,28 @@ Weaknesses seen in the round 1 sheets, to fix next:
 9. Icons: the mannequin's forehead shadow looks like a skull cap on face items.
 10. The 32 px leaderboard picture is still unreadable (it shows the whole figure).
 11. Dark items (black, obsidian) disappear into the dark stage behind the character.
+
+## 2-round: fixing what round 1 showed
+
+- Face: lighter fringe shadow, no cheek patch; the fringe and the hair behind it now share one crown edge (no double line, no
+  lumps by the ears); the short fringe no longer points a lock down between the eyes.
+- Pets are 18% larger and stand on the other side of the character, so they never cover what the hand holds. Held things are 12% larger.
+- "Back" items can have a part in front of the body: capes fasten with a collar and a gold clasp, the backpack has straps. The
+  shell and short cape are wider so they show past the arms.
+- Auras are bolder: a ring of flames, larger hearts and petals, a thick orbit.
+- Thinner glasses rims, proper straps on the tank top and swim top, the graph-paper curve is gone.
+- The mannequin on item icons has no forehead shadow.
+- **Small pictures.** `/game/art/avatar.svg|png?crop=bust` gives head and shoulders; leaderboard rows use it at 40 px (web and Android).
+- **Stage.** One `--stage` backdrop for every place the character stands (stage, banner portrait, podium, rows): a lighter indigo
+  spotlight in the dark theme so black and obsidian items stay visible, a pale one in the light theme.
+
+Weaknesses seen in the round 2 sheets, to fix next:
+
+1. A large render of the face shows why the default still looks stern: the upper lash line is heavy and flat, both eyes use the
+   same (unmirrored) lash, and the brows are hidden under the fringe.
+2. The long front locks are slabs with square ends.
+3. The flame aura is a wall with a flat bottom edge.
+4. Bat wings are dark-on-dark in most colours.
+5. Held and pet icons are mostly mannequin: the thing itself is small in the corner.
+6. The torso is a box; the body has less character than the head.
+7. Trinkets and the Rewards page itself have not been looked at with the new art yet.

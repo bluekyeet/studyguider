@@ -7,10 +7,10 @@ round="$1"; shift
 work="${SHEET_TMP:-$here/.sheets}"
 python "$here/sheet.py" "$work" >/dev/null
 mkdir -p "$here/$round"
-[ $# -gt 0 ] || set -- base base-light combos zoom icons icons-light worn-background worn-aura worn-back worn-bottom worn-shoes worn-top worn-face worn-hair worn-hat worn-held worn-pet
+[ $# -gt 0 ] || set -- base base-light combos zoom icons-a icons-b icons-light worn-background worn-aura worn-back worn-bottom worn-shoes worn-top worn-face worn-hair worn-hat worn-held worn-pet
 for sheet in "$@"; do
   case "$sheet" in
-    icons*) size=1500,2620 ;; base-light) size=1500,1480 ;; base) size=1500,820 ;; combos) size=1500,760 ;; zoom) size=1500,500 ;;
+    icons-light) size=1500,3050 ;; icons-a) size=1500,1500 ;; icons-b) size=1500,2060 ;; base-light) size=1500,1480 ;; base) size=1500,820 ;; combos) size=1500,760 ;; zoom) size=1500,500 ;;
     worn-top|worn-hat) size=1500,870 ;; *) size=1500,590 ;;
   esac
   url="file:///$(cd "$work" && pwd -W 2>/dev/null || pwd)/$sheet.html"

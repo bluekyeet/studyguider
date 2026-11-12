@@ -9,6 +9,7 @@ The character is a chibi: a large head on a small body. Head pieces (hair, hats,
 (clothes, shoes, wings, things held) in body space; `SPACE` maps each onto the canvas, so a drawing never repeats the proportions.
 Everything shares one look: an outline in the item's own dark ink, one soft shadow on the right and one highlight on the upper left.
 """
+import itertools
 import math
 import re
 
@@ -114,12 +115,12 @@ BUTTONS = lambda x, ys, fill="@d", r=2: G(*[C(x, y, r, fill, NS) for y in ys])
 # Hair is "behind the head ||| the crest ||| in front of the face". The crest is whatever stands above the crown (a bun, spikes, the
 # top of an afro); it is left out under a hat that covers the head, so hats sit properly on every haircut.
 HAIR = lambda back="", front="", crest="": f"{back}|||{crest}|||{front}"
-DOME = "M57 94 C50 46 78 31 100 31 C122 31 150 46 143 94 C142 101 137 101 136 95 L64 95 C63 101 58 101 57 94Z"
+DOME = "M58 90 C51 46 78 31 100 31 C122 31 149 46 142 90 L136 94 L64 94Z"
 BACK = P(DOME) + SH(DOME, .22)
 SHINE = HI("M70 53 Q84 42 100 41 Q116 42 130 53 Q116 47 100 46.5 Q84 47 70 53Z", .38)
-CROWN = "M59 92 C53 48 78 33 100 33 C122 33 147 48 141 92 "        # the top of every fringe: over the head from ear to ear
-FRONT_SHORT = P(CROWN + "C139 82 136 73 132 67 C131 73 129 77 125 80 C124 71 120 63 113 58 C112 66 108 72 102 76 C101 67 96 60 89 57 "
-                "C89 65 85 72 78 77 C77 71 74 67 70 64 C66 72 62 82 59 92Z") + SHINE
+CROWN = "M58 90 C51 46 78 31 100 31 C122 31 149 46 142 90 "        # the top of every fringe: over the head from ear to ear
+FRONT_SHORT = P(CROWN + "C141 82 138 74 134 68 C132 73 129 76 125 77 C125 70 121 64 115 60 C113 64 109 67 104 68 C102 64 97 60 91 58 "
+                "C90 64 86 70 79 76 C77 71 74 67 70 65 C65 72 61 82 58 90Z") + SHINE
 FRONT_PART = P(CROWN + "C140 84 138 76 134 70 C131 76 127 80 122 82 C120 70 112 60 101 55 C92 62 84 72 78 82 C73 80 69 76 66 70 "
                "C62 76 60 84 59 92Z") + SHINE
 FRONT_SWEPT = P(CROWN + "C140 82 137 72 133 66 C128 74 120 79 110 81 C114 74 115 66 113 59 C104 70 90 78 74 80 C71 75 68 70 66 66 "
@@ -130,6 +131,8 @@ LOCKS = PAIR(P("M61 80 C57 104 60 126 57 150 C63 146 67 139 69 131 C72 116 71 98
 # Hats: a dome that sits on the crown, with the same shadow and highlight on every one.
 CAP = "M60 60 C57 32 78 21 100 21 C122 21 143 32 140 60Z"
 CAP_SHADE = SH("M118 23 C133 28 142 40 140 60 H123 C127 46 125 33 118 23Z") + HI("M67 51 C67 37 79 28 93 25.5 C84 31 77 39 75 51Z")
+# A cape fastens in front of the collar: the part of a "back" drawing after "|||" is drawn over the clothes.
+CLASP = P("M76 118 Q100 132 124 118 L127 125 Q100 141 73 125Z") + C(100, 131, 4.6, GOLD) + C(98.8, 129.8, 1.4, "#fff", NS)
 # Shoes are drawn for the left foot and mirrored.
 SHOE = "M72 266 C71 258 77 254 86 254 C95 254 100 258 99.5 266 L99.5 273 C99.5 276 97 277.5 94 277.5 L77 277.5 C73 277.5 72 276 72 273Z"
 SOLE = "M72 271 H99.5 V274 C99.5 276.5 97 277.5 94 277.5 H77 C73.5 277.5 72 276.5 72 274Z"
@@ -140,7 +143,8 @@ BOOT_SHADE = lambda top: SH(f"M90 {top} H97 L97.5 256 C99.5 259 100 262 99.5 266
 SCENE = lambda inner: (inner + E(100, 128, 120, 140, "url(#glow)", 'opacity=".3"') + P("M0 256 Q100 244 200 256 V300 H0Z", SHADOW, 'opacity=".2"')
                        + R(0, 0, 200, 300, "url(#vignette)"))
 FLAMES = lambda x, h, fill="@c", o=".85": P(f"M{x - 13} 284 C{x - 20} {284 - h * .45} {x - 5} {284 - h * .55} {x - 3} {284 - h} C{x + 3} {284 - h * .7} {x + 17} {284 - h * .5} {x + 13} 284Z", fill, f'opacity="{o}"')
-PET = lambda inner: AT(138, 224, inner)                                       # pets stand to the character's left, on the ground
+FIRE = ((20, 110), (46, 76), (72, 50), (100, 64), (128, 50), (154, 76), (180, 110))      # a ring of flames: where and how tall
+PET = lambda inner: inner                                                     # drawn in a 48 x 55 box with the ground at 55; `SPACE` puts it beside the feet
 FACE = lambda x1, x2, y, r=2.4: C(x1, y, r, INK, NS) + C(x2, y, r, INK, NS) + C(x1 - r * .35, y - r * .4, r * .38, "#fff", NS) + C(x2 - r * .35, y - r * .4, r * .38, "#fff", NS)
 CHEEKS = lambda x1, x2, y, r=3: E(x1, y, r, r * .62, "#ff7a8a", f'opacity=".5" {NS}') + E(x2, y, r, r * .62, "#ff7a8a", f'opacity=".5" {NS}')
 GLYPH = lambda x, y, s, size: T(x + 3, y + 4, s, size, "@d", 'opacity=".55"') + T(x, y, s, size)
@@ -153,7 +157,7 @@ STYLES = {
         "stripes": ("Stripes", 0, SCENE(R(0, 0, 200, 300, "@l") + G(*[R(x, 0, 20, 300, "@c", 0, 'opacity=".7"') for x in range(0, 200, 40)]))),
         "dots": ("Polka", 0, SCENE(R(0, 0, 200, 300, "@l") + G(*[C(x + (20 if (y // 36) % 2 else 0), y, 7, "@c") for x in range(0, 220, 40) for y in range(14, 300, 36)]))),
         "graph": ("Graph paper", 1, SCENE(R(0, 0, 200, 300, "@l") + G(*[L(x, 0, x, 300, "@c", 1 if x % 40 else 1.8) for x in range(0, 201, 20)], *[L(0, y, 200, y, "@c", 1 if y % 40 else 1.8) for y in range(0, 301, 20)])
-                                          + P("M20 40 Q100 250 180 40", "none", 'stroke="@d" stroke-width="3" stroke-linecap="round" opacity=".7"') + C(100, 145, 4, "@d", 'opacity=".8"'))),
+                                          )),
         "stars": ("Starfield", 1, SCENE(R(0, 0, 200, 300, "@d") + R(0, 150, 200, 150, "@c", 0, 'opacity=".35"') + C(158, 44, 17, "@l") + C(166, 38, 15, "@d")
                                         + G(*[STAR(x, y, 4 + (x * y) % 6) for x, y in [(30, 30), (118, 58), (88, 18), (40, 120), (170, 150), (20, 220), (150, 250), (64, 76), (58, 262), (182, 216), (14, 78), (176, 96)]])
                                         + G(*[C(x, y, 1.3, "@l") for x, y in [(52, 48), (140, 110), (24, 160), (184, 60), (120, 24), (76, 200), (160, 196), (10, 262)]]))),
@@ -172,23 +176,23 @@ STYLES = {
                                       STAR(22, 124, 5, "@c"), STAR(180, 150, 5, "@l"), STAR(150, 262, 6, "@l"), STAR(60, 24, 5, "@l"))),
         "ring": ("Halo ring", 1, E(100, 166, 84, 126, "none", 'stroke="@c" stroke-width="5" stroke-dasharray="2 11" stroke-linecap="round"')
                  + E(100, 166, 94, 136, "none", 'stroke="@l" stroke-width="2.5" stroke-dasharray="1 15" stroke-linecap="round" opacity=".8"')),
-        "flames": ("Flames", 2, G(FLAMES(26, 86), FLAMES(54, 58), FLAMES(146, 58), FLAMES(174, 86), FLAMES(26, 50, "@l", ".9"), FLAMES(54, 32, "@l", ".9"), FLAMES(146, 32, "@l", ".9"), FLAMES(174, 50, "@l", ".9"))),
+        "flames": ("Flames", 2, G(*[FLAMES(x, h) for x, h in FIRE], *[FLAMES(x, h * .55, "@l", ".9") for x, h in FIRE])),
         "hearts": ("Hearts", 1, G(*[HEART(x, y, s, "@c") + HI(f"M{x - 7 * s} {y - 4 * s} q{2 * s} -{4 * s} {5 * s} -{3 * s} q-{3 * s} {s} -{3 * s} {4 * s}Z", .6)
-                                    for x, y, s in [(32, 92, 1.1), (166, 118, .9), (26, 204, .8), (172, 222, 1.2), (52, 36, .8), (152, 44, .6)]])),
-        "orbit": ("Orbit", 2, E(100, 170, 92, 30, "none", 'stroke="@c" stroke-width="4" transform="rotate(-18 100 170)"') + E(100, 170, 92, 30, "none", 'stroke="@l" stroke-width="1.5" transform="rotate(-18 100 170)" opacity=".8"')
+                                    for x, y, s in [(30, 92, 1.5), (170, 124, 1.2), (24, 204, 1.1), (174, 226, 1.6), (50, 34, 1.1), (154, 46, .8)]])),
+        "orbit": ("Orbit", 2, E(100, 170, 94, 32, "none", 'stroke="@c" stroke-width="7" transform="rotate(-18 100 170)"') + E(100, 170, 94, 32, "none", 'stroke="@l" stroke-width="2.4" transform="rotate(-18 100 170)" opacity=".85"')
                   + C(184, 136, 9, "@l") + C(181, 133, 3, "#fff", 'opacity=".8"') + C(16, 200, 7, "@c") + STAR(150, 60, 6, "@l") + STAR(40, 110, 5, "@c")),
         "storm": ("Storm cloud", 2, G(P("M36 40 C22 40 20 22 36 20 C38 6 62 2 70 14 C80 2 108 2 114 16 C126 6 148 10 148 24 C166 22 172 42 156 44Z", "@d"),
                                       HI("M40 24 C42 14 56 10 64 16 C54 16 46 20 44 28Z", .3),
                                       P("M44 50 L56 50 L50 72 L60 72 L42 104 L47 80 L38 80Z", "@c"), P("M148 50 L160 50 L154 68 L164 68 L146 98 L151 76 L142 76Z", "@c"),
                                       *[L(x, 52, x - 3, 62, "@l", 2) for x in (76, 92, 108, 124)])),
-        "petals": ("Petals", 1, G(*[P(f"M{x - 8} {y} Q{x} {y - 7} {x + 8} {y} Q{x} {y + 5} {x - 8} {y}Z", "@c" if i % 2 else "@l", f'transform="rotate({a} {x} {y})"')
+        "petals": ("Petals", 1, G(*[P(f"M{x - 11} {y} Q{x} {y - 10} {x + 11} {y} Q{x} {y + 7} {x - 11} {y}Z", "@c" if i % 2 else "@l", f'transform="rotate({a} {x} {y})"')
                                     for i, (x, y, a) in enumerate([(36, 70, 30), (166, 100, -20), (26, 180, 60), (174, 190, 10), (54, 252, -40), (146, 38, 50), (20, 122, -30), (160, 250, 40), (62, 28, 10)])])),
     },
     "back": {
         "cape": ("Cape", 0, P("M70 120 Q100 112 130 120 C152 160 164 220 170 262 Q152 274 134 264 Q117 276 100 266 Q83 276 66 264 Q48 274 30 262 C36 220 48 160 70 120Z", "@d")
-                 + P("M74 126 Q100 119 126 126 C144 162 154 214 158 252 Q100 262 42 252 C46 214 56 162 74 126Z") + SH("M126 126 C144 162 154 214 158 252 Q140 256 128 257 C132 214 132 170 126 126Z")),
-        "short-cape": ("Short cape", 0, P("M70 120 Q100 112 130 120 C146 142 156 174 160 204 Q148 212 136 204 Q124 212 112 206 L88 206 Q76 212 64 204 Q52 212 40 204 C44 174 54 142 70 120Z")
-                       + SH("M130 120 C146 142 156 174 160 204 Q148 212 138 205 C140 176 138 146 130 120Z")),
+                 + P("M74 126 Q100 119 126 126 C144 162 154 214 158 252 Q100 262 42 252 C46 214 56 162 74 126Z") + SH("M126 126 C144 162 154 214 158 252 Q140 256 128 257 C132 214 132 170 126 126Z") + "|||" + CLASP),
+        "short-cape": ("Short cape", 0, P("M70 120 Q100 112 130 120 C150 142 164 176 170 212 Q156 222 142 212 Q128 222 114 214 L86 214 Q72 222 58 212 Q44 222 30 212 C36 176 50 142 70 120Z")
+                       + SH("M130 120 C150 142 164 176 170 212 Q156 222 144 213 C146 180 142 148 130 120Z") + "|||" + CLASP),
         "angel": ("Angel wings", 2, PAIR(P("M72 132 C50 96 14 84 -6 96 C-2 110 2 118 8 124 C0 128 -2 138 2 148 C8 150 12 152 16 152 C12 160 14 170 20 178 C28 176 34 174 38 170 C38 180 44 190 52 196 C60 184 70 164 74 150Z", "@l")
                                          + DL("M62 128 C44 108 22 100 6 104 M60 140 C44 128 24 126 10 134 M62 152 C48 146 32 150 22 160 M66 162 C56 160 46 168 42 176", 1.6, "@c")
                                          + SH("M74 150 C70 164 60 184 52 196 C46 192 42 186 40 178 C52 172 64 162 74 150Z", .12))),
@@ -196,11 +200,12 @@ STYLES = {
                                      + DL("M72 132 C50 116 28 112 8 124 M72 134 C54 128 38 138 30 162 M73 138 C64 146 60 166 60 190", 1.6, "@c") + HI("M66 124 C50 104 28 94 8 90 C24 96 44 106 60 126Z", .22))),
         "butterfly": ("Butterfly wings", 2, PAIR(P("M74 142 C58 100 16 84 2 108 C-8 130 22 160 72 156Z") + P("M72 154 C42 152 18 170 26 194 C34 212 64 198 75 166Z", "@l")
                                                  + C(28, 116, 8, "@l") + C(48, 132, 5, "@l") + C(40, 182, 6, "@c") + SH("M74 142 C70 132 64 122 56 114 C62 128 64 142 62 156 L72 156Z", .14))),
-        "backpack": ("Backpack", 0, R(46, 122, 108, 88, "@d", 22) + PAIR(R(36, 150, 20, 46, "@c", 8) + SH("M48 152 H56 V194 H48Z")) + R(60, 108, 80, 24, "@c", 10) + HI("M52 130 Q54 126 60 126 H74 Q60 130 58 144 H52Z", .25)),
+        "backpack": ("Backpack", 0, R(40, 120, 120, 92, "@c", 24) + SH("M136 120 Q160 120 160 144 V188 Q160 212 136 212Z") + PAIR(R(30, 152, 18, 44, "@d", 8)) + HI("M46 136 Q48 126 58 126 Q52 130 51 144Z", .3)
+                     + "|||" + PAIR(P("M80 117 C77 140 77 172 81 204 L88 204 C84 172 84 140 87 117Z", "@d")) + R(84, 150, 32, 6, "@d", 2) + R(96, 148.5, 8, 9, "@l", 2)),
         "jetpack": ("Jetpack", 3, PAIR(P("M34 196 Q44 240 54 196Z", FLAME) + P("M39 196 Q44 222 49 196Z", "#fff3b0", NS) + P("M32 132 C32 112 56 112 56 132 V190 Q44 198 32 190Z", "@d") + R(32, 144, 24, 9, "@c") + R(32, 172, 24, 6, "@c")
                                        + HI("M36 132 C36 122 42 118 46 118 C42 122 40 128 40 134 V184 H36Z", .3)) + R(52, 140, 96, 30, "@d", 6)),
-        "shell": ("Shell", 1, E(100, 166, 62, 60, "@d") + E(100, 166, 50, 49, "@c") + DL("M100 118 V214 M56 150 L100 166 L144 150 M62 196 L100 166 L138 196", 2)
-                  + SH("M100 117 C132 117 150 140 150 166 C150 192 132 215 100 215 C124 196 128 140 100 117Z")),
+        "shell": ("Shell", 1, E(100, 166, 72, 64, "@d") + E(100, 166, 60, 53, "@c") + DL("M100 114 V218 M44 146 L100 166 L156 146 M54 204 L100 166 L146 204", 2)
+                  + SH("M100 113 C140 113 160 140 160 166 C160 192 140 219 100 219 C132 198 136 138 100 113Z")),
         "dragonwings": ("Dragon wings", 3, PAIR(P("M72 132 C48 92 20 78 -8 84 C4 96 6 110 2 124 C12 120 20 124 22 134 C20 146 22 156 28 166 C34 158 42 158 48 164 C48 174 52 186 60 194 C66 178 72 162 74 150Z")
                                                 + P("M72 132 C48 92 20 78 -8 84 C16 86 42 102 64 134Z", "@d") + DL("M70 134 C48 118 24 114 2 124 M71 138 C54 134 36 144 28 166 M73 142 C64 150 60 170 60 194", 2)
                                                 + P("M-8 84 l-6 -9 l11 3Z", CREAM))),
@@ -261,7 +266,7 @@ STYLES = {
                    + PAIR(P("M56 136 C54 122 64 114 78 118 C84 122 84 134 78 140 C70 144 60 142 56 136Z", "@l") + SH("M70 140 C78 138 84 130 80 120 C84 124 84 134 78 140Z"))),
         "dress": ("Dress", 1, ARMS("cap") + P("M78 164 H122 L146 244 Q100 256 54 244Z") + SH("M112 164 H122 L146 244 Q132 249 120 250Z") + DL("M84 200 L76 248 M100 200 V252 M116 200 L124 248", 1.2) + TORSO() + TORSO_CLIP(R(60, 160, 80, 9, "@d")) + NECK
                   + P("M94 160 q6 -5 12 0 q-6 6 -12 0Z", "@l")),
-        "tank": ("Tank top", 0, TORSO_CLIP(R(60, 128, 80, 90) + SH("M117 100 C125 140 123 180 115 215 H150 V100Z")) + P("M84 117 L80 130 H90 L92 117Z") + P("M116 117 L120 130 H110 L108 117Z") + TORSO_CLIP(P("M90 128 Q100 138 110 128", "none"))
+        "tank": ("Tank top", 0, TORSO_CLIP(R(60, 128, 80, 90) + SH("M117 100 C125 140 123 180 115 215 H150 V100Z")) + PAIR(P("M85 116.5 C83 121 82 126 82 131 H90 C90 126 91 121 92.5 116.5Z")) + TORSO_CLIP(P("M90 128 Q100 138 110 128", "none"))
                  + P("@TORSO", "none", 'clip-path="url(#k-below)"')),
         "hooped": ("Hooped tee", 0, ARMS("sleeve") + P("@TORSO") + TORSO_CLIP(G(*[R(60, y, 80, 9, "@d", 0, NS) for y in (132, 151, 170, 189)])) + TORSO_SHADE + P("@TORSO", "none") + NECK),
         "puffer": ("Puffer jacket", 1, ARMS("wrist", cuff="@d") + '<path d="@ARML" fill="none" stroke="@c" stroke-width="5" clip-path="url(#k-wrist)"/><path d="@ARMR" fill="none" stroke="@c" stroke-width="5" clip-path="url(#k-wrist)"/>'
@@ -297,9 +302,9 @@ STYLES = {
                   + P("M88 116 Q100 126 112 116 L110 115 Q100 121 90 115Z", "@d")),
     },
     "face": {
-        "round": ("Round glasses", 0, PAIR(C(86, 85, 11.5, "#fff", 'fill-opacity=".2" stroke="@k" stroke-width="4.6"') + C(86, 85, 11.5, "none", 'stroke="@c" stroke-width="2.6"') + HI("M79 80 q3 -5 8 -5 q-4 2 -5 6Z", .8))
+        "round": ("Round glasses", 0, PAIR(C(86, 85, 11.5, "#fff", 'fill-opacity=".2" stroke="@k" stroke-width="3.8"') + C(86, 85, 11.5, "none", 'stroke="@c" stroke-width="2"') + HI("M79 80 q3 -5 8 -5 q-4 2 -5 6Z", .8))
                   + P("M97 83 Q100 80 103 83", "none", 'stroke="@c" stroke-width="2.6"')),
-        "square": ("Square glasses", 0, PAIR(R(74, 75, 24, 20, "#fff", 5, 'fill-opacity=".2" stroke="@k" stroke-width="4.6"') + R(74, 75, 24, 20, "none", 5, 'stroke="@c" stroke-width="2.6"') + HI("M78 80 l5 -2 l-3 6Z", .8))
+        "square": ("Square glasses", 0, PAIR(R(74, 75, 24, 20, "#fff", 5, 'fill-opacity=".2" stroke="@k" stroke-width="3.8"') + R(74, 75, 24, 20, "none", 5, 'stroke="@c" stroke-width="2"') + HI("M78 80 l5 -2 l-3 6Z", .8))
                    + P("M98 83 Q100 81 102 83", "none", 'stroke="@c" stroke-width="2.6"')),
         "shades": ("Sunglasses", 1, P("M72 76 H99 Q100 78 101 76 H128 L127 86 C125 96 108 97 104 88 L102 83 H98 L96 88 C92 97 75 96 73 86Z") + PAIR(HI("M77 79 H88 L80 88 C78 86 77 82 77 79Z", .3))),
         "monocle": ("Monocle", 1, C(114, 85, 12, "#fff", 'fill-opacity=".2" stroke="@k" stroke-width="4.8"') + C(114, 85, 12, "none", 'stroke="@c" stroke-width="2.8"') + HI("M107 80 q3 -5 8 -5 q-4 2 -5 6Z", .8)
@@ -317,10 +322,10 @@ STYLES = {
     },
     "hair": {
         "short": ("Short hair", 0, HAIR(BACK, FRONT_SHORT)),
-        "long": ("Long hair", 0, HAIR(P("M57 88 C50 46 78 31 100 31 C122 31 150 46 143 88 C145 112 151 140 145 160 Q128 168 112 162 Q100 170 88 162 Q72 168 55 160 C49 140 55 112 57 88Z")
-                                      + SH("M57 88 C50 46 78 31 100 31 C122 31 150 46 143 88 C145 112 151 140 145 160 Q128 168 112 162 Q100 170 88 162 Q72 168 55 160 C49 140 55 112 57 88Z", .22), FRONT_PART + LOCKS)),
+        "long": ("Long hair", 0, HAIR(P("M58 90 C51 46 78 31 100 31 C122 31 149 46 142 90 C145 112 151 140 145 160 Q128 168 112 162 Q100 170 88 162 Q72 168 55 160 C49 140 55 112 57 88Z")
+                                      + SH("M58 90 C51 46 78 31 100 31 C122 31 149 46 142 90 C145 112 151 140 145 160 Q128 168 112 162 Q100 170 88 162 Q72 168 55 160 C49 140 55 112 57 88Z", .22), FRONT_PART + LOCKS)),
         "bun": ("Bun", 0, HAIR(BACK, FRONT_PART, C(100, 25, 15) + P("M90 22 Q100 14 110 22", "none", 'stroke="@d" stroke-width="1.6"') + HI("M90 17 q5 -5 11 -4 q-6 2 -8 6Z", .35) + P("M88 36 Q100 42 112 36 L112 40 Q100 46 88 40Z", "@l"))),
-        "spiky": ("Spiky hair", 1, HAIR(BACK, P(CROWN + "C140 82 138 74 135 68 L129 80 L125 62 L116 77 L109 58 L101 75 L93 58 L86 77 L78 62 L73 80 L66 68 C62 74 60 84 59 92Z") + SHINE,
+        "spiky": ("Spiky hair", 1, HAIR(BACK, P(CROWN + "C140 82 138 74 135 68 L129 79 L124 62 L116 71 L109 57 L101 67 L93 57 L86 71 L78 62 L73 79 L66 68 C62 74 60 84 59 92Z") + SHINE,
                                      P("M60 64 L38 50 L62 46 L52 22 L78 34 L82 6 L99 28 L114 4 L120 32 L146 18 L140 46 L164 48 L141 66Z") + SH("M120 32 L146 18 L140 46 L164 48 L141 66 L120 60Z", .16))),
         "mohawk": ("Mohawk", 1, HAIR("", P("M65 80 C63 58 76 46 100 46 C124 46 137 58 135 80 C128 62 116 54 100 54 C84 54 72 62 65 80Z", "@c", f'opacity=".35" {NS}') + P("M91 43 C93 52 96 58 100 62 C104 58 107 52 109 43Z"),
                                       P("M89 46 C84 30 88 14 98 4 C100 10 104 12 108 8 C114 20 116 34 111 46Z") + SH("M104 10 C106 10 107 9 108 8 C114 20 116 34 111 46 H102 C106 34 106 22 104 10Z") + HI("M92 40 C89 28 92 18 97 11 C95 20 95 30 97 40Z", .3))),
@@ -328,7 +333,7 @@ STYLES = {
                                   P("M67 84 C64 62 76 48 100 48 C124 48 136 62 133 84 C127 68 116 60 100 60 C84 60 73 68 67 84Z"),
                                   G(*[C(100 + 44 * math.cos(a / 10), 62 + 36 * math.sin(a / 10), 18) for a in range(-31, 1, 4)]) + C(100, 56, 38, "@c", NS)
                                   + HI("M70 44 C76 30 90 22 104 22 C90 26 80 34 76 46Z", .22))),
-        "bob": ("Bob", 0, HAIR(P("M57 88 C50 46 78 31 100 31 C122 31 150 46 143 88 L146 114 Q138 124 128 120 L72 120 Q62 124 54 114Z") + SH("M57 88 C50 46 78 31 100 31 C122 31 150 46 143 88 L146 114 Q138 124 128 120 L72 120 Q62 124 54 114Z", .22),
+        "bob": ("Bob", 0, HAIR(P("M58 90 C51 46 78 31 100 31 C122 31 149 46 142 90 L146 114 Q138 124 128 120 L72 120 Q62 124 54 114Z") + SH("M58 90 C51 46 78 31 100 31 C122 31 149 46 142 90 L146 114 Q138 124 128 120 L72 120 Q62 124 54 114Z", .22),
                                 FRONT_BLUNT + PAIR(P("M61 78 C58 92 57 106 56 118 C62 120 68 118 71 112 C72 100 71 90 71 84Z")))),
         "ponytail": ("Ponytail", 0, HAIR(P("M126 48 C164 44 176 96 156 150 C150 138 148 122 150 108 C146 88 138 72 128 66Z") + SH("M150 60 C168 84 170 118 156 150 C150 138 148 122 150 108 C154 92 154 76 150 60Z") + BACK + R(122, 50, 12, 9, "@l", 4, 'transform="rotate(30 128 54)"'),
                                          FRONT_SWEPT)),
@@ -538,7 +543,7 @@ STARTER = {
 # Each build's outline of the parts clothes follow, and where its hands are. Right-hand parts mirror the left.
 def _mirror(d):
     """A path of absolute points flipped left to right on the 200-wide canvas."""
-    numbers = iter(range(10 ** 6))
+    numbers = itertools.count()
     return re.sub(r"-?\d+(?:\.\d+)?", lambda m: f"{200 - float(m.group()):g}" if next(numbers) % 2 == 0 else m.group(), d)
 
 
@@ -561,7 +566,8 @@ for _shapes in GEOMETRY.values():
 PARTS = ("@TORSO", "@ARML", "@ARMR", "@LEGL", "@LEGR")
 # Where each kind of drawing sits on the canvas: (transform, scale). The scale keeps the outline the same weight everywhere.
 BODY_SPACE, HEAD_SPACE, CANVAS = ("matrix(.82 0 0 .82 18 49)", .82), ("matrix(1.2 0 0 1.2 -20 4.2)", 1.2), ("", 1)
-SPACE = {"back": BODY_SPACE, "bottom": BODY_SPACE, "shoes": BODY_SPACE, "top": BODY_SPACE, "held": BODY_SPACE, "face": HEAD_SPACE, "hair": HEAD_SPACE, "hat": HEAD_SPACE}
+PET_SPACE = ("matrix(1.18 0 0 1.18 3 215)", 1.18)
+SPACE = {"pet": PET_SPACE, "back": BODY_SPACE, "bottom": BODY_SPACE, "shoes": BODY_SPACE, "top": BODY_SPACE, "held": BODY_SPACE, "face": HEAD_SPACE, "hair": HEAD_SPACE, "hat": HEAD_SPACE}
 LINE = 2.1               # outline weight, in canvas units
 IRIS, IRIS_DEEP = "#5a3e2b", "#3b2314"
 EYE_Y = 85
@@ -599,16 +605,18 @@ def hand(skin, build, side=1):
     return C(200 - x if side > 0 else x, y, r, s, f'stroke="{ink(s)}"')
 
 
-def drawing(item_id, skin=None, build=None):
-    """One item as it sits on the character. Backgrounds and auras are flat scenery with no outline."""
+def drawing(item_id, skin=None, build=None, part=None):
+    """One item as it sits on the character. Backgrounds and auras are flat scenery with no outline. A drawing in several parts
+    ("behind ||| in front") is drawn whole, or only `part` of it."""
     item = CATALOG[item_id]
     slot = item["slot"]
-    markup = fill(STYLES[slot][item["style"]][2], item_id, skin, build).replace("|||", "")
+    parts = fill(STYLES[slot][item["style"]][2], item_id, skin, build).split("|||")
+    markup = "".join(parts) if part is None else (parts[part] if part < len(parts) else "")
     if slot in ("background", "aura"):
         return markup
     if slot == "held":      # things are held where this build's hand is, with the hand closed over them
         x = GEOMETRY[build if build in BUILDS else DEFAULT_BUILD]["hand"][0]
-        markup = f'<g transform="translate({58.5 - x:g} 0)">{markup}</g>' + hand(skin, build)
+        markup = f'<g transform="translate({200 - x:g} 191) scale(1.12) translate(-141.5 -191)">{markup}</g>' + hand(skin, build)
     return placed(markup, SPACE.get(slot, CANVAS), "@k").replace("@k", ink(COLOURS[item["colour"]][2]))
 
 
@@ -653,7 +661,7 @@ def head(skin, build=None, face=True, line=None):
     feminine = build == "feminine"
     s = tone(skin)
     o = shade(s, 0.72)
-    brows = ("M78 71 Q85 67 93 69", "M107 69 Q115 67 122 71") if feminine else ("M77 72 Q85 67.5 94 70", "M106 70 Q115 67.5 123 72")
+    brows = ("M78 70 Q85.5 65.5 93 68.5", "M107 68.5 Q114.5 65.5 122 70") if feminine else ("M77.5 70 Q85.5 65 93.5 68.5", "M106.5 68.5 Q114.5 65 122.5 70")
     brow = f'stroke="{shade(s, 0.4)}" stroke-width="{1.9 if feminine else 2.6}"'
     mouth = (P("M95.5 101.5 Q100 105.5 104.5 101.5 Q100 103 95.5 101.5Z", "#d9566b", f'stroke="{shade("#d9566b", 0.7)}" stroke-width="1.4"') if feminine
              else P("M95 101.5 Q100 105.5 105 101.5", "none", f'stroke="{INK}" stroke-width="2.1"'))
@@ -666,7 +674,7 @@ def head(skin, build=None, face=True, line=None):
     return placed(G(
         E(63.5, 86, 5.5, 8, s), E(136.5, 86, 5.5, 8, s), P("M62 84 Q64.5 86 63 90 M138 84 Q135.5 86 137 90", "none", f'stroke="{o}" stroke-width="1.3"'),   # ears
         P(HEAD, s),
-        '<g clip-path="url(#k-head)">' + E(100, 47, 46, 19, o, f'opacity=".45" {NS}') + E(84, 104, 30, 14, "#fff", f'opacity=".12" {NS}') + "</g>",       # the shadow hair and hats cast
+        ('<g clip-path="url(#k-head)">' + E(100, 45, 44, 17, o, f'opacity=".34" {NS}') + "</g>") if face else "",                                      # the shadow hair and hats cast
     ) + features, HEAD_SPACE, line or ink(s))
 
 
@@ -674,7 +682,7 @@ def swimwear(build):
     """The base layer every character wears under their clothes: board shorts, or a sporty two-piece (crop top and swim shorts)."""
     if build == "feminine":
         suit, trim = "#e0607e", "#b3405c"
-        top = TORSO_CLIP(R(60, 128, 80, 34, suit) + SH("M117 100 V170 H150 V100Z") + R(60, 156, 80, 6, trim, 0, NS)) + P("M84 117 L81 129 H90 L92 117Z", suit) + P("M116 117 L119 129 H110 L108 117Z", suit)
+        top = TORSO_CLIP(R(60, 128, 80, 34, suit) + SH("M117 100 V170 H150 V100Z") + R(60, 156, 80, 6, trim, 0, NS)) + PAIR(P("M85 116.5 C83 121 82 126 82 130 H90 C90 126 91 121 92.5 116.5Z", suit))
         bottoms = P("M70 193 H130 L131 212 H69Z", suit) + LEGS("short", suit) + P("M70 193 H130 V199 H70Z", trim)
         return placed(geometry(top + bottoms, build), BODY_SPACE, ink(trim))
     shorts, stripe = "#2b5aa8", "#f2c230"
@@ -692,7 +700,8 @@ def hair_layers(item_id, skin=None, build=None, crest=True):
 
 GROUND = E(100, 279, 50, 7, "#000", 'opacity=".2"')
 CROPS = {"hat": "34 -8 132 132", "hair": "18 26 164 164", "face": "50 62 100 84", "top": "36 126 128 150", "bottom": "44 190 112 96",
-         "shoes": "58 236 84 54", "held": "96 96 100 140", "pet": "128 190 76 96", "back": "0 110 200 190"}
+         "shoes": "58 236 84 54", "held": "96 96 100 140", "pet": "-4 184 76 100", "back": "0 110 200 190"}
+BUST = "28 22 144 144"
 FULL_COVER_HATS = ("helmet", "beanie", "tophat", "chef", "viking")       # no starter hair shows under these
 COVERING_HATS = FULL_COVER_HATS + ("cap", "wizard", "gradcap", "cowboy", "tricorn", "jester")     # these flatten whatever stands above the crown
 MANNEQUIN, MANNEQUIN_LINE = "#e2e5ee", "#aeb3c2"        # the plain stand item icons are shown on
@@ -702,20 +711,20 @@ def figure(worn, skin, build, face=True, line=None, dressed=True):
     """The character with `worn` (slot -> item id) on it, back to front. `dressed` adds the swimwear every character has underneath."""
     hat = CATALOG[worn["hat"]]["style"] if worn.get("hat") else None
     back, front = hair_layers(worn["hair"], skin, build, crest=hat not in COVERING_HATS) if worn.get("hair") else ("", "")
-    piece = lambda slot: drawing(worn[slot], skin, build) if worn.get(slot) else ""
-    return G(piece("background"), piece("aura"), piece("back"), back, GROUND, body(skin, build, line), swimwear(build) if dressed else "",
-             piece("shoes"), piece("bottom"), piece("top"), head(skin, build, face, line), piece("face"), front, piece("hat"), piece("held"), piece("pet"))
+    piece = lambda slot, part=None: drawing(worn[slot], skin, build, part) if worn.get(slot) else ""
+    return G(piece("background"), piece("aura"), piece("back", 0), back, GROUND, body(skin, build, line), swimwear(build) if dressed else "",
+             piece("shoes"), piece("bottom"), piece("top"), piece("back", 1), head(skin, build, face, line), piece("face"), front, piece("hat"), piece("held"), piece("pet"))
 
 
 def avatar_svg(outfit, skin=None, size=None, crop=None, build=None):
-    """The whole character. `outfit` maps a slot to an item id; unknown or non-wearable entries are ignored, and an empty hair or
-    shoes slot shows the build's starter piece instead."""
+    """The whole character, or with `crop="bust"` its head and shoulders. `outfit` maps a slot to an item id; unknown or non-wearable
+    entries are ignored, and an empty hair or shoes slot shows the build's starter piece instead."""
     build = build if build in BUILDS else DEFAULT_BUILD
     worn = {slot: item_id for slot, item_id in outfit.items() if slot in WORN and item_id in CATALOG and CATALOG[item_id]["slot"] == slot}
     for slot, (style, colour) in STARTER[build].items():
         if slot not in worn and not (slot == "hair" and worn.get("hat") and CATALOG[worn["hat"]]["style"] in FULL_COVER_HATS):
             worn[slot] = f"{slot}.{style}.{colour}"
-    return _wrap(figure(worn, skin, build), crop or "0 0 200 300", size, build)
+    return _wrap(figure(worn, skin, build), BUST if crop == "bust" else "0 0 200 300", size, build)
 
 
 def _wrap(inner, view, size=None, build=None):
