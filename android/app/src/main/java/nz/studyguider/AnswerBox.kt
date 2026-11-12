@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -56,6 +57,15 @@ sealed class AnswerBlock {
 
     class Sketch(val state: SketchState) : AnswerBlock()
 
+    /** Multiple choice: the keys chosen so far. */
+    class Choice(val form: AnswerForm.Choice, chosen: List<String>) : AnswerBlock() {
+        val chosen = mutableStateListOf<String>().apply { addAll(chosen.filter { key -> form.options.any { it.key == key } }) }
+        fun toggle(key: String) {
+            if (form.multiple) { if (key in chosen) chosen.remove(key) else chosen.add(key) }
+            else { chosen.clear(); chosen.add(key) }
+        }
+    }
+
     /** A saved drawing whose strokes are still being fetched; until then it keeps its reference in the answer as it was. */
     class Pending(val image: AnswerImage, val description: String, val form: AnswerForm?) : AnswerBlock()
 }
@@ -74,8 +84,10 @@ class AnswerBoxState(val api: Api, forms: List<AnswerForm>?, initial: String) {
     /** The whole answer as text: each extra block in order, then the typed text, as the web writes it. */
     val value: String get() {
         var number = 0
-        val parts = blocks.map { block ->
+        // The Choice line comes first, on its own line; everything else follows as optional working.
+        val parts = blocks.filterIsInstance<AnswerBlock.Choice>().map { choiceText(it.chosen) } + blocks.map { block ->
             when (block) {
+                is AnswerBlock.Choice -> ""
                 is AnswerBlock.Table -> block.text()
                 is AnswerBlock.Sketch -> { number++; block.state.text(number) }
                 is AnswerBlock.Pending -> {
@@ -93,13 +105,16 @@ class AnswerBoxState(val api: Api, forms: List<AnswerForm>?, initial: String) {
         val wanted = forms.orEmpty()
         palette = wanted.filterIsInstance<AnswerForm.Text>().firstOrNull()?.palette?.takeIf { it in SYMBOLS } ?: palette
         val parts = splitAnswer(saved)
-        text = TextFieldValue(parts.text, TextRange(parts.text.length))
+        // A saved Choice line stays in the text when this question has no choice form to show it in.
+        val typed = if (parts.choice.isNotEmpty() && wanted.none { it is AnswerForm.Choice }) listOf(choiceText(parts.choice), parts.text).filter { it.isNotBlank() }.joinToString("\n\n") else parts.text
+        text = TextFieldValue(typed, TextRange(typed.length))
         blocks.clear()
         val tables = parts.tables.toMutableList()
         val images = parts.images.toMutableList()
         fun description(image: AnswerImage) = saved.lineSequence().firstOrNull { it.startsWith("${image.caption}:") }?.removePrefix("${image.caption}:")?.trim().orEmpty()
         for (form in wanted) when (form) {
             is AnswerForm.Text -> {}
+            is AnswerForm.Choice -> blocks.add(AnswerBlock.Choice(form, parts.choice))
             is AnswerForm.Table -> blocks.add(AnswerBlock.Table(form, tables.removeFirstOrNull()))
             is AnswerForm.Drawing, is AnswerForm.Graph -> {
                 val graph = form is AnswerForm.Graph
@@ -117,6 +132,7 @@ class AnswerBoxState(val api: Api, forms: List<AnswerForm>?, initial: String) {
         found.filterIsInstance<AnswerForm.Text>().firstOrNull()?.palette?.takeIf { it in SYMBOLS && text.text.isEmpty() }?.let { palette = it }
         for (form in found) when (form) {
             is AnswerForm.Text -> {}
+            is AnswerForm.Choice -> if (blocks.none { it is AnswerBlock.Choice }) blocks.add(0, AnswerBlock.Choice(form, emptyList()))
             is AnswerForm.Table -> if (blocks.none { it is AnswerBlock.Table }) blocks.add(AnswerBlock.Table(form, null))
             is AnswerForm.Drawing -> if (blocks.none { (it as? AnswerBlock.Sketch)?.state?.graph == false || (it as? AnswerBlock.Pending)?.image?.graph == false }) blocks.add(newSketch(form))
             is AnswerForm.Graph -> if (blocks.none { (it as? AnswerBlock.Sketch)?.state?.graph == true || (it as? AnswerBlock.Pending)?.image?.graph == true }) blocks.add(newSketch(form))
@@ -128,6 +144,8 @@ class AnswerBoxState(val api: Api, forms: List<AnswerForm>?, initial: String) {
         is AnswerForm.Drawing -> AnswerBlock.Sketch(SketchState(false, background = form.background, purpose = form.purpose))
         else -> AnswerBlock.Sketch(SketchState(false))
     }
+
+    val hasChoice get() = blocks.any { it is AnswerBlock.Choice }
 
     /** Replaces only the typed text, keeping tables and drawings (used when handwriting is read from a photo). */
     fun setText(value: String) { text = TextFieldValue(value, TextRange(value.length)) }
@@ -171,6 +189,7 @@ fun AnswerBox(
                 Surface(shape = RoundedCornerShape(14.dp), color = colours.containerHigh, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         when (block) {
+                            is AnswerBlock.Choice -> ChoiceBlock(state.api, block, enabled)
                             is AnswerBlock.Table -> TableBlock(block, enabled, onRemove = { state.blocks.remove(block) })
                             is AnswerBlock.Sketch -> SketchBlock(state.api, block.state, sketchNumber(state, block), figure, enabled,
                                 onRemove = { state.blocks.remove(block) }, onSaved = {})
@@ -180,7 +199,13 @@ fun AnswerBox(
                 }
             }
         }
-        RichTextField(state, enabled, label, collapsed, minLines)
+        // With options to choose from, written working is optional and stays folded away until asked for.
+        var working by rememberSaveable(state) { mutableStateOf(!state.hasChoice || state.text.text.isNotBlank() || state.blocks.any { it !is AnswerBlock.Choice }) }
+        if (state.hasChoice && !working) {
+            TextButton(enabled = enabled, onClick = { working = true }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Add working or a reason (optional)") }
+            return@Column
+        }
+        RichTextField(state, enabled, if (state.hasChoice) "Working or reason (optional)" else label, collapsed || state.hasChoice, if (state.hasChoice) 2 else minLines)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
             Text("Add to your answer", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             AssistChip(enabled = enabled, onClick = { state.blocks.add(AnswerBlock.Table(null, null)) }, label = { Text("+ Table") })
@@ -384,5 +409,91 @@ fun AnswerImageView(api: Api, path: String, caption: String) {
             else -> Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
         }
         Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+// ---- multiple choice --------------------------------------------------------------------------------------------------------
+
+private val richText = Regex("[$*`\\\\]")
+
+/** Option text: rendered when it holds maths or Markdown, plain otherwise; then the option's picture, if it has one. */
+@Composable
+private fun OptionBody(api: Api, text: String, image: String, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (text.isNotBlank()) {
+            if (richText.containsMatchIn(text)) MathText(text) else Text(text, style = MaterialTheme.typography.bodyLarge)
+        }
+        if (image.isNotBlank()) AuthorisedImage(api.base, api.token, image, Modifier.fillMaxWidth(), contentDescription = "Picture for this option")
+    }
+}
+
+/** Selectable options: one answer (radio) or select all that apply (checkboxes), lettered by position. */
+@Composable
+private fun ChoiceBlock(api: Api, block: AnswerBlock.Choice, enabled: Boolean) {
+    val form = block.form
+    val colours = LocalStudyColours.current
+    if (form.group.isNotBlank()) Text(form.group.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+    Text(form.instructions.ifBlank { if (form.multiple) "Select all that apply." else "Choose one answer." }, style = MaterialTheme.typography.titleSmall)
+    if (form.penalty > 0) Text("Wrong answers lose ${form.penalty.toBigDecimal().stripTrailingZeros().toPlainString()} marks.", style = MaterialTheme.typography.bodySmall, color = colours.amber)
+    form.options.forEachIndexed { position, option ->
+        val chosen = option.key in block.chosen
+        val letter = choiceLetter(position)
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = if (chosen) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+            border = androidx.compose.foundation.BorderStroke(if (chosen) 2.dp else 1.dp, if (chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Box {
+                Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (form.multiple) Checkbox(checked = chosen, onCheckedChange = null, modifier = Modifier.padding(horizontal = 10.dp))
+                    else RadioButton(selected = chosen, onClick = null, modifier = Modifier.padding(horizontal = 10.dp))
+                    Text(letter, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 10.dp))
+                    OptionBody(api, option.text, option.image, Modifier.weight(1f))
+                }
+                // Rendered maths is a web view, which would swallow the tap; this layer takes it for the whole row.
+                Box(Modifier.matchParentSize().clip(RoundedCornerShape(14.dp)).selectable(
+                    selected = chosen, enabled = enabled, role = if (form.multiple) androidx.compose.ui.semantics.Role.Checkbox else androidx.compose.ui.semantics.Role.RadioButton,
+                    onClick = { block.toggle(option.key) }).semantics { contentDescription = "Option $letter" })
+            }
+        }
+    }
+}
+
+/**
+ * A marked multiple-choice answer (choice_result): each option with whether it is right, whether it was chosen, and why.
+ * Options are named by their text, as the feedback does, so the order they were shown in does not matter.
+ */
+@Composable
+fun ChoiceResultView(api: Api, result: org.json.JSONObject) {
+    val colours = LocalStudyColours.current
+    val options = result.optJSONArray("options")?.objectList().orEmpty()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { option ->
+            val correct = option.optBoolean("correct"); val chosen = option.optBoolean("chosen")
+            val tone = when { correct -> colours.achieved; chosen -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.outlineVariant }
+            Surface(shape = RoundedCornerShape(14.dp), color = if (correct) colours.achieved.copy(alpha = 0.10f) else if (chosen) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surface,
+                border = androidx.compose.foundation.BorderStroke(if (correct || chosen) 2.dp else 1.dp, tone), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(when {
+                        correct && chosen -> "✓ Correct · your choice"
+                        correct -> "✓ Correct answer"
+                        chosen -> "✗ Your choice"
+                        else -> "Not correct"
+                    }, style = MaterialTheme.typography.labelLarge, color = if (correct) colours.achieved else if (chosen) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    OptionBody(api, option.optString("text"), option.stringOrNull("image").orEmpty())
+                    option.optString("explanation").takeIf { it.isNotBlank() }?.let {
+                        if (richText.containsMatchIn(it)) MathText(it, fontSize = 14) else Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        val available = result.optDouble("marks_available", Double.NaN)
+        val lines = mutableListOf<String>()
+        fun n(v: Double) = v.toBigDecimal().stripTrailingZeros().toPlainString()
+        if (!available.isNaN() && available > 0) lines.add("${n(result.optDouble("marks_awarded", 0.0))} of ${n(available)} mark${if (available == 1.0) "" else "s"}")
+        if (result.optDouble("penalty_applied", 0.0) > 0) lines.add("${n(result.optDouble("penalty_applied"))} taken off for wrong choices, net ${n(result.optDouble("net_marks", 0.0))}")
+        lines.add(when (result.optString("key_source")) { "official" -> "Marked from the paper's own answer key"; "ai" -> "AI-written answer key: check it"; else -> "Marked from the answer key" })
+        Text(lines.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -15,7 +15,19 @@ import kotlin.math.roundToLong
 data class AnswerImage(val graph: Boolean, val id: Long, val caption: String = if (graph) "Graph" else "Drawing")
 
 /** Saved answer text split back into its blocks: tables (rows of cells, header first), images, and the rest as text. */
-data class AnswerParts(val tables: List<List<List<String>>>, val images: List<AnswerImage>, val text: String)
+data class AnswerParts(val tables: List<List<List<String>>>, val images: List<AnswerImage>, val text: String, val choice: List<String> = emptyList())
+
+// A multiple-choice answer is written on its own first line, "Choice: B" or "Choice: A, C" (docs/api/multiple-choice.md).
+private val choiceLine = Regex("^Choice:\\s*([A-J](?:\\s*,\\s*[A-J])*)\\s*$")
+
+/** The option keys chosen in an answer, from its first line; empty when there is no readable Choice line. */
+fun choiceKeys(answer: String): List<String> {
+    val first = answer.replace("\r\n", "\n").trimStart().lineSequence().firstOrNull()?.trim() ?: return emptyList()
+    return choiceLine.matchEntire(first)?.groupValues?.get(1)?.split(",")?.map { it.trim() }?.distinct()?.sorted().orEmpty()
+}
+
+/** The Choice line for these keys, in alphabetical order; empty when nothing is chosen. */
+fun choiceText(keys: Collection<String>): String = if (keys.isEmpty()) "" else "Choice: " + keys.distinct().sorted().joinToString(", ")
 
 private val tableRow = Regex("^\\s*\\|.*\\|\\s*$")
 private val ruleRow = Regex("^\\s*\\|(\\s*:?-{3,}:?\\s*\\|)+\\s*$")
@@ -30,7 +42,9 @@ fun tableCells(line: String): List<String> =
     line.trim().removePrefix("|").removeSuffix("|").split(Regex("(?<!\\\\)\\|")).map { it.trim().replace("\\|", "|") }
 
 fun splitAnswer(value: String): AnswerParts {
-    val lines = value.replace("\r\n", "\n").split("\n")
+    val choice = choiceKeys(value)
+    val whole = value.replace("\r\n", "\n").let { if (choice.isEmpty()) it else it.trimStart().substringAfter("\n", "") }
+    val lines = whole.split("\n")
     val tables = mutableListOf<List<List<String>>>()
     val images = mutableListOf<AnswerImage>()
     val text = mutableListOf<String>()
@@ -52,7 +66,7 @@ fun splitAnswer(value: String): AnswerParts {
         }
         text.add(line); i++
     }
-    return AnswerParts(tables, images, text.joinToString("\n").replace(Regex("\n{3,}"), "\n\n").trim())
+    return AnswerParts(tables, images, text.joinToString("\n").replace(Regex("\n{3,}"), "\n\n").trim(), choice)
 }
 
 /** A table as Markdown: header row, rule, body rows. Bars and line breaks inside cells are escaped or folded. */

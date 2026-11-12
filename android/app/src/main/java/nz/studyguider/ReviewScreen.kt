@@ -275,12 +275,12 @@ private fun ReviewCard(api: Api, base: String, token: String, question: JSONObje
                 }
             }) { Text("Submit answer") }
             if (confidence == 0 && answer.isNotBlank()) Text("Choose how confident you are to submit.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else ReviewOutcome(current, inSession = left != null, nextLabel = nextLabel, onNext = { onNext(current.relearn) })
+        } else ReviewOutcome(api, current, inSession = left != null, nextLabel = nextLabel, onNext = { onNext(current.relearn) })
     }
 }
 
 @Composable
-private fun ReviewOutcome(result: ReviewResult, inSession: Boolean, nextLabel: String, onNext: () -> Unit) {
+private fun ReviewOutcome(api: Api, result: ReviewResult, inSession: Boolean, nextLabel: String, onNext: () -> Unit) {
     val colours = LocalStudyColours.current
     val reply = result.reply
     val (label, fg, bg) = when (reply.optString("outcome")) {
@@ -290,9 +290,10 @@ private fun ReviewOutcome(result: ReviewResult, inSession: Boolean, nextLabel: S
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         StudyChip(label, fg, bg)
-        Text("AI judgement, advisory only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if (reply.optJSONObject("choice_result")?.optString("marked_by") == "answer-key") "Marked from the answer key" else "AI judgement, advisory only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (reply.optString("outcome") == "confidence-based") Text("Scheduled using your confidence.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    reply.optJSONObject("choice_result")?.let { ChoiceResultView(api, it) }
     reply.optString("feedback").takeIf { it.isNotBlank() }?.let {
         Surface(shape = RoundedCornerShape(12.dp), color = colours.containerHigh, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

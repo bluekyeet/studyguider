@@ -20,7 +20,19 @@ sealed class AnswerForm {
 
     /** A sketch on axes, with optional labels and ranges. */
     data class Graph(val axes: GraphAxes = GraphAxes()) : AnswerForm()
+
+    /**
+     * Multiple choice (docs/api/multiple-choice.md): [options] are shown in the server's display order and lettered by position,
+     * but an option's own key is what is sent. [multiple] is select all that apply. The correct answer is never in the form.
+     */
+    data class Choice(val options: List<ChoiceOption>, val multiple: Boolean = false, val instructions: String = "", val group: String = "",
+                      val penalty: Double = 0.0) : AnswerForm()
 }
+
+data class ChoiceOption(val key: String, val text: String, val image: String = "")
+
+/** The letter shown beside the option at [position]: A for the first shown, whatever its key. */
+fun choiceLetter(position: Int) = ('A' + position).toString()
 
 private fun JSONArray?.range(): Pair<Double?, Double?>? {
     if (this == null || length() != 2) return null
@@ -38,6 +50,15 @@ fun answerForm(json: JSONObject): AnswerForm? = when (json.optString("kind")) {
     "drawing" -> AnswerForm.Drawing(json.optString("background", "blank").ifBlank { "blank" }, json.optString("purpose"))
     "graph" -> AnswerForm.Graph(GraphAxes(json.optString("x_label"), json.optString("y_label"),
         json.optJSONArray("x_range").range(), json.optJSONArray("y_range").range()))
+    "choice" -> {
+        val options = json.optJSONArray("options")?.objectList().orEmpty().map { ChoiceOption(it.optString("key"), it.optString("text"), it.stringOrNull("image").orEmpty()) }
+            .filter { it.key.isNotBlank() }
+        val order = json.optJSONArray("display_order")?.stringList().orEmpty()
+        // Shown in the server's order; any option it left out keeps its place at the end.
+        val shown = order.mapNotNull { key -> options.firstOrNull { it.key == key } } + options.filter { it.key !in order }
+        if (shown.size < 2) null else AnswerForm.Choice(shown, json.optBoolean("multiple"), json.optString("instructions"), json.optString("group"),
+            json.optDouble("penalty", 0.0).takeIf { !it.isNaN() } ?: 0.0)
+    }
     else -> null
 }
 

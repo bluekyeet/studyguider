@@ -44,4 +44,13 @@ fun main() {
     check(touches(SketchItem("line", listOf(0f to 0f, 100f to 0f)), 50f to 5f))
     check(!touches(SketchItem("line", listOf(0f to 0f, 100f to 0f)), 50f to 30f))
     check(touches(SketchItem("text", listOf(10f to 10f), "Cl"), 30f to 12f))
+
+    // Multiple choice: the Choice line is first, keys alphabetical; working follows; an unreadable line means nothing chosen.
+    check(choiceText(listOf("C", "A")) == "Choice: A, C" && choiceText(emptyList()) == "")
+    check(choiceKeys("Choice: B\n\nMomentum is conserved.") == listOf("B"))
+    check(choiceKeys("Choice: C, A") == listOf("A", "C"))
+    check(choiceKeys("My choice is B").isEmpty() && choiceKeys("Choice: K").isEmpty())
+    val chosen = splitAnswer("Choice: A, C\n\nBecause of the catalyst.")
+    check(chosen.choice == listOf("A", "C") && chosen.text == "Because of the catalyst.") { chosen.toString() }
+    check(splitAnswer("Plain answer").choice.isEmpty())
 }

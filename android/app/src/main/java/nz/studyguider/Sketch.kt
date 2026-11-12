@@ -3,6 +3,8 @@ package nz.studyguider
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
@@ -376,12 +378,16 @@ fun GraphAxesFields(state: SketchState, enabled: Boolean) {
     }
 }
 
-/** A drawing or graph block: canvas, tools, a full-screen mode for drawing comfortably, and saving in the background. */
+/**
+ * A drawing or graph block. In the answer it is a picture of the drawing that scrolls with the page; tapping it opens the
+ * editor over the whole screen, where a finger draws and never scrolls. Saving happens in the background after each change.
+ */
 @Composable
 fun SketchBlock(api: Api, state: SketchState, number: Int, figure: ImageBitmap?, enabled: Boolean, onRemove: () -> Unit, onSaved: () -> Unit) {
     val measurer = rememberTextMeasurer()
     var labelAt by remember { mutableStateOf<Pair<Float, Float>?>(null) }
-    var full by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
     // Upload a moment after the last change; retry every few seconds if it fails.
     LaunchedEffect(state.version) {
         if (!state.dirty) return@LaunchedEffect
@@ -392,7 +398,9 @@ fun SketchBlock(api: Api, state: SketchState, number: Int, figure: ImageBitmap?,
             catch (e: Exception) { state.status = "Drawing not saved (${e.message ?: "offline"}). Retrying…"; delay(5000) }
         }
     }
-    val name = "${if (state.graph) "Graph" else "Drawing"} $number"
+    val kind = if (state.graph) "Graph" else "Drawing"
+    val name = "$kind $number"
+    val empty = state.items.isEmpty()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -400,33 +408,49 @@ fun SketchBlock(api: Api, state: SketchState, number: Int, figure: ImageBitmap?,
                 if (state.status.isNotEmpty()) Text(state.status, style = MaterialTheme.typography.labelSmall,
                     color = if (state.status.startsWith("Drawing not")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            TextButton(enabled = enabled, onClick = { full = true }) { Text("Full screen") }
-            TextButton(enabled = enabled, onClick = onRemove) { Text("Remove") }
+            TextButton(enabled = enabled, onClick = { if (empty) onRemove() else confirmRemove = true }) { Text("Remove") }
         }
-        if (state.graph) GraphAxesFields(state, enabled)
-        SketchCanvas(state, figure, enabled, onLabel = { labelAt = it })
-        SketchTools(state, figure != null, enabled)
-        when (state.purpose) {
-            "lewis" -> Text("Use Label for each atom symbol, Line for bonds and Pen for lone-pair dots. Or draw it on paper and add a photo.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            "structure" -> Text("Use Label for atoms and groups (CH₃, OH, C=O), Line for bonds and Arrow for reaction steps with the reagents labelled over them.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(enabled = enabled, onClickLabel = "Open the ${kind.lowercase()} editor") { editing = true }) {
+            SketchCanvas(state, figure, enabled = false, onLabel = {})
+            if (empty) Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.Center)) {
+                Text(if (state.graph) "Tap to sketch the graph" else "Tap to draw", color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
+            }
         }
+        if (!empty) OutlinedButton(enabled = enabled, onClick = { editing = true }, shape = RoundedCornerShape(50)) { Text("Edit ${kind.lowercase()}") }
     }
-    if (full) Dialog(onDismissRequest = { full = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    if (editing) Dialog(onDismissRequest = { editing = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    Button(onClick = { full = false }, shape = RoundedCornerShape(50)) { Text("Done") }
+            Column(Modifier.fillMaxSize().systemBarsPadding()) {
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(name, style = MaterialTheme.typography.titleLarge)
+                        Text(state.status.ifEmpty { if (state.graph) "Sketch with your finger" else "Draw with your finger" }, style = MaterialTheme.typography.labelSmall,
+                            color = if (state.status.startsWith("Drawing not")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Button(onClick = { editing = false }, shape = RoundedCornerShape(50)) { Text("Done") }
                 }
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    SketchCanvas(state, figure, enabled, Modifier.widthIn(max = 900.dp), onLabel = { labelAt = it })
+                // The canvas sits above the tools, which stay within reach of a thumb; only the area below the canvas scrolls.
+                SketchCanvas(state, figure, enabled, Modifier.padding(horizontal = 12.dp), onLabel = { labelAt = it })
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SketchTools(state, figure != null, enabled)
+                    when (state.purpose) {
+                        "lewis" -> Text("Use Label for each atom symbol, Line for bonds and Pen for lone-pair dots.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        "structure" -> Text("Use Label for atoms and groups (CH₃, OH, C=O), Line for bonds and Arrow for reaction steps with the reagents labelled over them.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (state.graph) {
+                        Text("Axes", style = MaterialTheme.typography.titleSmall)
+                        GraphAxesFields(state, enabled)
+                    }
                 }
-                SketchTools(state, figure != null, enabled)
             }
         }
     }
+    if (confirmRemove) AlertDialog(onDismissRequest = { confirmRemove = false }, title = { Text("Remove this ${kind.lowercase()} from your answer?") },
+        confirmButton = { TextButton(onClick = { confirmRemove = false; onRemove() }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Keep it") } })
     labelAt?.let { at ->
         var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { labelAt = null }, title = { Text("Label") },
