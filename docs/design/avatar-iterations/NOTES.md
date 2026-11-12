@@ -69,3 +69,28 @@ Weaknesses seen in the round 2 sheets, to fix next:
 5. Held and pet icons are mostly mannequin: the thing itself is small in the corner.
 6. The torso is a box; the body has less character than the head.
 7. Trinkets and the Rewards page itself have not been looked at with the new art yet.
+
+## 3-round: expression, icons and the page
+
+- **Face.** The upper lash is now a mirrored arch that dips at the outer corner, thinner than before, and the eyebrows are soft
+  arches drawn over the fringe (and under hats), so the default expression is friendly and is never hidden by hair.
+- The long front locks taper to a point; the masculine torso narrows to the waist.
+- The flame aura rises from below the frame (no flat edge) and is taller at the sides.
+- Bat wings use the item's main colour with dark ribs, so they show on the stage in every colour.
+- Pet and held-item icons show the thing alone (a held thing with the hand that grips it), cropped to fit; tall things
+  (pencil, balloon, wand, sword) get a taller crop. Background icons show the character with hair.
+- The tank top has a top edge.
+- Item cards: the Wear / star / recycle row no longer clips its third button.
+
+Checked in this round, beyond the sheets:
+
+- `page/`: the real Rewards page (web-game.js, web.css, the art routes) with made-up data, before and after, dark, light and phone
+  width. Run it with `python docs/design/avatar-iterations/page.py`.
+- The Android app gets the same drawings as PNG through cairosvg. A sample (outfits with clips, gradients, both spaces, the bust
+  crop, icons) was rendered through cairosvg and matched the browser; a test now renders PNGs wherever cairo is installed.
+
+Still weak, left for later:
+
+- Hands are plain circles and both arms hang straight: the pose is the same for every outfit.
+- The shell shows only its rim behind the body; aura icons are faint on the mannequin.
+- Trinket glyphs (pi, sigma, infinity) rely on the device's serif font, so they differ slightly between the website and Android.

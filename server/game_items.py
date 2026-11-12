@@ -126,7 +126,7 @@ FRONT_PART = P(CROWN + "C140 84 138 76 134 70 C131 76 127 80 122 82 C120 70 112 
 FRONT_SWEPT = P(CROWN + "C140 82 137 72 133 66 C128 74 120 79 110 81 C114 74 115 66 113 59 C104 70 90 78 74 80 C71 75 68 70 66 66 "
                 "C62 74 60 84 59 92Z") + SHINE
 FRONT_BLUNT = P(CROWN + "C140 86 138 80 136 76 Q118 70 100 71 Q82 70 64 76 C62 80 60 86 59 92Z") + DL("M76 60 V73 M88 58 V71.5 M100 57 V71 M112 58 V71.5 M124 60 V73", 1.2) + SHINE
-LOCKS = PAIR(P("M61 80 C57 104 60 126 57 150 C63 146 67 139 69 131 C72 116 71 98 71 84Z"))      # long strands in front of the ears
+LOCKS = PAIR(P("M61 80 C57 102 58 126 60 152 C66 142 69 130 70 118 C71 104 71 94 71 84Z"))      # long strands in front of the ears
 
 # Hats: a dome that sits on the crown, with the same shadow and highlight on every one.
 CAP = "M60 60 C57 32 78 21 100 21 C122 21 143 32 140 60Z"
@@ -142,8 +142,8 @@ BOOT_SHADE = lambda top: SH(f"M90 {top} H97 L97.5 256 C99.5 259 100 262 99.5 266
 # Backgrounds end with the same soft light, floor and vignette, so the character always stands in a lit room.
 SCENE = lambda inner: (inner + E(100, 128, 120, 140, "url(#glow)", 'opacity=".3"') + P("M0 256 Q100 244 200 256 V300 H0Z", SHADOW, 'opacity=".2"')
                        + R(0, 0, 200, 300, "url(#vignette)"))
-FLAMES = lambda x, h, fill="@c", o=".85": P(f"M{x - 13} 284 C{x - 20} {284 - h * .45} {x - 5} {284 - h * .55} {x - 3} {284 - h} C{x + 3} {284 - h * .7} {x + 17} {284 - h * .5} {x + 13} 284Z", fill, f'opacity="{o}"')
-FIRE = ((20, 110), (46, 76), (72, 50), (100, 64), (128, 50), (154, 76), (180, 110))      # a ring of flames: where and how tall
+FLAMES = lambda x, h, fill="@c", o=".85": P(f"M{x - 16} 304 C{x - 24} {304 - h * .45} {x - 5} {304 - h * .55} {x - 3} {304 - h} C{x + 3} {304 - h * .7} {x + 21} {304 - h * .5} {x + 16} 304Z", fill, f'opacity="{o}"')
+FIRE = ((16, 132), (46, 96), (74, 66), (100, 80), (126, 66), (154, 96), (184, 132))      # a ring of flames: where and how tall
 PET = lambda inner: inner                                                     # drawn in a 48 x 55 box with the ground at 55; `SPACE` puts it beside the feet
 FACE = lambda x1, x2, y, r=2.4: C(x1, y, r, INK, NS) + C(x2, y, r, INK, NS) + C(x1 - r * .35, y - r * .4, r * .38, "#fff", NS) + C(x2 - r * .35, y - r * .4, r * .38, "#fff", NS)
 CHEEKS = lambda x1, x2, y, r=3: E(x1, y, r, r * .62, "#ff7a8a", f'opacity=".5" {NS}') + E(x2, y, r, r * .62, "#ff7a8a", f'opacity=".5" {NS}')
@@ -196,8 +196,8 @@ STYLES = {
         "angel": ("Angel wings", 2, PAIR(P("M72 132 C50 96 14 84 -6 96 C-2 110 2 118 8 124 C0 128 -2 138 2 148 C8 150 12 152 16 152 C12 160 14 170 20 178 C28 176 34 174 38 170 C38 180 44 190 52 196 C60 184 70 164 74 150Z", "@l")
                                          + DL("M62 128 C44 108 22 100 6 104 M60 140 C44 128 24 126 10 134 M62 152 C48 146 32 150 22 160 M66 162 C56 160 46 168 42 176", 1.6, "@c")
                                          + SH("M74 150 C70 164 60 184 52 196 C46 192 42 186 40 178 C52 172 64 162 74 150Z", .12))),
-        "bat": ("Bat wings", 2, PAIR(P("M72 132 C54 104 28 88 0 86 C8 100 10 112 8 124 C16 120 24 122 28 130 C26 142 26 152 30 162 C36 156 44 154 50 158 C50 170 54 182 60 190 C66 176 72 160 74 150Z", "@d")
-                                     + DL("M72 132 C50 116 28 112 8 124 M72 134 C54 128 38 138 30 162 M73 138 C64 146 60 166 60 190", 1.6, "@c") + HI("M66 124 C50 104 28 94 8 90 C24 96 44 106 60 126Z", .22))),
+        "bat": ("Bat wings", 2, PAIR(P("M72 132 C54 104 28 88 0 86 C8 100 10 112 8 124 C16 120 24 122 28 130 C26 142 26 152 30 162 C36 156 44 154 50 158 C50 170 54 182 60 190 C66 176 72 160 74 150Z")
+                                     + DL("M72 132 C50 116 28 112 8 124 M72 134 C54 128 38 138 30 162 M73 138 C64 146 60 166 60 190", 1.8) + HI("M66 124 C50 104 28 94 8 90 C24 96 44 106 60 126Z", .22))),
         "butterfly": ("Butterfly wings", 2, PAIR(P("M74 142 C58 100 16 84 2 108 C-8 130 22 160 72 156Z") + P("M72 154 C42 152 18 170 26 194 C34 212 64 198 75 166Z", "@l")
                                                  + C(28, 116, 8, "@l") + C(48, 132, 5, "@l") + C(40, 182, 6, "@c") + SH("M74 142 C70 132 64 122 56 114 C62 128 64 142 62 156 L72 156Z", .14))),
         "backpack": ("Backpack", 0, R(40, 120, 120, 92, "@c", 24) + SH("M136 120 Q160 120 160 144 V188 Q160 212 136 212Z") + PAIR(R(30, 152, 18, 44, "@d", 8)) + HI("M46 136 Q48 126 58 126 Q52 130 51 144Z", .3)
@@ -266,7 +266,7 @@ STYLES = {
                    + PAIR(P("M56 136 C54 122 64 114 78 118 C84 122 84 134 78 140 C70 144 60 142 56 136Z", "@l") + SH("M70 140 C78 138 84 130 80 120 C84 124 84 134 78 140Z"))),
         "dress": ("Dress", 1, ARMS("cap") + P("M78 164 H122 L146 244 Q100 256 54 244Z") + SH("M112 164 H122 L146 244 Q132 249 120 250Z") + DL("M84 200 L76 248 M100 200 V252 M116 200 L124 248", 1.2) + TORSO() + TORSO_CLIP(R(60, 160, 80, 9, "@d")) + NECK
                   + P("M94 160 q6 -5 12 0 q-6 6 -12 0Z", "@l")),
-        "tank": ("Tank top", 0, TORSO_CLIP(R(60, 128, 80, 90) + SH("M117 100 C125 140 123 180 115 215 H150 V100Z")) + PAIR(P("M85 116.5 C83 121 82 126 82 131 H90 C90 126 91 121 92.5 116.5Z")) + TORSO_CLIP(P("M90 128 Q100 138 110 128", "none"))
+        "tank": ("Tank top", 0, TORSO_CLIP(R(60, 128, 80, 90) + SH("M117 100 C125 140 123 180 115 215 H150 V100Z")) + PAIR(P("M85 116.5 C83 121 82 126 82 131 H90 C90 126 91 121 92.5 116.5Z")) + TORSO_CLIP(P("M60 128 H90 Q100 138 110 128 H140", "none"))
                  + P("@TORSO", "none", 'clip-path="url(#k-below)"')),
         "hooped": ("Hooped tee", 0, ARMS("sleeve") + P("@TORSO") + TORSO_CLIP(G(*[R(60, y, 80, 9, "@d", 0, NS) for y in (132, 151, 170, 189)])) + TORSO_SHADE + P("@TORSO", "none") + NECK),
         "puffer": ("Puffer jacket", 1, ARMS("wrist", cuff="@d") + '<path d="@ARML" fill="none" stroke="@c" stroke-width="5" clip-path="url(#k-wrist)"/><path d="@ARMR" fill="none" stroke="@c" stroke-width="5" clip-path="url(#k-wrist)"/>'
@@ -549,7 +549,7 @@ def _mirror(d):
 
 GEOMETRY = {
     "masculine": {
-        "@TORSO": "M87 116 C76 117 68 122 66 132 C66 152 68 172 70 188 C71 197 72 202 73 206 L127 206 C128 202 129 197 130 188 C132 172 134 152 134 132 C132 122 124 117 113 116Z",
+        "@TORSO": "M87 116 C76 117 67 122 65 132 C65 150 68 170 71 188 C72 197 73 202 74 206 L126 206 C127 202 128 197 129 188 C132 170 135 150 135 132 C133 122 124 117 113 116Z",
         "@ARML": "M68 127 C58 133 53 157 51 184 C50.5 194 65 195 66 186 C68 168 72 152 78 141Z",
         "@LEGL": "M74 198 C73 222 74 244 76 263 C81 266 93 266 97 263 C98 244 99 222 99.5 204Z",
         "hand": (58.5, 191, 8.5),
@@ -631,15 +631,15 @@ def defs(build):
 
 
 def eye(x, feminine):
-    """One big eye: white, a tall two-tone iris, pupil, a large and a small highlight, a heavy upper lash line and a light lower lid;
+    """One big eye: white, a tall two-tone iris, pupil, a large and a small highlight, an arched upper lash line and a light lower lid;
     the feminine build adds a lash flick at the outer corner."""
     y, side = EYE_Y, (-1 if x < 100 else 1)
-    lash = f'stroke="{INK}" stroke-width="{3.3 if feminine else 3}"'
-    flick = P(f"M{x + side * 8} {y - 5} Q{x + side * 11.5} {y - 7} {x + side * 12.5} {y - 11}", "none", lash) if feminine else ""
+    lash = f'stroke="{INK}" stroke-width="{2.9 if feminine else 2.6}"'
+    flick = P(f"M{x + side * 8.4} {y - 3.5} Q{x + side * 12} {y - 6} {x + side * 13} {y - 10.5}", "none", lash) if feminine else ""
     return G(E(x, y, 7.8, 9.6, "#fff", NS),
              E(x, y + 1, 6.3, 8.3, IRIS, NS), P(f"M{x - 6.3} {y + 0.5} A6.3 8.3 0 0 1 {x + 6.3} {y + 0.5} Z", IRIS_DEEP, f'opacity=".75" {NS}'),
              E(x, y + 1.5, 3, 4.5, INK, NS), E(x - 2.4, y - 3, 2.6, 3.2, "#fff", NS), C(x + 2.8, y + 5, 1.3, "#fff", f'opacity=".9" {NS}'),
-             P(f"M{x - 8.6} {y - 3.5} Q{x - 1} {y - 12.5} {x + 8.6} {y - 4.5}", "none", lash),
+             P(f"M{x + side * 8.8} {y - 2.5} Q{x - side * .5} {y - 14.5} {x - side * 8} {y - 6}", "none", lash),      # arched, a little lower at the outer corner
              P(f"M{x - 4} {y + 10.2} Q{x} {y + 11.2} {x + 4} {y + 10.2}", "none", f'stroke="{INK}" stroke-width="1" opacity=".4"'),
              flick)
 
@@ -661,13 +661,11 @@ def head(skin, build=None, face=True, line=None):
     feminine = build == "feminine"
     s = tone(skin)
     o = shade(s, 0.72)
-    brows = ("M78 70 Q85.5 65.5 93 68.5", "M107 68.5 Q114.5 65.5 122 70") if feminine else ("M77.5 70 Q85.5 65 93.5 68.5", "M106.5 68.5 Q114.5 65 122.5 70")
-    brow = f'stroke="{shade(s, 0.4)}" stroke-width="{1.9 if feminine else 2.6}"'
     mouth = (P("M95.5 101.5 Q100 105.5 104.5 101.5 Q100 103 95.5 101.5Z", "#d9566b", f'stroke="{shade("#d9566b", 0.7)}" stroke-width="1.4"') if feminine
              else P("M95 101.5 Q100 105.5 105 101.5", "none", f'stroke="{INK}" stroke-width="2.1"'))
     blush = .5 if feminine else .36
     features = G(
-        P(brows[0], "none", brow), P(brows[1], "none", brow), eye(86, feminine), eye(114, feminine),
+        eye(86, feminine), eye(114, feminine),
         P("M99.6 94 L100.8 96", "none", f'stroke="{o}" stroke-width="1.6"'),                                           # nose
         mouth, E(75.5, 98, 7, 4.2, "#ff7a8a", f'opacity="{blush}" {NS}'), E(124.5, 98, 7, 4.2, "#ff7a8a", f'opacity="{blush}" {NS}'),
     ) if face else ""
@@ -676,6 +674,12 @@ def head(skin, build=None, face=True, line=None):
         P(HEAD, s),
         ('<g clip-path="url(#k-head)">' + E(100, 45, 44, 17, o, f'opacity=".34" {NS}') + "</g>") if face else "",                                      # the shadow hair and hats cast
     ) + features, HEAD_SPACE, line or ink(s))
+
+
+def brows(skin, build=None):
+    """The eyebrows, drawn over the fringe so the expression is never hidden: soft arches, a touch lower at the outer ends."""
+    stroke = f'stroke="{shade(tone(skin), 0.38)}" stroke-width="{1.8 if build == "feminine" else 2.3}"'
+    return placed(P("M77.5 69.5 Q85.5 63.5 93 67 M122.5 69.5 Q114.5 63.5 107 67", "none", stroke), HEAD_SPACE, "none")
 
 
 def swimwear(build):
@@ -700,8 +704,9 @@ def hair_layers(item_id, skin=None, build=None, crest=True):
 
 GROUND = E(100, 279, 50, 7, "#000", 'opacity=".2"')
 CROPS = {"hat": "34 -8 132 132", "hair": "18 26 164 164", "face": "50 62 100 84", "top": "36 126 128 150", "bottom": "44 190 112 96",
-         "shoes": "58 236 84 54", "held": "96 96 100 140", "pet": "-4 184 76 100", "back": "0 110 200 190"}
+         "shoes": "58 236 84 54", "held": "106 142 84 112", "pet": "-8 184 78 102", "back": "0 110 200 190"}
 BUST = "28 22 144 144"
+TALL_HELD, TALL_CROP = ("pencil", "balloon", "wand", "sword"), "98 86 100 170"       # things held that reach above the head
 FULL_COVER_HATS = ("helmet", "beanie", "tophat", "chef", "viking")       # no starter hair shows under these
 COVERING_HATS = FULL_COVER_HATS + ("cap", "wizard", "gradcap", "cowboy", "tricorn", "jester")     # these flatten whatever stands above the crown
 MANNEQUIN, MANNEQUIN_LINE = "#e2e5ee", "#aeb3c2"        # the plain stand item icons are shown on
@@ -713,7 +718,7 @@ def figure(worn, skin, build, face=True, line=None, dressed=True):
     back, front = hair_layers(worn["hair"], skin, build, crest=hat not in COVERING_HATS) if worn.get("hair") else ("", "")
     piece = lambda slot, part=None: drawing(worn[slot], skin, build, part) if worn.get(slot) else ""
     return G(piece("background"), piece("aura"), piece("back", 0), back, GROUND, body(skin, build, line), swimwear(build) if dressed else "",
-             piece("shoes"), piece("bottom"), piece("top"), piece("back", 1), head(skin, build, face, line), piece("face"), front, piece("hat"), piece("held"), piece("pet"))
+             piece("shoes"), piece("bottom"), piece("top"), piece("back", 1), head(skin, build, face, line), piece("face"), front, brows(skin, build) if face else "", piece("hat"), piece("held"), piece("pet"))
 
 
 def avatar_svg(outfit, skin=None, size=None, crop=None, build=None):
@@ -735,7 +740,7 @@ def _wrap(inner, view, size=None, build=None):
 
 def item_svg(item_id, skin=None):
     """An item on its own, on a transparent ground so the page can colour it by rarity: trinkets as a card, wearables on a plain
-    mannequin cropped to where the item sits, backgrounds as a small scene."""
+    mannequin cropped to where the item sits, pets and held things alone, backgrounds as a small scene."""
     item = CATALOG[item_id]
     slot = item["slot"]
     if slot == "trinket":
@@ -745,7 +750,10 @@ def item_svg(item_id, skin=None):
                 + R(10, 10, 180, 280, "url(#card)", 20, 'stroke="#000" stroke-opacity=".13" stroke-width="2"') + R(20, 20, 160, 260, "none", 14, 'stroke="#fff" stroke-opacity=".35" stroke-width="2"'))
         return _wrap(card + drawing(item_id, skin), "0 0 200 300")
     if slot == "background":
-        return _wrap(drawing(item_id) + '<g opacity=".55">' + figure({}, skin, None) + "</g>", "0 0 200 300")
+        starter = {s: "{}.{}.{}".format(s, *pick) for s, pick in STARTER[DEFAULT_BUILD].items()}
+        return _wrap(drawing(item_id) + '<g opacity=".55">' + figure(starter, skin, None) + "</g>", "0 0 200 300")
+    if slot in ("held", "pet"):       # shown alone (a held thing with the hand that holds it): beside the mannequin they would be a corner of the picture
+        return _wrap(drawing(item_id, MANNEQUIN), TALL_CROP if slot == "held" and item["style"] in TALL_HELD else CROPS[slot])
     return _wrap(figure({slot: item_id}, MANNEQUIN, None, face=False, line=MANNEQUIN_LINE, dressed=False), CROPS.get(slot, "0 0 200 300"))
 
 

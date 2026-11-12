@@ -59,6 +59,11 @@ More than 3,200 items across 12 slots, with statement pieces (kimono, ball gown,
 | pet | yes | cat, owl, slime, robot, dragon, ghost |
 | trinket | no — collectable | atom, DNA, pi, microscope, planet cards and medals, shown on a shelf |
 
+The character is a chibi (a large head on a small body) and every item is drawn to one style: an outline in a deep shade of the
+item's own colour, one soft shadow and one highlight. Small pictures (leaderboard rows) show head and shoulders
+(`/game/art/avatar.svg?crop=bust`). How the art was arrived at, with contact sheets of each round, is in
+`docs/design/avatar-iterations/`.
+
 Colours include plain, metallic (silver, gold, bronze) and special finishes (rainbow, galaxy, holo, neon). A colour can lift an item
 one or more rarities. Rarity sets value: 10 / 25 / 60 / 150 / 400 / 1000.
 
