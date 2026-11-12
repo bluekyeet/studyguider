@@ -1,4 +1,5 @@
 import { mathText, mathInput, autosave, stash, sha256Hex, aiBox, readable, inlineMath, hintButton } from './web-common.js';
+import { answerBox } from './web-answer.js';
 
 const element = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
@@ -310,9 +311,10 @@ export async function renderLessons(container, api, params) {
   }
 
   function practice(card, draft, lesson) {
-    const label = element('label', 'Your answer', 'stack');
-    const input = element('textarea');
-    input.rows = 6; input.maxLength = 50000; input.value = draft.answer;
+    const label = element('div', '', 'stack');
+    // The question lives in the lesson text, so the server reads which answer forms it asks for from its wording.
+    draft.forms ??= api('/answer-forms', { method: 'POST', ...json({ question: draft.question.slice(0, 30000) }) }).then(r => r.answer_forms);
+    const input = answerBox({ api, forms: draft.forms, value: draft.answer, maxLength: 50000 });
     const status = element('p', '', 'state'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
     const choices = element('div', '', 'toolbar'); choices.hidden = true;
     const feedback = element('div');
@@ -340,7 +342,7 @@ export async function renderLessons(container, api, params) {
     };
     input.addEventListener('input', () => { draft.answer = input.value; changed(); });
     // Leaving the box saves straight away instead of waiting for the pause.
-    input.addEventListener('blur', () => { if (draft.answer !== draft.savedAnswer) draft.saver.flush(); });
+    input.addEventListener('focusout', () => { if (draft.answer !== draft.savedAnswer) draft.saver.flush(); });
 
     // A conflict means the server holds a newer revision: either overwrite it or adopt it.
     const latest = async () => (await api(`/lessons/${lesson.id}/answers`)).find(row => row.question_key === draft.key);
@@ -358,17 +360,17 @@ export async function renderLessons(container, api, params) {
 
     const mark = button('Check my answer', async () => {
       if (draft.busy) return;
-      if (!draft.answer.trim()) throw new Error('Write an answer first.');
-      const question = `Mark my answer to this lesson question.\n${draft.question}\nMy answer:\n${draft.answer}`;
-      if (question.length > 2000) throw new Error('The question and answer exceed the marking endpoint’s 2,000-character limit. Shorten your answer or ask a focused explanation question.');
       draft.busy = true;
       try {
-        const result = await api(`/lessons/${lesson.id}/explain`, { method: 'POST', ...json({ question }) });
-        draft.feedback = result.explanation; showFeedback(draft.feedback);
+        await input.flush();     // a drawing still uploading is part of the answer
+        if (!draft.answer.trim()) throw new Error('Write an answer first.');
+        // Checked against this lesson and its sources; drawings and graphs go to the marker as images.
+        const result = await api(`/lessons/${lesson.id}/check`, { method: 'POST', ...json({ question: draft.question.slice(0, 20000), answer: draft.answer }) });
+        draft.feedback = result.feedback; showFeedback(draft.feedback);
         changed(); // the feedback is saved with the answer, so both devices show it
       } finally { draft.busy = false; }
     });
-    label.append(mathInput(input));
+    label.append(element('span', 'Your answer', 'field-label'), input);
     const actions = element('div', '', 'toolbar');
     actions.append(mark, hintButton(api, { kind: 'lesson', ref: `${lesson.id}:${draft.key}`, answer: () => draft.answer, question: () => draft.question }));
     card.append(label, actions, status, choices, feedback);

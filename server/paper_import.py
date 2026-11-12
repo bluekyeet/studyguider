@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from paper_parser import file_identity, parse_pair, cut_scores
+import answer_forms
 
 
 # Raised whenever the paper parser learns to read more of a paper; papers read by an older version are read again.
@@ -66,21 +67,23 @@ def import_topic_papers(connect, topic_id):
                         # takes it when it has the same labelled parts, so saved answers still line up; the restored
                         # maths for the old wording is dropped so it is read again.
                         labels = [part.get('label') for part in q['parts']]
+                        # The answer inputs each part asks for, read from its wording (the subject sets the symbol palette when shown).
+                        forms = answer_forms.for_question(q['question_text'], '', q['parts'])
                         for question_id, old_parts, used in db.execute("""SELECT id, parts, EXISTS (SELECT 1 FROM exam_items WHERE question_id=exam_questions.id)
                                 FROM exam_questions WHERE paper_resource_id=%s AND question_number=%s AND source='pdf-layout'""",
                                                                     (paper_id, q['question_number'])).fetchall():
                             if used and [part.get('label') for part in (old_parts or [])] != labels:
                                 continue
-                            db.execute("UPDATE exam_questions SET parts=%s::jsonb, question_text=%s, math_state='', math_display=NULL WHERE id=%s",
-                                       (json.dumps(q['parts']), q['question_text'], question_id))
+                            db.execute("UPDATE exam_questions SET parts=%s::jsonb, question_text=%s, math_state='', math_display=NULL, answer_forms=%s::jsonb WHERE id=%s",
+                                       (json.dumps(q['parts']), q['question_text'], json.dumps(forms), question_id))
                         db.execute("""INSERT INTO exam_questions
                             (topic_id,standard_number,year,question_number,paper_resource_id,paper_page,
-                             schedule_resource_id,schedule_page,marks,parts,question_text,schedule_text,figure_pages,source,verified_at)
-                            SELECT %s,%s,%s,%s,%s,%s,%s,%s,0,%s::jsonb,%s,%s,%s::jsonb,'pdf-layout',NULL
+                             schedule_resource_id,schedule_page,marks,parts,question_text,schedule_text,figure_pages,source,verified_at,answer_forms)
+                            SELECT %s,%s,%s,%s,%s,%s,%s,%s,0,%s::jsonb,%s,%s,%s::jsonb,'pdf-layout',NULL,%s::jsonb
                             WHERE NOT EXISTS (SELECT 1 FROM exam_questions WHERE paper_resource_id=%s AND question_number=%s)""",
                             (topic_id, standard, year, q['question_number'], paper_id, q['paper_page'], schedule_id,
                              q['schedule_page'], json.dumps(q['parts']), q['question_text'], q['schedule_text'],
-                             json.dumps(q['pages']), paper_id, q['question_number']))
+                             json.dumps(q['pages']), json.dumps(forms), paper_id, q['question_number']))
             except (OSError, RuntimeError, ValueError) as exc:
                 status, detail = 'needs_attention', type(exc).__name__ + ': PDF could not be parsed safely'
             db.execute("""INSERT INTO paper_import_runs (paper_id,schedule_id,status,detail,parser_version) VALUES (%s,%s,%s,%s,%s)

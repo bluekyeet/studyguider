@@ -385,3 +385,32 @@ def test_rapid_fire_calculations_are_marked_on_the_final_answer_only():
     client, calls, db = make_client()
     assert client.post("/exams/1/answers/2/feedback", json={}).status_code == 200
     assert "rapid-fire" not in calls[0][1][0]["content"]
+
+
+def test_an_answer_with_a_drawing_is_marked_with_the_image_and_drawing_guidance():
+    import io
+    from PIL import Image
+    picture = io.BytesIO(); Image.new("RGB", (60, 40), "white").save(picture, format="PNG")
+
+    class DrawingDB(DB):
+        def execute(self, sql, params=()):
+            if "FROM answer_images WHERE id = ANY" in sql:
+                return Result([(5, picture.getvalue())])
+            return super().execute(sql, params)
+
+    db = DrawingDB(("![Drawing 1](/answer-images/5)\n\nWeight acts down.",) + ROW[1:])
+    seen = []
+
+    def vision(model, prompt, image, task):
+        seen.append((model, task, prompt, image))
+        return marking_json()
+
+    app = FastAPI()
+    app.include_router(marking_router(lambda: db, lambda: None, lambda *a, **k: pytest.fail("a drawing must not be marked as text only"), vision))
+    response = TestClient(app).post("/exams/1/answers/2/feedback", json={})
+    assert response.status_code == 200, response.text
+    assert [(model, task) for model, task, _, _ in seen] == [("education", "exam-mark"), ("education-reviewer", "exam-second-mark")]
+    prompt = seen[0][2]
+    assert "[Drawing 1: see image panel 1]" in prompt and "/answer-images/" not in prompt
+    assert "Judge a drawing from the image" in prompt
+    assert Image.open(io.BytesIO(seen[0][3])).format == "PNG"

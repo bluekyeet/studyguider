@@ -12,6 +12,7 @@ import re
 import unicodedata
 import io
 import rapid_state
+import answer_media
 from rapid_state import refuse_if_blind
 from PIL import Image, UnidentifiedImageError
 from typing import Literal
@@ -426,13 +427,13 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
             "subject": subject, "topic": topic, "standard_number": standard, "year": year,
             "question_number": number, "marks_available": available,
             "grade_criteria": criteria, "question_text": question[:30000],
-            "schedule_text": schedule[:60000], "answer": answer,
+            "schedule_text": schedule[:60000], "answer": answer_media.for_marker(answer),
             "teaching_style": style[:10000],
             "paper_resource_id": str(paper_id), "paper_page": paper_page,
             "schedule_resource_id": str(schedule_id), "schedule_page": schedule_page,
         }, available, schedule
 
-    def mark(payload, available, schedule, model, second=False):
+    def mark(payload, available, schedule, model, second=False, image=None):
         system = ("You are a strict NCEA marker. Mark only against the supplied official assessment "
                   "schedule, or the explicitly labelled AI practice rubric when rubric_type says so; never call that official. Do not give benefit of the doubt. Award a mark only when the schedule "
                   "explicitly supports it. For every mark awarded, quote the exact schedule line. "
@@ -443,7 +444,7 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                   "Reply only in English with New Zealand spelling. Return only a JSON object with "
                   "marks_awarded, marks_available, outcome (not_achieved, achieved, merit, excellence, "
                   "or uncertain), feedback, evidence (array of {quote, explanation, marks}), missing "
-                  "(array of strings), and confidence (0 to 1). Do not claim this is an official result.")
+                  "(array of strings), and confidence (0 to 1). Do not claim this is an official result. " + answer_media.GUIDANCE)
         if payload.get("rapid_fire"):
             system += (" This is a rapid-fire question: the learner worked it out on paper and typed only the final answer, so do not "
                        "penalise missing working for a CALCULATION. When the question asks for a calculation, mark the final answer: award "
@@ -466,7 +467,7 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
         ]
         task = "exam-second-mark" if second else "exam-mark"
         try:
-            return _validate(model_reply(model, messages, task=task), schedule, available)
+            return _validate(answer_media.model_mark(model_reply, model_reply_vision, model, messages, task, image), schedule, available)
         except HTTPException as exc:
             if exc.status_code != 502:
                 raise
@@ -479,7 +480,7 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                 "Return ONLY the JSON object, no markdown fences, no commentary before or "
                 "after it, and copy each evidence quote character-for-character from the "
                 "schedule_text you were given.")})
-            return _validate(model_reply(model, messages, task=task), schedule, available)
+            return _validate(answer_media.model_mark(model_reply, model_reply_vision, model, messages, task, image), schedule, available)
 
     @router.post("/exams/{exam_id}/answers/{question_id}/feedback")
     def answer_feedback(exam_id: int, question_id: int, request: ReviewRequest = ReviewRequest()):
@@ -553,11 +554,13 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                 (exam_id, question_id, answer_hash)).fetchone()
             override = db.execute("SELECT outcome, note FROM marking_overrides WHERE exam_id = %s AND question_id = %s",
                 (exam_id, question_id)).fetchone()
+        # Drawings and graphs in the answer go to the marker as one image beside the text.
+        image = answer_media.answer_image(connect, row[0])
         if stored:
             first = stored[0]
             cached = True
         else:
-            first = mark(payload, available, schedule, "education").model_dump()
+            first = mark(payload, available, schedule, "education", image=image).model_dump()
             with connect() as db:
                 db.execute("""INSERT INTO markings (exam_id, question_id, answer_hash, kind, result, model)
                     VALUES (%s, %s, %s, 'first', %s::jsonb, 'education')
@@ -576,7 +579,7 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
             if stored_second:
                 second = stored_second[0]
             else:
-                second = mark({**payload, "first_marker": first}, available, schedule, "education-reviewer", second=True).model_dump()
+                second = mark({**payload, "first_marker": first}, available, schedule, "education-reviewer", second=True, image=image).model_dump()
                 with connect() as db:
                     db.execute("""INSERT INTO markings (exam_id, question_id, answer_hash, kind, result, model)
                         VALUES (%s, %s, %s, 'second', %s::jsonb, 'education-reviewer')

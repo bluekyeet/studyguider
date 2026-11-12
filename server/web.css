@@ -620,3 +620,48 @@ button.danger:disabled{opacity:.45}
 :root[data-theme="light"] .game{--stage:radial-gradient(circle at 50% 36%,#ffffff 0%,#e3e8f8 55%,#c9d1ec 100%)}
 :root[data-theme="light"] .figure{background:var(--surface-2)}
 :root[data-theme="light"] .figure.main{background:linear-gradient(180deg,rgba(255,207,74,.22),var(--surface-2))}
+
+/* answer box (web-answer.js): text with symbols, plus tables, drawings and graphs the question asks for */
+.answer-box{display:flex;flex-direction:column;gap:10px;font-weight:400}
+.answer-blocks{gap:12px}
+.answer-block{border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;background:var(--surface);display:flex;flex-direction:column;gap:8px;min-width:0}
+.answer-block.text-block{border:0;padding:0;background:transparent}
+.block-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.block-head strong{font-weight:600}
+.block-head button{margin-left:auto}
+.field-label{font-weight:500}
+.answer-add{gap:6px;align-items:center}
+.answer-add>.muted{font-size:13px}
+.rich-tools{display:flex;flex-direction:column;gap:4px}
+.palette-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.palette-tabs button{min-height:30px;padding:2px 10px;font-size:13px;border-color:var(--line)}
+.palette-tabs button[aria-selected="true"]{background:var(--brand-soft);color:var(--brand-soft-text);border-color:var(--teal-line)}
+.equation-line{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.equation-line input{flex:1 1 260px;min-height:40px;font-family:var(--mono);font-size:14px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--surface-2)}
+.equation-preview{flex-basis:100%;min-height:1.6em}
+.table-answer input{width:100%;min-width:90px;padding:6px 8px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface-2)}
+.sketch-frame{width:100%;max-width:800px;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;background:#fff}
+.sketch-frame canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.sketch-tools{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.sketch-tools button{min-height:36px;padding:2px 10px}
+.sketch-tools button[aria-pressed="true"]{background:var(--brand-soft);color:var(--brand-soft-text);border-color:var(--teal-line)}
+.sketch-tools select{min-height:36px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface-2);padding:2px 8px}
+.sketch-tools .swatch{width:36px;min-width:36px;padding:0;position:relative}
+.sketch-tools .swatch::after{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--swatch)}
+.tool-gap{width:8px}
+.sketch-status{font-size:13px}
+.graph-axes{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px 10px;font-size:13px}
+.graph-axes label{display:flex;flex-direction:column;gap:2px}
+.graph-axes input{min-height:36px;padding:4px 8px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface-2)}
+.graph-axes p{grid-column:1/-1;margin:0}
+.answer-drawing{margin:8px 0;max-width:640px}
+.answer-drawing img{display:block;width:100%;border:1px solid var(--line);border-radius:8px;background:#fff}
+.answer-drawing figcaption{font-size:12px;color:var(--faint)}
+.earlier-answers{border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px}
+.earlier-answer{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+@media(max-width:800px){
+  .palette-tabs,.sketch-tools{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .palette-tabs button,.sketch-tools>*{flex:none}
+  .sketch-tools button{min-height:40px;min-width:40px}
+  .answer-block{padding:8px}
+}
