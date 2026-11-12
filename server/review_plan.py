@@ -311,12 +311,13 @@ def readiness(db, today=None):
     by_topic = defaultdict(list)
     for topic_id, stability, last, reps in questions:
         by_topic[topic_id].append((stability, last, reps))
+    names = dict(db.execute("SELECT id, name FROM subjects").fetchall())
     out = {}
     for topic_id, assessments in covered.items():
         for a in assessments:
             if a["due_date"] < today:
                 continue
-            entry = out.setdefault(a["id"], {"assessment_id": a["id"], "title": a["title"], "due_date": a["due_date"],
+            entry = out.setdefault(a["id"], {"assessment_id": a["id"], "title": a["title"], "subject": names.get(a["subject_id"], ""), "due_date": a["due_date"],
                                              "days": (a["due_date"] - today).days, "recall": [], "unanswered": 0, "topics": 0})
             entry["topics"] += 1
             day = datetime.combine(a["due_date"], datetime.min.time(), clock.NZ)

@@ -113,7 +113,7 @@ export async function renderHome(container, api) {
   if (coming.length) {
     container.append(element('h2', 'Coming up'));
     container.append(table(['Date', 'Assessment', 'Predicted recall on the day'], coming.map(a => [
-      `${day(a.due_date + 'T12:00:00')} (${a.days === 0 ? 'today' : a.days === 1 ? 'tomorrow' : `in ${a.days} days`})`, a.title,
+      `${day(a.due_date + 'T12:00:00')} (${a.days === 0 ? 'today' : a.days === 1 ? 'tomorrow' : `in ${a.days} days`})`, a.subject ? `${a.subject} · ${a.title}` : a.title,
       a.predicted_recall == null ? element('span', 'No reviews yet', 'muted') : `${percent(a.predicted_recall)}${a.at_risk ? ` · ${a.at_risk} at risk` : ''}`]), 'Coming assessments'));
   }
   if (graded.length) {
