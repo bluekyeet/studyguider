@@ -1,6 +1,7 @@
 """Optional AI-generated review question drafts with source-linked answers."""
 import json
 
+import answer_forms
 import mathtext
 from reviews import is_admin_question
 
@@ -37,7 +38,7 @@ def review_generation_router(authorised, model_reply, search_resources, connect=
                 "source-supported formulae needed to answer it, using $...$ LaTeX. Define symbols and SI units "
                 "where needed. Do not substitute values or reveal working or answers in the question. Omit "
                 "formulae for purely conceptual questions unless they genuinely help. "
-                "The expected answer must be supported by the source. Do not claim marking.")},
+                "The expected answer must be supported by the source. Do not claim marking. " + answer_forms.PROMPT)},
             {"role": "user", "content": json.dumps({"query": query, "sources": sources, "completed_lessons": completed}, ensure_ascii=False)},
         ], task="review-generate")
         try:
@@ -63,6 +64,7 @@ def review_generation_router(authorised, model_reply, search_resources, connect=
                     "concept": str(item.get("concept", ""))[:200],
                     "source_page": item.get("source_page"),
                     "source_resource_id": item.get("source_resource_id"),
+                    "answer_forms": answer_forms.normalise(item.get("answer_forms"), text=question) or answer_forms.infer(question),
                 })
         except (ValueError, TypeError):
             raise HTTPException(502, "Model returned invalid review questions")

@@ -1,7 +1,8 @@
 // Exam revision: pick a topic and get a pack built from the mistakes you have made in it.
 // A pack is a short re-teach plus questions for each weak concept. Answers are marked straight away (the daily review marking),
 // and a wrong answer comes back through spaced repetition. Everything in a pack is AI-written and unofficial.
-import { mathText, mathInput, aiBox, countUp, hintButton, tableAnswer } from './web-common.js';
+import { mathText, aiBox, countUp, hintButton } from './web-common.js';
+import { answerBox } from './web-answer.js';
 import { el, json, field, option } from './web-exam-shared.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -107,8 +108,8 @@ export async function renderRevision(container, api, params) {
       const box = el('div', '', 'card stack');
       box.append(el('strong', `Question ${number}`), mathText(q.question));
       const out = el('div', '', 'stack');
-      const answer = el('textarea'); answer.rows = 3; answer.setAttribute('aria-label', `Answer to question ${number}`);
-      const label = el('label', 'Your answer'); label.append(mathInput(answer, { collapsed: true }));
+      const answer = answerBox({ api, forms: q.answer_forms, value: q.result?.your_answer || '', collapsed: true, rows: 3, label: `Answer to question ${number}` });
+      const label = el('div', '', 'stack'); label.append(el('span', 'Your answer', 'field-label'), answer);
       const check = el('button', q.result ? 'Try again' : 'Check answer', 'primary'); check.type = 'button';
       const show = result => {
         out.replaceChildren();
@@ -118,8 +119,9 @@ export async function renderRevision(container, api, params) {
         if (result.expected_answer) { const d = el('details'); d.append(el('summary', 'Worked answer'), mathText(result.expected_answer)); out.append(d); }
       };
       check.onclick = async () => {
-        if (!answer.value.trim()) { answer.focus(); return; }
         check.disabled = true;
+        await answer.flush();
+        if (!answer.value.trim()) { answer.focus(); check.disabled = false; return; }
         try {
           const reply = await api(`/review-questions/${q.id}/answers`, json('POST', { answer: answer.value, confidence: 3 }));
           const full = await api(`/revision/packs/${id}`);
@@ -130,10 +132,9 @@ export async function renderRevision(container, api, params) {
         } catch (err) { report(err); }
         check.disabled = false;
       };
-      if (q.result) { answer.value = q.result.your_answer || ''; show(q.result); }
+      if (q.result) show(q.result);
       const actions = el('div', '', 'toolbar'); actions.append(check, hintButton(api, { kind: 'review', ref: q.id, answer: () => answer.value }));
-      const grid = tableAnswer(q.question, answer);
-      box.append(...(grid ? [grid] : []), label, actions, out);
+      box.append(label, actions, out);
       return box;
     };
 

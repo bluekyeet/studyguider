@@ -1,4 +1,5 @@
-import { mathText, mathInput, stash, aiBox, hintButton, tableAnswer, inlineMath } from './web-common.js';
+import { mathText, stash, aiBox, hintButton, inlineMath } from './web-common.js';
+import { answerBox } from './web-answer.js';
 import { scanForm } from './web-exam-shared.js';
 
 const element = (tag, text, className) => {
@@ -141,14 +142,13 @@ export async function renderReviews(container, api) {
     const prompt = element('div'); mathText(prompt, question.question); card.append(prompt);
 
     const form = element('form', undefined, 'stack');
-    const answerLabel = element('label', 'Your answer', 'stack');
-    const answer = element('textarea');
-    answer.required = true; answer.maxLength = 50000; answer.rows = 6;
+    const answerLabel = element('div', undefined, 'stack');
     // An unsent answer survives a reload or a closed tab on this device.
     const draft = drafts.get(question.id) || stash.read(`review:${question.id}`) || { answer: '', confidence: '' };
-    answer.value = draft.answer;
-    answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); answer.setCustomValidity(''); });
-    answerLabel.append(mathInput(answer));
+    // Text with maths and chemistry symbols, plus the table, drawing or graph this question asks for.
+    const answer = answerBox({ api, forms: question.answer_forms, value: draft.answer, maxLength: 50000 });
+    answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); });
+    answerLabel.append(element('span', 'Your answer', 'field-label'), answer);
     const hint = element('div', undefined, 'toolbar'); hint.append(hintButton(api, { kind: 'review', ref: question.id, answer: () => answer.value }));
     // Working done on paper: a photo (taken now, or from the gallery) is read into the box above, to be checked before it is submitted.
     const photo = element('div', undefined, 'toolbar');
@@ -162,11 +162,11 @@ export async function renderReviews(container, api) {
         if (!files.length || submitting || scanning) return;
         try {
           const form = scanForm(files);
-          if (answer.value.trim() && !window.confirm('Replace your answer with the text read from this photo?')) return;
+          if (answer.textarea.value.trim() && !window.confirm('Replace your written answer with the text read from this photo? Tables and drawings are kept.')) return;
           scanning = true; for (const node of [open, ...photo.querySelectorAll('button')]) node.disabled = true;
           status.textContent = 'Reading your handwriting. This can take a minute…';
           const result = await api(`/review-questions/${question.id}/scan`, { method: 'POST', body: form });
-          answer.value = result.transcription; answer.dispatchEvent(new Event('input', { bubbles: true }));
+          answer.setText(result.transcription);
           status.textContent = result.notice;
         } catch (error) { status.textContent = error.message || 'Could not read the photo.'; }
         finally { scanning = false; for (const node of photo.querySelectorAll('button')) node.disabled = false; }
@@ -191,12 +191,27 @@ export async function renderReviews(container, api) {
       if (value.answer || value.confidence) stash.write(`review:${question.id}`, value); else stash.clear(`review:${question.id}`);
     };
     form.addEventListener('input', saveDraft); form.addEventListener('change', saveDraft);
+    // Answered before: what was written, and the AI's verdict, shown again with any drawings.
+    const earlier = element('details', undefined, 'earlier-answers'); earlier.hidden = true;
+    if (question.answer_count) {
+      api(`/review-questions/${question.id}/answers`).then(rows => {
+        if (!rows?.length) return;
+        earlier.hidden = false;
+        earlier.append(element('summary', `Your earlier answer${rows.length === 1 ? '' : 's'} (${rows.length})`));
+        for (const row of rows.slice(-3).reverse()) {
+          const entry = element('div', undefined, 'stack earlier-answer');
+          const when = new Date(row.answered_at).toLocaleDateString('en-NZ');
+          entry.append(element('p', `${when} · ${row.outcome === 'correct' ? 'Correct' : row.outcome === 'incorrect' ? 'Not quite' : 'Not independently marked'} · confidence ${row.confidence}`, 'muted'), mathText(row.answer));
+          if (row.feedback) entry.append(aiBox(mathText(row.feedback)));
+          earlier.append(entry);
+        }
+      }).catch(() => {});
+    }
     const submit = button('Submit answer', 'primary'); submit.type = 'submit';
     const toolbar = element('div', undefined, 'toolbar'); toolbar.append(submit);
     if (back === 'all') { const cancel = button('Back to list'); cancel.onclick = () => { mode = 'all'; show(); }; toolbar.append(cancel); }
     const feedback = element('div', undefined, 'stack'); feedback.setAttribute('role', 'status');
-    const grid = tableAnswer(question.question, answer);
-    form.append(...(grid ? [grid] : []), answerLabel, photo, hint, scale, toolbar);
+    form.append(earlier, answerLabel, photo, hint, scale, toolbar);
     card.append(form, feedback);
     content.append(card);
     if (focus) answer.focus();
@@ -204,7 +219,8 @@ export async function renderReviews(container, api) {
     form.addEventListener('submit', async event => {
       event.preventDefault();
       if (submitting || loading || scanning) return;
-      answer.setCustomValidity(answer.value.trim() ? '' : 'Please enter an answer.');
+      await answer.flush();      // a drawing still uploading is part of the answer
+      if (!answer.value.trim()) { status.textContent = 'Please enter an answer.'; answer.focus(); return; }
       if (!form.reportValidity()) return;
       saveDraft();
       const selected = Number(drafts.get(question.id).confidence);

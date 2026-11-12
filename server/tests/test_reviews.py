@@ -166,6 +166,8 @@ def test_all_questions_lists_due_and_future_questions_with_optional_topic_filter
         def __exit__(self, *args): pass
         def execute(self, sql, params=()):
             assert "review_questions q" in sql
+            if "answer_forms" in sql:       # the forms each listed question needs: stored for 1, inferred for 2
+                return Result([(1, [{"kind": "graph"}], "Physics"), (2, None, "Physics")])
             self.calls.append(params)
             return Result([(1, 2, "Now?", date(2026, 11, 3), "force", None, 0.5, 1, 2, None),
                            (2, 2, "Later?", date(2026, 12, 1), "", 91171, 0.0, 0, 0, None)])
@@ -176,6 +178,8 @@ def test_all_questions_lists_due_and_future_questions_with_optional_topic_filter
     rows = client.get("/review-questions?topic_id=2").json()
     assert [r["question"] for r in rows] == ["Now?", "Later?"]
     assert rows[1]["due_date"] == "2026-12-01" and rows[0]["answer_count"] == 2
+    assert [f["kind"] for f in rows[0]["answer_forms"]] == ["graph", "text"]
+    assert rows[1]["answer_forms"] == [{"kind": "text", "palette": "physics"}]
     assert ListDatabase.calls[-1] == (2, 2, 200, 0)
     client.get("/review-questions")
     assert ListDatabase.calls[-1] == (None, None, 200, 0)
