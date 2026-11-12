@@ -30,6 +30,25 @@ about how things should look. Written 3 November 2026 from the code in `server/w
 - Icons are inline SVG in `web.html`. The logo is `/branding/wordmark.png` (dark background,
   not transparent) and `/branding/favicon.png`.
 
+## The answer box (`web-answer.js`)
+
+Every place the learner answers (Review, lesson practice, exam parts, rapid questions, revision packs) uses one answer box.
+It offers what the question asks for, from the catalogue in `docs/design/answer-input-catalogue.md`:
+- **Text** with a symbol bar in four sets (Maths, Chemistry, Physics, Greek), opened on the subject's set, and a rendered
+  preview. Chemistry adds a line where an equation is typed as written (`Fe^3+ + 3OH- -> Fe(OH)3(s)`) and added as `$\ce{...}$`.
+- **Table**: the question's headers and given cells with blank cells to fill, or a table the learner builds.
+- **Drawing**: pen, line, arrow, text label, eraser, undo/redo, clear, three inks, over a blank box, a grid or the question's
+  own figure (exam parts). Used for Lewis structures, structural formulae, reaction schemes and force, ray and wave diagrams.
+- **Graph**: axes and grid with editable labels and optional ranges; curve, straight line, plotted points and labels.
+- "Add to your answer" offers a table, drawing or graph the question did not ask for. The photo upload stays as the fallback.
+
+Which forms a question needs is recorded when it is generated or imported (`answer_forms.py`) and inferred from the wording
+for older questions. The answer is still one text: tables as Markdown, maths as LaTeX, each drawing as
+`![Drawing 1](/answer-images/42)` (a graph adds a line describing its axes, points and curves). Drawings are stored per
+account in `answer_images`; the marker gets them as one captioned image beside the text. Answers shown again (earlier Review
+answers, exam feedback, rapid results) draw these images. The Android app shows the image line as text and keeps it when the
+answer is edited there.
+
 ## Global shell
 
 - **Sign-in screen** shown when there is no session: username and password fields, Sign in button, error text.
