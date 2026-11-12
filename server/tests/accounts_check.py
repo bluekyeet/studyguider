@@ -81,7 +81,7 @@ try:
             users = db.execute("SELECT id, username, is_admin FROM users").fetchall()
             public_tables = {r[0] for r in db.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'").fetchall()}
             check("migration: the old installation became the first admin account", users == [(1, "admin", True)], users)
-            check("migration: only accounts and sessions are left in the shared schema", public_tables == {"users", "sessions"}, public_tables)
+            check("migration: only accounts, sessions and the leaderboard snapshot are left in the shared schema", public_tables == {"users", "sessions", "game_profiles"}, public_tables)
             moved = db.execute("SELECT (SELECT count(*) FROM u1.subjects), (SELECT count(*) FROM u1.notes), (SELECT count(*) FROM u1.settings WHERE key <> 'x')").fetchone()
             check("migration: the old data moved into the account's schema intact", moved[:2] == (1, 1), moved)
             check("migration: the old login lock and password rows were not carried over", db.execute("SELECT count(*) FROM u1.settings").fetchone()[0] == 0)
