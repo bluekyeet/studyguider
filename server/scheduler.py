@@ -7,6 +7,7 @@ retrying a potentially already-created lesson. A run that failed with no lesson 
 import logging
 import threading
 
+import clock
 import userspace
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
@@ -169,9 +170,22 @@ def retry_failed(db, topic_id, today):
         RETURNING r.query""", (topic_id, today, MAX_RUN_ATTEMPTS)).fetchone()
 
 
-def run_due(connect, generate, now=None):
-    """Run today's due schedules once; no catch-up for previous UTC days."""
-    now = now or datetime.now(timezone.utc)
+MAINTENANCE_EVERY_DAYS = 7
+
+
+def planned_phase(db, topic_id, today):
+    """The study planner's phase for a topic (review_plan.topic_phase): 'learn', 'exam_prep' or 'maintain'."""
+    import review_plan
+    return review_plan.topic_phase(db, topic_id, today)[0]
+
+
+def run_due(connect, generate, now=None, phase_of=None):
+    """Run today's due schedules once; no catch-up for previous UTC days.
+
+    With `phase_of(db, topic_id, local_date)`, lessons follow the calendar: a topic whose assessments are all past gets a short
+    maintenance lesson at most every MAINTENANCE_EVERY_DAYS days instead of a new one each night (reviews keep the knowledge),
+    and the phase is passed on so the lesson is written for it (new content, exam preparation or maintenance)."""
+    now = now or clock.now()
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
     now = now.astimezone(timezone.utc)
@@ -192,6 +206,14 @@ def run_due(connect, generate, now=None):
         with connect() as db:
             if waiting_lesson(db, topic_id, zone, local.date()):
                 continue        # a lesson nobody opened is still waiting; it moves to today instead of piling up another
+            phase = phase_of(db, topic_id, local.date()) if phase_of else None
+            # A run already claimed today keeps its retries; otherwise a maintenance topic waits for its weekly lesson.
+            if phase == "maintain" and not db.execute("SELECT 1 FROM lesson_schedule_runs WHERE topic_id = %s AND run_date = %s",
+                                                      (topic_id, local.date())).fetchone() \
+                    and db.execute("""SELECT 1 FROM lessons WHERE topic_id = %s
+                        AND (created_at AT TIME ZONE %s)::date > %s::date - %s LIMIT 1""",
+                                   (topic_id, zone, local.date(), MAINTENANCE_EVERY_DAYS)).fetchone():
+                continue
             claim = db.execute("""INSERT INTO lesson_schedule_runs (topic_id, run_date, query, status)
                 SELECT topic_id, %s, query, 'running' FROM lesson_schedules
                 WHERE topic_id = %s AND enabled AND hour_utc <= %s
@@ -203,6 +225,7 @@ def run_due(connect, generate, now=None):
             continue
         body = LessonGeneration(query=claim[0])
         body._schedule_run = (topic_id, local.date())
+        body._phase = phase
         try:
             lesson = generate(topic_id, body)
             lesson_id = lesson["id"]
@@ -225,7 +248,7 @@ def run_due(connect, generate, now=None):
                 (lesson_id, topic_id, local.date()))
 
 
-def start_scheduler(connect, generate, interval=60, prepare_reviews=None, user_ids=None):
+def start_scheduler(connect, generate, interval=60, prepare_reviews=None, user_ids=None, phase_of=planned_phase):
     """Start a daemon worker; return (stop event, thread) for clean shutdown."""
     if interval <= 0:
         raise ValueError("interval must be positive")
@@ -239,7 +262,7 @@ def start_scheduler(connect, generate, interval=60, prepare_reviews=None, user_i
                         prepare_reviews()
                     except Exception:
                         log.exception("Automatic review preparation failed; continuing lesson schedules")
-                run_due(connect, generate)
+                run_due(connect, generate, phase_of=phase_of)
             try:
                 if user_ids is not None:
                     userspace.each_user(user_ids, tick)        # every account gets its own lessons and reviews

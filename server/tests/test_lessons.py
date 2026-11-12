@@ -82,6 +82,10 @@ class Database:
         elif "SELECT q.concept, count(*) FROM review_answers" in sql:
             assert "same_concept.topic_id=q.topic_id" in sql
             self.result = [("Frequency", 3)]
+        elif "LEFT JOIN programmes p" in sql:
+            self.result = None          # no programme set up: an NCEA subject, as before
+        elif "JOIN assessments a" in sql or "d.retention_goal" in sql or "FROM topic_outcomes x" in sql:
+            self.result = []
         elif "FROM review_questions" in sql:
             self.result = []
         elif "FROM resources WHERE id = ANY" in sql:

@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: pip install -r server/requirements.txt pytest httpx
+      - run: pip install -r server/requirements.txt pytest httpx fsrs==6.3.2
       - run: python -m pytest server/tests -q
         env:
           PYTHONPATH: server

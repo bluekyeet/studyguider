@@ -4,7 +4,8 @@ from datetime import date, datetime, timedelta, timezone
 
 from pydantic import ValidationError
 
-from reviews import ReviewAnswer, ReviewQuestion, next_interval, review_router
+import review_plan
+from reviews import ReviewAnswer, ReviewQuestion, review_router
 
 
 class Result:
@@ -40,8 +41,8 @@ class Database:
         if "INSERT INTO review_answers" in sql:
             self.answers.append(params)
             return Result((42, self.timestamp))
-        if "SELECT AVG(mastery)" in sql:
-            return Result((0.25,))
+        if "SELECT mastery, status FROM topics" in sql:
+            return Result((0.91, "secure"))
         if "UPDATE review_questions" in sql or "UPDATE topics" in sql:
             return Result()
         raise AssertionError(sql)
@@ -65,7 +66,7 @@ def test_completed_lessons_automatically_get_reviews_once():
                 self.generated = True
             elif "FROM review_questions q" in sql:
                 return Result([])
-            return Result()
+            return Result([])
 
     db = ReviewDatabase()
     model_calls = []
@@ -94,19 +95,27 @@ def make_router(reply=None):
 
     router = review_router(lambda: db, lambda: None, model)
     endpoint = next(r.endpoint for r in router.routes if r.path.endswith("/answers") and "POST" in r.methods)
+    db.graded = []
+
+    def record(database, question_id, grade, now):
+        # The scheduling itself is tested against the FSRS maths in test_fsrs.py and on PostgreSQL in review_plan_check.py.
+        db.graded.append((question_id, grade))
+        days = 1 if grade == 1 else 16
+        return {"grade": grade, "retrievability_before": None, "elapsed_days": None, "next_due": date.today() + timedelta(days=days),
+                "interval_days": days, "stability": 2.3, "relearn": grade == 1, "exam": None}
+    db.restore = review_plan.record_review
+    review_plan.record_review = record
     return db, calls, endpoint
 
 
 class ReviewTests(unittest.TestCase):
-    def test_self_assessed_intervals(self):
-        self.assertEqual([next_interval(0, c) for c in range(1, 6)], [1, 1, 1, 2, 4])
-        self.assertEqual([next_interval(8, c) for c in range(1, 6)], [1, 1, 8, 16, 24])
-        self.assertEqual(next_interval(36500, 5), 36500)
-        self.assertEqual(next_interval(8, 5, correct=False), 1)
-        self.assertEqual(next_interval(8, 5, correct=True), 24)
+    def tearDown(self):
+        if getattr(self, "db", None) is not None:
+            review_plan.record_review = self.db.restore
 
     def test_answer_is_ai_marked_and_rescheduled(self):
         db, calls, endpoint = make_router()
+        self.db = db
         result = endpoint(7, ReviewAnswer(answer=" water moves ", confidence=4))
         self.assertEqual(result["answer"], "water moves")
         self.assertEqual(result["correct"], True)
@@ -118,20 +127,27 @@ class ReviewTests(unittest.TestCase):
         payload = json.loads(calls[0][1][1]["content"])
         self.assertEqual(payload["expected_answer"], "Osmosis is diffusion of water.")
         self.assertIn("FOR UPDATE", db.calls[0][0])
-        self.assertIn("Pacific/Auckland", db.calls[3][0])
+        self.assertEqual(db.graded, [(7, 3)])        # right, confidence 4: Good
+        self.assertFalse(result["relearn"])
+        self.assertEqual(db.answers[0][9], 3)       # the grade is kept with the answer
 
     def test_wrong_answer_returns_tomorrow(self):
         db, calls, endpoint = make_router(reply=json.dumps(
             {"correct": False, "feedback": "No, that is not diffusion.", "concept": "osmosis"}))
+        self.db = db
         result = endpoint(7, ReviewAnswer(answer="active transport", confidence=5))
         self.assertEqual(result["correct"], False)
         self.assertEqual(result["interval_days"], 1)
+        self.assertEqual(db.graded, [(7, 1)])
+        self.assertTrue(result["relearn"] and result["confident_miss"])     # asked again this session; a confident miss
         self.assertEqual(result["outcome"], "incorrect")
         self.assertEqual(db.answers[0][3], False)
 
     def test_invalid_mark_falls_back_to_confidence(self):
         db, calls, endpoint = make_router(reply="not json")
+        self.db = db
         result = endpoint(7, ReviewAnswer(answer="something", confidence=4))
+        self.assertEqual(db.graded, [(7, 3)])       # unmarked: confidence alone, never Easy
         self.assertEqual(result["outcome"], "confidence-based")
         self.assertEqual(result["correct"], True)
         self.assertIn("unavailable", result["feedback"])
@@ -147,7 +163,7 @@ class ReviewTests(unittest.TestCase):
             pass
 
         router = review_router(None, authorised, lambda *args: "")
-        self.assertEqual(len(router.routes), 7)
+        self.assertEqual(len(router.routes), 8)
         self.assertTrue(all(route.dependencies[0].dependency is authorised for route in router.routes))
 
 
@@ -167,8 +183,8 @@ def test_all_questions_lists_due_and_future_questions_with_optional_topic_filter
         def execute(self, sql, params=()):
             assert "review_questions q" in sql
             self.calls.append(params)
-            return Result([(1, 2, "Now?", date(2026, 11, 3), "force", None, 0.5, 1, 2, None),
-                           (2, 2, "Later?", date(2026, 12, 1), "", 91171, 0.0, 0, 0, None)])
+            return Result([(1, 2, "Now?", date(2026, 11, 3), "force", None, 0.5, 1, 2, None, 2, "concept"),
+                           (2, 2, "Later?", date(2026, 12, 1), "", 91171, 0.0, 0, 0, None, 0, "fact")])
 
     app = FastAPI()
     app.include_router(review_router(ListDatabase, lambda: None, None))
@@ -182,48 +198,61 @@ def test_all_questions_lists_due_and_future_questions_with_optional_topic_filter
     assert client.get("/review-questions?limit=501").status_code == 422
 
 
-def test_estimated_grade_needs_enough_answers_and_uses_fixed_bands():
-    from reviews import estimate_grade
-    assert estimate_grade(0.9, 4) is None
-    assert [estimate_grade(m, 5) for m in (0.0, 0.39, 0.4, 0.59, 0.6, 0.79, 0.8, 1.0)] == [
-        "Not achieved", "Not achieved", "Achieved", "Achieved", "Merit", "Merit", "Excellence", "Excellence"]
+class PlanDb:
+    """Answers the daily plan's queries: due rows, answered questions (for repeats), and no assessments or settings."""
+    def __init__(self, due, answered=()):
+        self.due, self.answered, self.sql = due, list(answered), []
+
+    def execute(self, sql, params=()):
+        self.sql.append(sql)
+        if "q.exam_origin, q.stability" in sql:
+            return Result(self.due)
+        if "WHERE q.reps > 0" in sql and "q.exam_origin" in sql:
+            return Result(self.answered)
+        if "FROM settings" in sql:
+            return Result(None)
+        return Result([])
 
 
-def test_review_only_asks_new_questions():
-    from reviews import fresh_due
-    # (id, topic, question, due, concept, standard, mastery, topic name, origin)
-    due = [(1, 7, "What is the magnitude of the electrical force on a charge of $2$ C in a field?", None, "", None, 0, "E", ""),
-           (2, 7, "Explain why alkanes are saturated.", None, "", None, 0, "E", ""),
-           (3, 7, "Explain why alkanes are saturated!", None, "", None, 0, "E", "pack:3:0.1"),
-           (4, 7, "Ethanol burns. Complete the table below.", None, "", None, 0, "E", "49:28:c(i)"),
-           (5, 7, "Ethanol burns. Explain the high melting point of palladium.", None, "", None, 0, "E", "49:28:c(ii)"),
-           (6, 8, "Explain why alkanes are saturated.", None, "", None, 0, "F", "")]
+def due_row(id, topic, question, concept="", origin="", reps=0, stability=None, material="concept"):
+    # (id, topic, question, due, concept, standard, mastery, topic name, origin, stability, last review, reps, material, expected, subject)
+    last = datetime(2026, 11, 1, tzinfo=timezone.utc) if reps else None
+    return (id, topic, question, date(2026, 11, 2), concept, None, 0, "E", origin, stability, last, reps, material, "", "Chemistry")
+
+
+def test_new_questions_that_repeat_an_answered_one_are_left_out():
+    from reviews import due_list
+    due = [due_row(1, 7, "What is the magnitude of the electrical force on a charge of $2$ C in a field?"),
+           due_row(2, 7, "Explain why alkanes are saturated."),
+           due_row(3, 7, "Explain why alkanes are saturated!", origin="pack:3:0.1"),
+           due_row(4, 7, "Ethanol burns. Complete the table below.", origin="49:28:c(i)"),
+           due_row(5, 7, "Ethanol burns. Explain the high melting point of palladium.", origin="49:28:c(ii)"),
+           due_row(6, 8, "Explain why alkanes are saturated.")]
     answered = [(7, "What is the magnitude of the electrical force experienced by a charge of $5$ C in a field?", "")]
+    rows, info = due_list(PlanDb(due, answered), date(2026, 11, 2), datetime(2026, 11, 2, tzinfo=timezone.utc))
+    assert sorted(row["id"] for row in rows) == [2, 4, 5, 6]     # near-repeats go; exam parts and other topics stay
+    assert info["left_out"] == 0
 
-    class Db:
-        def execute(self, sql, params=()):
-            return Result(answered if "SELECT DISTINCT" in sql else due)
-    assert [row[0] for row in fresh_due(Db(), date.today())] == [2, 4, 5, 6]     # near-repeats go; exam parts and other topics stay
+
+def test_answered_questions_come_back_when_due():
+    from reviews import due_list
+    due = [due_row(1, 7, "Define osmosis.", reps=2, stability=3.0, material="fact"), due_row(2, 7, "Explain diffusion.")]
+    rows, _ = due_list(PlanDb(due), date(2026, 11, 9), datetime(2026, 11, 9, tzinfo=timezone.utc))
+    assert [row["id"] for row in rows] == [1, 2]
+    assert 0 < rows[0]["recall"] < 0.9          # eight days after a review with stability 3: partly forgotten
 
 
 def test_review_skips_paperwork_questions():
-    from reviews import fresh_due, is_admin_question
+    from reviews import due_list, is_admin_question
     assert is_admin_question("How many credits is this standard worth?", "NCEA assessment criteria")
     assert is_admin_question("Which grades can you get?", "")
     assert is_admin_question("Solve the equation.", "NCEA Level 2 Standard 91261 details")
     assert not is_admin_question("Solve $x^2 = 9$.", "quadratics")
-    due = [(1, 7, "How many credits is this standard worth?", None, "NCEA assessment criteria", None, 0, "Algebra", ""),
-           (2, 7, "Solve $x^2 = 9$.", None, "quadratics", None, 0, "Algebra", "")]
-
-    class Db:
-        sql = []
-
-        def execute(self, sql, params=()):
-            self.sql.append(sql)
-            return Result([] if "SELECT DISTINCT" in sql else due)
-    db = Db()
-    assert [row[0] for row in fresh_due(db, date.today())] == [2]
-    assert "NOT sw.active" in db.sql[0]            # a topic switched off in Settings is not asked about
+    db = PlanDb([due_row(1, 7, "How many credits is this standard worth?", "NCEA assessment criteria"),
+                 due_row(2, 7, "Solve $x^2 = 9$.", "quadratics")])
+    rows, _ = due_list(db, date(2026, 11, 2), datetime(2026, 11, 2, tzinfo=timezone.utc))
+    assert [row["id"] for row in rows] == [2]
+    assert any("q.exam_origin, q.stability" in sql and "NOT sw.active" in sql for sql in db.sql)   # switched-off topics are not asked
 
 
 def test_study_summary_leaves_out_switched_off_topics():
@@ -237,8 +266,6 @@ def test_study_summary_leaves_out_switched_off_topics():
         def __exit__(self, *args): pass
         def execute(self, sql, params=()):
             self.sql.append(sql)
-            if "SELECT (now()" in sql:
-                return Result((date(2026, 11, 6),))
             if "FROM lessons l" in sql:
                 return Result((0, 0, 0, 0))
             if "count(*) FILTER (WHERE due_date" in sql:

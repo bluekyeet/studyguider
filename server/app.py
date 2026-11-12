@@ -43,6 +43,9 @@ from styles import create_style_tables, style_router
 from pages import page_router, safe_dpi
 from game import create_game_tables, create_public_game_tables, game_router, refresh_all
 from hints import create_hint_tables, hint_router
+from curriculum import create_curriculum_tables, curriculum_router, map_ncea_standards
+import clock
+import review_plan
 import ocr
 import logging
 import userspace
@@ -137,6 +140,7 @@ def init_schema(db):
         db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
         db.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {table}_global_idx ON {table}(global_id) WHERE global_id IS NOT NULL")
     db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT false")
+    create_curriculum_tables(db)        # programmes, paper details, outcomes and assessments; maps NCEA standards onto them
 
 
 def provision_account(user_id):
@@ -484,7 +488,7 @@ def study_styles():
 
 @app.get('/{module_name}.js', include_in_schema=False)
 def study_module(module_name: str):
-    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings', 'web-game'}:
+    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings', 'web-game', 'web-plan'}:
         raise HTTPException(404, 'Module not found')
     # no-cache: the browser re-checks on each load, so a new version shows without a hard refresh
     return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript', headers={'Cache-Control': 'no-cache'})
@@ -1494,6 +1498,9 @@ app.include_router(revision_router(connect, authorised, model_reply_reliable, la
 app.include_router(rapid_router(connect, authorised, model_reply_reliable, lambda topic, query: search_resources(topic, query), _mark_answer, model_reply_vision))
 app.include_router(explain_router(connect, authorised, model_reply, model_reply_stream))
 app.include_router(review_generation_router(authorised, model_reply, search_resources, connect))
+_paper_grade = next(r.endpoint for r in _marking.routes if r.path == "/exams/{exam_id}/schedule-grade" and "GET" in r.methods)
+app.include_router(curriculum_router(connect, authorised, model_reply, paper_grade=_paper_grade,
+                                     replan=lambda db, subject_id: review_plan.replan(db, clock.today(), subject_id)))
 
 
 def scheduled_generate(topic_id, body):
@@ -1502,7 +1509,42 @@ def scheduled_generate(topic_id, body):
 
 
 def prepare_daily_reviews():
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
     route = next(route for route in app.routes if route.path == "/review-questions/due" and "GET" in route.methods)
-    route.endpoint(datetime.now(ZoneInfo("Pacific/Auckland")).date())
+    route.endpoint(clock.today())
+    replan_daily()
+
+
+def replan_daily():
+    """Once a New Zealand day per account: map new NCEA standards, move due dates for the calendar (retention ramps before an
+    assessment, maintenance after it) and refresh each topic's predicted recall."""
+    today = clock.today().isoformat()
+    with connect() as db:
+        done = db.execute("SELECT value FROM settings WHERE key = 'replanned_on'").fetchone()
+        if done and done[0] == today:
+            return
+        map_ncea_standards(db)
+        review_plan.replan(db, clock.today())
+        review_plan.refresh_topics(db)
+        db.execute("""INSERT INTO settings (key, value) VALUES ('replanned_on', %s)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""", (today,))
+
+
+class DevClock(BaseModel):
+    offset_days: float = Field(ge=0, le=3650)
+
+
+@app.get("/dev/clock", dependencies=[Depends(authorised)])
+def dev_clock():
+    return {"enabled": clock.enabled(), "offset_days": clock.offset_days(), "now": clock.now(), "today": clock.today()}
+
+
+@app.put("/dev/clock", dependencies=[Depends(admin_only)])
+def set_dev_clock(body: DevClock):
+    """Move the planner's clock forward to try several days of reviews (only on a server started with STUDYGUIDER_DEV_CLOCK=yes)."""
+    if not clock.enabled():
+        raise HTTPException(404, "Not found")
+    clock.set_offset_days(body.offset_days)
+    for user_id in all_user_ids():
+        with userspace.as_user(user_id), connect() as db:
+            db.execute("DELETE FROM settings WHERE key = 'replanned_on'")
+    return dev_clock()

@@ -25,8 +25,57 @@ def create_style_tables(db):
     db.execute("CREATE TABLE IF NOT EXISTS topic_style_profiles (topic_id bigint PRIMARY KEY REFERENCES topics(id) ON DELETE CASCADE, content text NOT NULL)")
 
 
+PREFERENCES = {
+    "tone": {"warm": "warm and encouraging", "neutral": "neutral and matter-of-fact", "direct": "brief and direct"},
+    "reading_level": {"plain": "plain everyday words, terms defined as they come", "standard": "standard textbook language",
+                      "technical": "precise technical language"},
+    "pace": {"small": "small steps with a check after each", "standard": "a steady pace", "brisk": "a brisk pace with fewer steps"},
+}
+
+
+class Preferences(BaseModel):
+    """How explanations read. Deliberately not a 'learning style': matching teaching to a preferred modality has no
+    experimental support (Pashler et al. 2008), so only tone, reading level and pace are offered."""
+    tone: str = "warm"
+    reading_level: str = "standard"
+    pace: str = "standard"
+
+    def model_post_init(self, _):
+        for key, options in PREFERENCES.items():
+            if getattr(self, key) not in options:
+                raise ValueError(f"unknown {key}")
+
+
+def describe_preferences(stored):
+    if not stored:
+        return ""
+    try:
+        chosen = Preferences(**json.loads(stored))
+    except (ValueError, TypeError):
+        return ""
+    return ("Explanation preferences (tone, reading level and pace only; not a learning style): "
+            f"{PREFERENCES['tone'][chosen.tone]}; {PREFERENCES['reading_level'][chosen.reading_level]}; {PREFERENCES['pace'][chosen.pace]}.")
+
+
 def style_router(connect, authorised, model_reply=None):
     router = APIRouter(dependencies=[Depends(authorised)])
+
+    @router.get("/teaching-preferences")
+    def get_preferences():
+        with connect() as db:
+            row = db.execute("SELECT value FROM settings WHERE key = 'teaching_preferences'").fetchone()
+        try:
+            chosen = Preferences(**json.loads(row[0])) if row else Preferences()
+        except (ValueError, TypeError):
+            chosen = Preferences()
+        return {**chosen.model_dump(), "options": PREFERENCES}
+
+    @router.put("/teaching-preferences")
+    def put_preferences(body: Preferences):
+        with connect() as db:
+            db.execute("""INSERT INTO settings (key, value) VALUES ('teaching_preferences', %s)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""", (json.dumps(body.model_dump()),))
+        return body.model_dump()
 
     @router.get("/style-profile")
     def get_global_profile():
@@ -117,15 +166,20 @@ def style_for_topic(db, topic_id: int) -> str:
     The topic text comes last because it is the more specific instruction.
     """
     row = db.execute("""SELECT COALESCE(p.content, ''), COALESCE(tp.content, ''),
-        (SELECT content FROM teaching_method WHERE id = 1)
+        (SELECT content FROM teaching_method WHERE id = 1),
+        (SELECT value FROM settings WHERE key = 'teaching_preferences')
         FROM topics t
         LEFT JOIN style_profiles p ON p.subject_id = t.subject_id
         LEFT JOIN topic_style_profiles tp ON tp.topic_id = t.id
         WHERE t.id = %s""", (topic_id,)).fetchone()
     if row is None:
         return ""
+    chosen = describe_preferences(row[3]) if len(row) > 3 else ""
     if len(row) > 2 and row[2] is not None:
-        return "App-wide teaching method:\n" + row[2][:50000] if row[2].strip() else ""
+        notes = ("App-wide teaching method:\n" + row[2][:50000]) if row[2].strip() else ""
+        return "\n\n".join(part for part in (chosen, notes) if part)
+    if chosen:
+        return chosen
     subject_style, topic_style = row[:2]
     parts = []
     if subject_style.strip():
