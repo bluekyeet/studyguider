@@ -51,6 +51,12 @@ class Database:
     def execute(self, sql, params=()):
         if "INSERT INTO lesson_schedules" in sql:
             return self
+        if "SELECT 1 FROM lesson_schedule_runs WHERE topic_id" in sql:
+            self.result = (1,) if (params[0], params[1]) in self.runs else None
+            return self
+        if "SELECT 1 FROM lessons WHERE topic_id" in sql:
+            self.result = (1,) if params[0] in getattr(self, "recent_lesson", set()) else None
+            return self
         if "FROM lessons l WHERE l.topic_id" in sql:
             self.result = (1,) if params[0] in self.waiting else None
             return self
@@ -256,3 +262,17 @@ def test_a_run_that_failed_without_a_lesson_is_tried_again_until_it_works():
         db.runs[1, due.date()]["due_again"] = True
         run_due(lambda: db, generate, due)
     assert db.runs[1, due.date()]["status"] == "completed" and db.runs[1, due.date()]["attempts"] == 3
+
+
+def test_lessons_follow_the_plan_phase():
+    db = Database()
+    db.recent_lesson = {1}           # topic 1 had a lesson this week; topic 2 has not
+    phases = {1: "maintain", 2: "maintain"}
+    seen = []
+    run_due(lambda: db, lambda topic, body: seen.append((topic, body._phase)) or {"id": 42},
+            datetime(2026, 1, 1, 2, tzinfo=timezone.utc), phase_of=lambda db, topic, day: phases[topic])
+    assert seen == [(2, "maintain")]       # maintenance: at most one short lesson a week, and it is told it is maintenance
+    phases[1] = "exam_prep"
+    run_due(lambda: db, lambda topic, body: seen.append((topic, body._phase)) or {"id": 43},
+            datetime(2026, 1, 2, 2, tzinfo=timezone.utc), phase_of=lambda db, topic, day: phases[topic])
+    assert (1, "exam_prep") in seen        # close to an assessment the nightly lesson comes back, written as exam practice
