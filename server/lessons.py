@@ -52,7 +52,9 @@ def lesson_brief(db, topic_id, phase=None):
     assessment = None
     if exam:
         assessment = {"title": exam["title"], "kind": exam["kind"], "date": str(exam["due_date"]),
-                      "days_away": (exam["due_date"] - clock.today()).days, "weight_pct": round(exam["weight"] * 100)}
+                      "days_away": (exam["due_date"] - clock.today()).days,
+                      **({"weight_pct": exam["weight_pct"]} if exam.get("weight_pct") is not None else {}),
+                      **({"credits": exam["credits"]} if exam.get("credits") is not None else {})}
     place = {"aut": "AUT", "uoa": "the University of Auckland"}.get(institution, "university")
     tutor = (f"You are a patient university tutor for {code or subject} at {place}. Reply only in English using New Zealand spelling."
              if university else "You are a patient NCEA tutor. Reply only in English using New Zealand spelling and NCEA terms.")

@@ -107,7 +107,7 @@ export async function renderReviews(container, api) {
         text.append(element('div', q.concept ? (snippet.length > 140 ? snippet.slice(0, 140) + '…' : snippet) : '', 'muted'));
         const meta = element('div', undefined, 'muted');
         meta.append(element('span', isDue(q) ? 'Due now' : `Due ${q.due_date}`, `chip ${isDue(q) ? 'warn' : ''}`),
-          ` ${labelOf(q.topic_id)} · ${q.answer_count ? `answered ${q.answer_count}×` : 'not answered yet'} · mastery ${Math.round((q.mastery || 0) * 100)}%`);
+          ` ${labelOf(q.topic_id)} · ${q.answer_count ? `answered ${q.answer_count}×` : 'not answered yet'}`);
         text.append(meta);
         const go = button(isDue(q) ? 'Answer' : 'Practise now', 'small'); if (isDue(q)) go.classList.add('primary');
         go.onclick = () => { queue = [q]; mode = 'practice'; returnTo = 'all'; show(true); };
@@ -231,10 +231,9 @@ export async function renderReviews(container, api) {
         feedback.append(verdict);
         if (result.outcome === 'confidence-based') feedback.append(element('p', 'Scheduled using your confidence.', 'muted'));
         if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(aiBox(explanation)); }
-        const mastery = typeof result.mastery === 'number' && Number.isFinite(result.mastery) ? `${Math.round(result.mastery * 100)}%` : 'not provided';
         if (result.relearn && back === 'due') feedback.append(element('p', 'You will get this one again in a few questions, after the answer above has had a moment to settle.', 'muted'));
         if (result.confident_miss) feedback.append(element('p', 'You were confident about this one. Misses like this are worth a careful look at the answer: they are often the easiest to fix.', 'muted'));
-        feedback.append(element('p', `Next review ${result.next_due || 'not provided'} · expected recall for this topic ${mastery}, an estimate from your answers, not a mark.`, 'muted'));
+        feedback.append(element('p', `Next review ${result.next_due || 'not provided'}, planned from how well you recalled it${result.relearn ? '' : ' and when your assessments are'}.`, 'muted'));
         const finished = back === 'due' ? !dueList.length : true;
         const next = button(back === 'due' ? (finished ? 'Finish review' : 'Next question') : 'Back to all questions', 'primary');
         next.onclick = () => {

@@ -58,7 +58,7 @@ function setup(root, api, curriculum) {
   const existing = curriculum.subjects.filter(s => s.studying).length;
   card.append(el('h2', 'Set up your study plan'),
     el('p', 'Tell StudyGuider where you study and when your assessments are. Reviews then come back on a schedule that keeps what you learn, and lessons shift to exam practice as an assessment gets close.', 'muted'));
-  if (existing) card.append(el('p', `Everything you already have stays as it is: your ${existing === 1 ? 'subject' : 'subjects'}, lessons, review history and files. Setting up only adds dates and details.`, 'chip ok'));
+  if (existing) card.append(el('p', `Everything you already have stays as it is: your ${existing === 1 ? 'subject' : 'subjects'}, lessons, review history and files. Setting up only adds dates and details.`));
   setupForm(card, api, curriculum, true);
   root.append(card);
 }

@@ -92,7 +92,8 @@ def coverage(db, topic_ids=None):
     out = defaultdict(list)
     for topic_id, assessment_id, due, weight, credits, title, kind, subject_id in rows:
         share = float(weight) / 100 if weight is not None else min(1.0, float(credits) / 6) if credits is not None else 0.5
-        out[topic_id].append({"id": assessment_id, "due_date": due, "weight": share, "title": title, "kind": kind, "subject_id": subject_id})
+        out[topic_id].append({"id": assessment_id, "due_date": due, "weight": share, "title": title, "kind": kind, "subject_id": subject_id,
+                              "weight_pct": float(weight) if weight is not None else None, "credits": float(credits) if credits is not None else None})
     return out
 
 
