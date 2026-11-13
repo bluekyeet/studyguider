@@ -82,6 +82,8 @@ class MainActivity : ComponentActivity() {
         Appearance.save = { mode -> appearance.edit().putString("mode", mode).apply() }
         setContent {
             val dark = Appearance.dark()
+            // The bar icons follow the theme chosen in the app, which can differ from the phone's own setting.
+            SideEffect { androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply { isAppearanceLightStatusBars = !dark; isAppearanceLightNavigationBars = !dark } }
             StudyTheme(dark) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { StudyApp() } }
         }
     }
