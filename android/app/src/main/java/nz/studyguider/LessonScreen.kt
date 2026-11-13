@@ -310,7 +310,7 @@ private fun LessonEmptyState(
 private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONObject, onExit: () -> Unit, onPendingChange: (Boolean) -> Unit) {
     val standards = draft.optJSONArray("standards")
     val standardText = remember(draft) {
-        if (standards == null || standards.length() == 0) "NCEA STANDARD"
+        if (standards == null || standards.length() == 0) listOf(draft.optString("subject"), draft.optString("topic")).filter { it.isNotBlank() }.joinToString(" · ").uppercase()
         else (0 until minOf(standards.length(), 2)).joinToString(" • ") { "AS ${standards.getJSONObject(it).optInt("number")}" }
     }
     val sources = draft.optJSONArray("sources")

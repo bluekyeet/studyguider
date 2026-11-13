@@ -164,7 +164,7 @@ private fun PackQuestion(base: String, token: String, packId: Long, number: Int,
     val scope = rememberCoroutineScope()
     StudyCard(modifier = Modifier.animateContentSize()) {
         Text("Question $number", style = MaterialTheme.typography.labelLarge)
-        MathText(q.str("question"))
+        QuestionWording(q.str("question"), hideTables = hasTableToComplete(answerForms(q.opt("answer_forms"))))
         AnswerField(api, "pack:$packId:$qid", answerForms(q.opt("answer_forms")), answer, { answer = it }, enabled = !busy)
         HintButton(base, token, "review", qid.toString(), answer = { answer })
         Button(enabled = !busy && answer.isNotBlank(), shape = RoundedCornerShape(50), onClick = {

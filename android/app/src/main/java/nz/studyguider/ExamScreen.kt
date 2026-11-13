@@ -259,7 +259,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                     StudyCard(tone = CardTone.Container, modifier = Modifier.sectionTransition(page)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("${question.getInt("position")}. QUESTION ${question.getString("question_number")}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                            StudyChip("AS ${question.getInt("standard_number")} · ${question.getInt("year")}", MaterialTheme.colorScheme.onSurfaceVariant, colours.containerHigh)
+                            StudyChip(listOfNotNull(question.optInt("standard_number").takeIf { it > 0 }?.let { "AS $it" }, question.optInt("year").takeIf { it > 0 }?.toString()).joinToString(" · ").ifBlank { "Question" }, MaterialTheme.colorScheme.onSurfaceVariant, colours.containerHigh)
                         }
                         val text = question.optString("question_text")
                         val paperId = question.optString("paper_resource_id").takeUnless { it.isBlank() || it == "null" }
@@ -287,7 +287,8 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                         if (text.isNotBlank()) parts.forEachIndexed { partIndex, (label, wording) ->
                             if (wording.isNotBlank() && !wording.trim().matches(Regex("QUESTION\\s+(ONE|TWO|THREE|[0-9]+)", RegexOption.IGNORE_CASE))) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 if (label.isNotEmpty()) Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.widthIn(min = 36.dp))
-                                MathText(reflow(wording), modifier = Modifier.weight(1f))
+                                val rawLabel = structuredParts.getOrNull(partIndex)?.optString("label").orEmpty()
+                                QuestionWording(wording, Modifier.weight(1f), hideTables = answerMode == "digital" && hasTableToComplete(partForms(question, rawLabel) ?: partForms(question, label)), tidy = ::reflow)
                             }
                             structuredParts.getOrNull(partIndex)?.optJSONArray("diagrams")?.let { diagrams ->
                                 if (paperId != null) for (d in 0 until diagrams.length()) {

@@ -206,8 +206,8 @@ fun AnswerBox(
             return@Column
         }
         RichTextField(state, enabled, if (state.hasChoice) "Working or reason (optional)" else label, collapsed || state.hasChoice, if (state.hasChoice) 2 else minLines)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-            Text("Add to your answer", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Add", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             AssistChip(enabled = enabled, onClick = { state.blocks.add(AnswerBlock.Table(null, null)) }, label = { Text("+ Table") })
             AssistChip(enabled = enabled, onClick = { state.blocks.add(state.newSketch(AnswerForm.Drawing(if (figure != null) "figure" else "blank"))) }, label = { Text("+ Drawing") })
             AssistChip(enabled = enabled, onClick = { state.blocks.add(state.newSketch(AnswerForm.Graph())) }, label = { Text("+ Graph") })
@@ -364,7 +364,7 @@ private fun TableBlock(block: AnswerBlock.Table, enabled: Boolean, onRemove: () 
 @Composable
 private fun CellText(text: String, bold: Boolean = false) {
     if ('$' in text || "\\ce{" in text) MathText(if (bold) "**$text**" else text, fontSize = 13)
-    else Text(text, style = MaterialTheme.typography.bodySmall, fontWeight = if (bold) FontWeight.SemiBold else null, modifier = Modifier.padding(4.dp))
+    else Text(scienceText(text), style = MaterialTheme.typography.bodySmall, fontWeight = if (bold) FontWeight.SemiBold else null, modifier = Modifier.padding(4.dp))
 }
 
 // ---- answers shown again ----------------------------------------------------------------------------------------------------
@@ -532,3 +532,30 @@ fun AnswerField(api: Api, key: Any?, forms: List<AnswerForm>?, value: String, on
     }
     AnswerBox(box, enabled, label, collapsed, minLines, figurePath, onChange = emit)
 }
+
+/**
+ * Question wording with its Markdown tables drawn as tables. With [hideTables] the tables are left out, for a question whose
+ * table is shown just below as the one to complete.
+ */
+@Composable
+fun QuestionWording(text: String, modifier: Modifier = Modifier, hideTables: Boolean = false, formulaStyle: Boolean = false, tidy: (String) -> String = { it }) {
+    val blocks = remember(text) { shownBlocks(text) }
+    if (blocks.none { it is ShownBlock.Table }) { MathText(tidy(text), modifier = modifier, formulaStyle = formulaStyle); return }
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        blocks.forEach { block ->
+            when (block) {
+                is ShownBlock.Text -> MathText(tidy(block.text), formulaStyle = formulaStyle)
+                is ShownBlock.Table -> if (!hideTables) Column(Modifier.horizontalScroll(rememberScrollState()).border(1.dp, outline, RoundedCornerShape(8.dp))) {
+                    block.rows.forEachIndexed { r, row ->
+                        Row { row.forEach { cell -> Box(Modifier.width(140.dp).heightIn(min = 40.dp).border(0.5.dp, outline).padding(4.dp), contentAlignment = Alignment.CenterStart) { CellText(cell, bold = r == 0) } } }
+                    }
+                }
+                is ShownBlock.Image -> {}
+            }
+        }
+    }
+}
+
+/** True when these forms include a given table to complete, which then stands in for the table in the wording. */
+fun hasTableToComplete(forms: List<AnswerForm>?) = forms.orEmpty().any { it is AnswerForm.Table && it.columns.isNotEmpty() }

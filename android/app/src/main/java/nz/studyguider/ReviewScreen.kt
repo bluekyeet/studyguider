@@ -225,7 +225,7 @@ private fun ReviewCard(api: Api, base: String, token: String, question: JSONObje
             if (left != null) Text("$left left", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         question.optString("concept").takeIf { it.isNotBlank() }?.let { MathText("**$it**", fontSize = 18) }
-        MathText(question.optString("question"), formulaStyle = true)
+        QuestionWording(question.optString("question"), hideTables = hasTableToComplete(forms), formulaStyle = true)
         if (question.optInt("answer_count") > 0 || question.optInt("reps") > 0) EarlierAnswers(api, id)
         val current = result
         if (current == null) {

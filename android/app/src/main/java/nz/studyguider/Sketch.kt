@@ -430,10 +430,9 @@ fun SketchBlock(api: Api, state: SketchState, number: Int, figure: ImageBitmap?,
                     }
                     Button(onClick = { editing = false }, shape = RoundedCornerShape(50)) { Text("Done") }
                 }
-                // The canvas sits above the tools, which stay within reach of a thumb; only the area below the canvas scrolls.
                 SketchCanvas(state, figure, enabled, Modifier.padding(horizontal = 12.dp), onLabel = { labelAt = it })
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SketchTools(state, figure != null, enabled)
+                // Between the canvas and the tools: advice for this kind of drawing, and a graph's axes. Only this part scrolls.
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     when (state.purpose) {
                         "lewis" -> Text("Use Label for each atom symbol, Line for bonds and Pen for lone-pair dots.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -445,6 +444,10 @@ fun SketchBlock(api: Api, state: SketchState, number: Int, figure: ImageBitmap?,
                         GraphAxesFields(state, enabled)
                     }
                 }
+                // The tools sit at the bottom of the screen, within reach of a thumb.
+                Surface(color = LocalStudyColours.current.container, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) { SketchTools(state, figure != null, enabled) }
+                }
             }
         }
     }
@@ -455,7 +458,11 @@ fun SketchBlock(api: Api, state: SketchState, number: Int, figure: ImageBitmap?,
         var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { labelAt = null }, title = { Text("Label") },
             text = { OutlinedTextField(words, { words = it.take(40) }, singleLine = true, placeholder = { Text(if (state.graph) "For example 2, A or y = x²" else "For example Cl, δ+, N or Weight") }) },
-            confirmButton = { TextButton(enabled = words.isNotBlank(), onClick = { state.add(SketchItem("text", listOf(at), words.trim(), state.ink)); labelAt = null }) { Text("Add") } },
+            confirmButton = { TextButton(enabled = words.isNotBlank(), onClick = {
+                // The label is centred where the finger tapped; its stored point is its left edge, as the web draws it.
+                val half = measurer.label(words.trim(), 28f, Color.Black).size.width / 2f
+                state.add(SketchItem("text", listOf((at.first - half).coerceAtLeast(0f) to at.second), words.trim(), state.ink)); labelAt = null
+            }) { Text("Add") } },
             dismissButton = { TextButton(onClick = { labelAt = null }) { Text("Cancel") } })
     }
 }
