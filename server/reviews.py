@@ -55,6 +55,8 @@ def create_review_tables(db):
     review_plan.create_schedule_columns(db)
     # The answer inputs a question needs (answer_forms.py); NULL for older questions, whose forms are inferred when shown.
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS answer_forms jsonb")
+    # The answer key of a multiple-choice question (choice.py); marked against it with no model call.
+    db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS choice_key jsonb")
 
 
 def _clean_json(reply):

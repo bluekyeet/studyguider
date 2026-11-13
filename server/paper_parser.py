@@ -55,6 +55,27 @@ def pair_files(directory):
     return pairs, ignored
 
 
+_SUBSCRIPT = re.compile(r"\d{1,2}[+\-–]?|[+\-–]|\((?:s|l|ℓ|g|aq)\)")
+
+
+def _symbols(line):
+    """True for a line made only of atom symbols ("F", "F S F"), as in a structure drawn inside a table cell."""
+    tokens = line.split()
+    return bool(tokens) and len(line.strip()) < 12 and all(ELEMENT.fullmatch(token) and not token[0].isdigit() for token in tokens)
+
+
+def _cell_text(cell):
+    """One line of text for a table cell: wrapped lines joined with a space, a subscript, charge or state symbol that the PDF
+    set on its own line joined straight onto what it belongs to ("NH" / "3" / "(l)" is NH3(l))."""
+    text = ""
+    for line in (part.strip() for part in cell.split("\n")):
+        if not line:
+            continue
+        glue = bool(text) and (_SUBSCRIPT.fullmatch(line) or (text[-1].isdigit() and line[0] == "(" and len(line) <= 4))
+        text += line if glue or not text else " " + line
+    return " ".join(text.split())
+
+
 def page_tables(page):
     """[(bbox, markdown)] for the ruled tables of plain text on a page (a table of bond energies, a data table, a table to fill in,
     whose empty cells stay empty). A table whose cells hold atom symbols on separate lines is a drawing of molecules, not data,
@@ -67,12 +88,14 @@ def page_tables(page):
     for table in tables:
         rows = [[(cell or "").strip() for cell in row] for row in table.extract()]
         flat = [cell for row in rows for cell in row]
-        if len(rows) < 2 or len(rows[0]) < 2 or not all(rows[0]):
+        # The top-left cell may be blank when the rows have labels of their own ("| | SF4 | SF3- |" over "Lewis structure").
+        if len(rows) < 2 or len(rows[0]) < 2 or not all(rows[0][1:]) or not (rows[0][0] or all(row[0] for row in rows[1:])):
             continue
-        # Wrapped words ("Carbon monoxide," / "CO(s)") are one cell; a cell of lone symbols on separate lines is a drawn structure.
-        if any(len(line.strip()) < 3 and not re.search(r"[a-z]{2}", line) for cell in flat if "\n" in cell for line in cell.split("\n")):
+        # Wrapped words ("Carbon monoxide," / "CO(s)") are one cell; a cell of lone atom symbols on separate lines is a drawn
+        # structure. A subscript or charge the PDF sets on its own line ("NH" / "3" / "(l)") is neither.
+        if any(_symbols(line) for cell in flat if "\n" in cell for line in cell.split("\n")):
             continue
-        rows = [[" ".join(cell.split()) for cell in row] for row in rows]
+        rows = [[_cell_text(cell) for cell in row] for row in rows]
         flat = [cell for row in rows for cell in row]
         # An answer grid: labels down the first column and empty cells for the learner to fill in.
         grid = all(row[0] for row in rows[1:]) and any(not cell for row in rows[1:] for cell in row[1:])
@@ -118,7 +141,7 @@ def structure_regions(page):
     return regions
 
 
-def page_lines(page, ocr=False):
+def page_lines(page, ocr=False, tables=True):
     """Keep physical lines and coordinates; exclude running headers and footer. Ruled tables of plain text become one
     Markdown table in the line where they start."""
     result = []
@@ -144,7 +167,7 @@ def page_lines(page, ocr=False):
             if (re.fullmatch(r"\d+", text) and (box[1] < 50 or box[3] > page.rect.height - 50)) or re.match(r"(?:Chemistry|Physics|Mathematics) 9\d{4}", text):
                 continue
             result.append({"text": text, "bbox": list(box)})
-    for bbox, markdown in page_tables(page):
+    for bbox, markdown in page_tables(page) if tables else ():
         area = fitz.Rect(bbox)
         inside = [i for i, line in enumerate(result) if (fitz.Rect(line["bbox"]) & area).get_area() >= fitz.Rect(line["bbox"]).get_area() * .8]
         if inside:
@@ -152,6 +175,9 @@ def page_lines(page, ocr=False):
             result[first] = {"text": markdown, "bbox": bbox}
             result = [line for i, line in enumerate(result) if i not in inside[1:]]
     return result
+
+
+SPARE = re.compile(r"^\s*SPARE (?:GRIDS?|DIAGRAMS?|GRAPHS?|COPY|COPIES|AXES|TABLES?)", re.I)
 
 
 def split_parts(lines):
@@ -176,18 +202,28 @@ def split_parts(lines):
 def segment_paper(document, ocr=False):
     questions = []
     current = None
+    spare = False
     for index, page in enumerate(document):
         lines = page_lines(page, ocr=ocr)
         for line in lines:
+            # Spare grids and diagrams at the back repeat a question's heading and figure for a second attempt; they are not
+            # more of the paper, and nothing after them is either.
+            if SPARE.search(line["text"]):
+                spare, current = True, None
+            if spare:
+                continue
             match = HEADING.match(line["text"])
             if match:
                 number = NUMBERS[match[1]]
+                if any(q["question_number"] == number for q in questions) and (current is None or current["question_number"] != number):
+                    current = None      # an earlier question's heading again: a spare copy without the "spare" title
+                    continue
                 if current is None or current["question_number"] != number:
                     current = {"question_number": number, "paper_page": index + 1, "lines": [], "pages": []}
                     questions.append(current)
             if current is not None:
                 # Printed additional-answer pages are not question continuations.
-                if line["text"] == "QUESTION" or "Extra paper if required" in line["text"]:
+                if line["text"] == "QUESTION" or re.search(r"Extra (?:paper|space) if required", line["text"]):
                     current = None
                     continue
                 current["lines"].append({**line, "page": index + 1})
@@ -199,16 +235,45 @@ def segment_paper(document, ocr=False):
     return questions
 
 
-def schedule_sections(document):
+# Schedules head each question in the left column in one of three ways: the number word alone ("ONE", "TWO (a)"), the number
+# word with the first answer beside it ("ONE   Se: [Ar]3d10..."), or "Q1" above the column titles ("Q1   Expected coverage").
+SCHEDULE_HEADING = re.compile(r"(?:(ONE|TWO|THREE|FOUR|FIVE)|Q(?:UESTION)?\s*([1-5]))(?=\s|\(|$)(?:\s*\([a-hivx]+\))*(.*)", re.I)
+DIGITS = {"1": "ONE", "2": "TWO", "3": "THREE", "4": "FOUR", "5": "FIVE"}
+
+
+def schedule_heading(text, x0, page_width, current):
+    """The question number a schedule line starts, or None. A heading sits at the left edge and numbers run in order, so
+    "ONE correct answer" in a criteria column, or a stray "Q2" after Question Three, is not taken for one."""
+    match = SCHEDULE_HEADING.match(text.strip())
+    if not match or x0 > page_width * 0.2:
+        return None
+    word = (match[1] or DIGITS[match[2]]).upper()
+    if match[1] and not match[1].isupper() and match[3].strip():
+        return None             # "One ..." is a sentence; headings are capitals
+    rest = match[3].strip()
+    # Beside the word: nothing, a part label, column titles, or answer content set off by the column gap.
+    if rest and match[2] is None and re.match(r"[a-z]|(?:OF|CORRECT|ANSWERS?|FROM|VALID|OR|AND)\b", rest):
+        return None             # "ONE of the following", "TWO correct": a criterion, not a heading
+    if rest and match[2] is not None and not re.match(r"(?:Expected|Evidence|Achievement|Question|\(|$)", rest, re.I):
+        return None
+    number = NUMBERS[word]
+    if current is not None and int(number) not in (int(current), int(current) + 1):
+        return None
+    if current is None and number != "1":
+        return None
+    return number
+
+
+def schedule_sections(document, ocr=False):
     sections = {}
     current = None
     for index, page in enumerate(document):
-        for line in page_lines(page):
+        # A schedule is one ruled table per question; read as plain lines so the heading in its first cell is still a line.
+        for line in page_lines(page, ocr=ocr, tables=False):
             text = line["text"]
-            # A schedule heading is an isolated number word, optionally followed by a part.
-            match = re.fullmatch(r"(ONE|TWO|THREE|FOUR|FIVE)(?:\s*\([a-hivx]+\))*", text, re.I)
-            if match:
-                current = NUMBERS[match[1].upper()]
+            number = schedule_heading(text, line["bbox"][0], page.rect.width, current)
+            if number:
+                current = number
                 sections.setdefault(current, {"pages": [], "lines": []})
             if current:
                 sections[current]["lines"].append({**line, "page": index + 1})
@@ -250,6 +315,79 @@ def drawing_regions(page):
     return regions
 
 
+def scan_regions(page, lines):
+    """Boxes around the figures on a scanned page, which is one picture with no drawings to cluster. What is left of the
+    page's ink after the prose (the OCR lines that read as sentences), the ruled answer lines and the margins are taken out
+    is grouped into blocks; a block big enough to be a diagram is a figure, with its short labels ("Speaker 1", "5.00 m")."""
+    try:
+        import numpy
+    except ImportError:
+        return []
+    scale = 100 / 72
+    pix = page.get_pixmap(dpi=100, colorspace=fitz.csGRAY, alpha=False)
+    ink = numpy.frombuffer(pix.samples, dtype=numpy.uint8).reshape(pix.height, pix.width) < 150
+    ink = ink.copy()
+    width, height = page.rect.width, page.rect.height
+    px = lambda value: max(0, int(value * scale))
+    ink[:px(40)] = False
+    ink[px(height - 40):] = False
+    ink[:, :px(40)] = False
+    ink[:, px(width - 45):] = False
+    for line in lines:
+        text = line["text"]
+        if len(text.split()) >= 4 or LABEL.match(text) or HEADING.match(text) or ANSWER_AREA.search(text):
+            x0, y0, x1, y1 = line["bbox"]
+            ink[px(y0 - 2):px(y1 + 2), px(x0 - 2):px(x1 + 2)] = False
+    cell = px(6)
+    rows, cols = pix.height // cell, pix.width // cell
+    grid = ink[:rows * cell, :cols * cell].reshape(rows, cell, cols, cell).sum(axis=(1, 3)) > 1
+    seen = numpy.zeros_like(grid)
+    blocks = []
+    for r0, c0 in zip(*numpy.nonzero(grid)):
+        if seen[r0, c0]:
+            continue
+        stack, cells = [(r0, c0)], []
+        seen[r0, c0] = True
+        while stack:
+            r, c = stack.pop()
+            cells.append((r, c))
+            # Cells up to three apart (about 18 points) belong together, so a diagram's separate parts are one figure.
+            for rr in range(max(0, r - 3), min(rows, r + 4)):
+                for cc in range(max(0, c - 3), min(cols, c + 4)):
+                    if grid[rr, cc] and not seen[rr, cc]:
+                        seen[rr, cc] = True
+                        stack.append((rr, cc))
+        top, left = min(r for r, _ in cells), min(c for _, c in cells)
+        bottom, right = max(r for r, _ in cells) + 1, max(c for _, c in cells) + 1
+        box = fitz.Rect(left * cell / scale, top * cell / scale, right * cell / scale, bottom * cell / scale)
+        blocks.append((box, len(cells)))
+    # A diagram, not a stray word or a stain: big enough, and inked over more than a sliver of its box.
+    regions = [box for box, cells in blocks if box.width > 60 and box.height > 32 and cells >= 25]
+    small = [box for box, _ in blocks if box not in regions]
+    grown = True
+    while grown:        # labels, dots and arrowheads that stand a little apart from a diagram are part of it
+        grown = False
+        for index, region in enumerate(regions):
+            for box in [b for b in small if (region + (-30, -30, 30, 30)).intersects(b)]:
+                region = regions[index] = region | box
+                small.remove(box)
+                grown = True
+    merged = []
+    for region in regions:
+        other = next((i for i, m in enumerate(merged) if (m + (-30, -30, 30, 30)).intersects(region)), None)
+        if other is not None:
+            merged[other] = merged[other] | region
+        else:
+            merged.append(region)
+    kept = []
+    for region in merged:
+        inside = ink[px(region.y0):px(region.y1), px(region.x0):px(region.x1)]
+        # Ruled answer lines (pale on most scans, so usually not ink at all) are a few thin rows and nothing else.
+        if region.get_area() < page.rect.get_area() * .7 and inside.size and (inside.sum(axis=1) > 0).mean() > .2:
+            kept.append(region)
+    return kept
+
+
 def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
     identity = file_identity(filenames[0] if filenames else Path(paper_path).name)
     other = file_identity(filenames[1] if filenames else Path(schedule_path).name)
@@ -257,7 +395,7 @@ def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
         raise ValueError("Paper and schedule filenames must match standard/year and exm/ass roles")
     with fitz.open(paper_path) as paper, fitz.open(schedule_path) as schedule:
         questions = segment_paper(paper, ocr=ocr)
-        schedules = schedule_sections(schedule)
+        schedules = schedule_sections(schedule, ocr=ocr)
         warnings = []
         if any(not page.get_text().strip() for page in paper) and not ocr:
             warnings.append("Image-only pages need OCR; rerun with --ocr")
@@ -276,6 +414,8 @@ def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
                 page = paper[number - 1]
                 tables = [fitz.Rect(bbox) + (-10, -10, 10, 10) for bbox, _ in page_tables(page)]
                 regions = [fitz.Rect(image["bbox"]) for image in page.get_image_info()] + drawing_regions(page)
+                if ocr and not page.get_text().strip():
+                    regions = scan_regions(page, [line for line in q["lines"] if line["page"] == number] or page_lines(page, ocr=True))
                 # The ruling of a table that was read as a table is not a figure.
                 regions = [r for r in regions if not any((r & t).get_area() >= r.get_area() * .6 for t in tables)]
                 structures = [r for r in structure_regions(page) if not any((r & d).get_area() >= r.get_area() * .5 for d in regions)]

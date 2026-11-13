@@ -36,6 +36,14 @@ MATHS_SYSTEM = (
     "5. If you cannot read an expression on the page, leave that stretch of text as it was; do not guess."
 )
 
+# A scanned paper has no text layer: its text came from OCR, which also misreads ordinary words ("ofthe", "Mare" for "Marc").
+OCR_SYSTEM = MATHS_SYSTEM.replace(
+    "The text came from the PDF's text layer, which loses", "The text came from OCR of a scanned page, which misreads letters, "
+    "drops spaces between words and loses").replace(
+    "1. Copy every ordinary word exactly. Never rewrite, solve",
+    "1. Correct the OCR's mistakes so the wording is exactly what the page image shows, and leave out stray words that belong "
+    "to a diagram's labels or a photo credit. Never reword, solve")
+
 BLOCK = re.compile(r"(?ms)^=== (\w+) ===[ \t]*\n(.*?)(?=^=== \w+ ===|\Z)")
 MAX_PAGES = 3
 MAX_UNITS = 25
@@ -59,6 +67,31 @@ def acceptable(new, old):
     # (the text layer says 8m27i, the model wrote 8m^3 i). Such a unit stays as the original text.
     numbers_kept = set(re.findall(r"\d+", old)) <= set(re.findall(r"\d+", new))
     return numbers_kept and (not plain_new or added / len(plain_new) <= 0.1) and (not plain_old or kept / len(plain_old) >= 0.85)
+
+
+def acceptable_ocr(new, old):
+    """A corrected OCR reading may fix words and numbers, but it must still be the same passage: most of its words are the
+    OCR's, and it is not much longer or shorter."""
+    if not isinstance(new, str) or not new.strip() or new.count("$") % 2:
+        return False
+    plain_new = [w for w in _words(stripped(new)) if w.isalpha() and len(w) > 3]
+    plain_old = [w for w in _words(old) if w.isalpha() and len(w) > 3]
+    in_old, in_new = set(_words(old)), set(_words(new))
+    joined = re.sub(r"[^a-z]", "", old.lower())        # "ofthe" holds "the": a word the OCR ran together is still there
+    added = sum(1 for w in plain_new if w not in in_old and w not in joined)
+    kept = sum(1 for w in plain_old if w in in_new)
+    return ((not plain_new or added / len(plain_new) <= 0.15) and (not plain_old or kept / len(plain_old) >= 0.7)
+            and 0.6 <= (len(stripped(new)) + 1) / (len(old) + 1) <= 1.4)
+
+
+def scanned(resource_id, pages):
+    """True when none of these pages of the paper has a text layer (the paper is a scan)."""
+    import pymupdf
+    try:
+        with pymupdf.open(userspace.upload_root() / str(resource_id)) as document:
+            return all(not document[n - 1].get_text().strip() for n in pages if 1 <= n <= len(document))
+    except Exception:       # noqa: BLE001 - an unreadable file is handled where the pages are rendered
+        return False
 
 
 def units_of(question_text, parts):
@@ -99,12 +132,13 @@ def restore_one(vision_reply, row):
     if not units or not resource_id or not pages or len(units) > MAX_UNITS:
         return None
     image = render_pages(resource_id, pages)
-    prompt = MATHS_SYSTEM + "\n\nTEXTS:\n" + "\n".join(f"=== {key} ===\n{text}" for key, text in units.items())
+    ocr = scanned(resource_id, pages)
+    prompt = (OCR_SYSTEM if ocr else MATHS_SYSTEM) + "\n\nTEXTS:\n" + "\n".join(f"=== {key} ===\n{text}" for key, text in units.items())
     reply = vision_reply("education", prompt, image, task="exam-maths")
     texts = {m.group(1): m.group(2).strip() for m in BLOCK.finditer(reply if isinstance(reply, str) else "")}
     if not texts:
         raise ValueError("the reply was not in the requested form")
-    accepted = {key: normalise_maths(texts[key]) for key in units if acceptable(texts.get(key), units[key])}
+    accepted = {key: normalise_maths(texts[key]) for key in units if (acceptable_ocr if ocr else acceptable)(texts.get(key), units[key])}
     if not accepted:
         raise ValueError("no rewritten text kept the original wording")
     count = len(parts) if isinstance(parts, list) else 0

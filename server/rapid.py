@@ -20,6 +20,8 @@ import userspace
 import splitting
 from exams import PRACTICE_SYSTEM, parse_practice_paper, with_forms
 import answer_forms
+import choice
+from marking import insert_review
 
 log = logging.getLogger("uvicorn.error")
 
@@ -112,7 +114,8 @@ def _payload(db, exam_id, question_id):
             "paper_resource_id": None if ai or not row[8] else str(row[8]), "paper_page": None if ai else row[9],
             "label": row[11] if row[10] else None}])[0]
     # A rapid question has one answer box, so the forms of its parts are offered together.
-    payload["answer_forms"] = answer_forms.merged(with_forms(db, [dict(payload, id=row[0])])[0]["answer_forms"])
+    payload["answer_forms"] = choice.forms_with_order(answer_forms.merged(with_forms(db, [dict(payload, id=row[0])])[0]["answer_forms"]),
+                                                      f"{exam_id}:{row[0]}")
     return payload
 
 
@@ -221,9 +224,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
     def flush_pending_reviews(db, exam_id):
         for (review,) in db.execute("SELECT review FROM rapid_pending_reviews WHERE exam_id = %s", (exam_id,)).fetchall():
             for one in (review if review and isinstance(review[0], list) else [review]):
-                db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, exam_origin)
-                    VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date, %s, %s::jsonb, %s, %s, %s)
-                    ON CONFLICT (exam_origin) DO NOTHING""", one)
+                insert_review(db, one)
         db.execute("DELETE FROM rapid_pending_reviews WHERE exam_id = %s", (exam_id,))
 
     def after_mark(exam_id, question_id):

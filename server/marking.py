@@ -13,6 +13,8 @@ import unicodedata
 import io
 import rapid_state
 import answer_media
+import answer_forms
+import choice
 from rapid_state import refuse_if_blind
 from PIL import Image, UnidentifiedImageError
 from typing import Literal
@@ -346,6 +348,113 @@ def queue_exam_review(connect, exam_id, question_id, row, result, schedule, scan
                 ON CONFLICT (exam_origin) DO NOTHING""", one)
 
 
+# A stem that only makes sense with its options in front of it stays multiple choice in review; any other is asked as free
+# recall first, which builds longer-lasting memory than recognising the answer (research A.2, Rowland 2014).
+_NEEDS_OPTIONS = re.compile(r"which (?:one )?of the following|following (?:statements?|options?|is|are)|\bfalse\b|\btrue\b|all that apply"
+                            r"|which (?:statement|option|graph|diagram|figure|of these)|\babove\b|\bbelow\b|\bbest describes?\b", re.I)
+
+
+def choice_review(question, form, key):
+    """(review question, expected answer, forms, key) for a missed multiple-choice question: free recall of the same idea
+    when the stem stands on its own, otherwise the question with its options."""
+    expected = choice.key_text(form, key)
+    if _NEEDS_OPTIONS.search(question or "") or any(not o["text"] for o in form["options"]):
+        return question, expected, [choice.public(form), {"kind": "text", "palette": "general"}], key
+    return question, expected, None, None
+
+
+def queue_choice_review(connect, exam_id, question_id, row, result):
+    """Missed multiple-choice parts come back in spaced review like any other missed exam answer."""
+    if all(r["exact"] for r in result["choice_results"].values()):
+        return
+    with connect() as db:
+        q = db.execute("SELECT question_text, parts, answer_forms, choice_key, topic_id, standard_number FROM exam_questions WHERE id = %s",
+                       (question_id,)).fetchone()
+        if not q or not isinstance(q[3], dict):
+            return
+        if db.execute("SELECT 1 FROM marking_overrides WHERE exam_id=%s AND question_id=%s", (exam_id, question_id)).fetchone():
+            return
+        forms = answer_forms.for_question(q[0] or "", "", q[1] or [], q[2])
+        part_text = {str(p.get("label")): p.get("text") or "" for p in q[1] or [] if isinstance(p, dict)}
+        values = []
+        for label, outcome in result["choice_results"].items():
+            form, key = choice.find(forms.get(label) or forms.get("")), q[3].get(label)
+            if outcome["exact"] or not form or not key:
+                continue
+            stem = part_text.get(label) or q[0] or "" if label else q[0] or ""
+            text, expected, review_forms, review_key = choice_review(stem, form, key)
+            values.append((q[4], text[:5000], expected, json.dumps([{"content": expected, "exam_id": exam_id, "question_id": question_id,
+                                                                     "rubric_type": "answer key"}]),
+                           q[5], f"Exam question {row[1]}" + (f", part {mathtext.display_label(label)}" if label else ""),
+                           f"{exam_id}:{question_id}" + (f":{label}" if label else ""), json.dumps(review_forms), json.dumps(review_key)))
+        if rapid_state.is_open(db, exam_id):
+            # A rapid session shows nothing about results until it ends; the review questions are queued then.
+            db.execute("INSERT INTO rapid_pending_reviews (exam_id, question_id, review) VALUES (%s, %s, %s::jsonb) ON CONFLICT DO NOTHING",
+                       (exam_id, question_id, json.dumps(values)))
+            return
+        for one in values:
+            insert_review(db, one)
+
+
+def insert_review(db, values):
+    """One review question made from a missed exam answer: (topic, question, expected answer, source, standard, concept,
+    exam origin[, answer forms, answer key])."""
+    values = tuple(values) + (None, None)[:9 - len(values)] if len(values) < 9 else tuple(values)
+    db.execute("""INSERT INTO review_questions
+        (topic_id,question,due_date,expected_answer,source,standard_number,concept,exam_origin,answer_forms,choice_key)
+        VALUES (%s,%s,(CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s::jsonb)
+        ON CONFLICT (exam_origin) DO NOTHING""", values)
+
+
+def _part_answers(answer, labels):
+    """{label: answer text} from a saved exam answer: the parts document for a question with parts, else the whole text."""
+    if labels == [""]:
+        return {"": answer or ""}
+    try:
+        parts = json.loads(answer).get("parts")
+    except (ValueError, TypeError, AttributeError):
+        parts = None
+    if not isinstance(parts, dict):
+        return {label: "" for label in labels}
+    # The page saves display labels ("(b)(ii)"), the parser stores "b(ii)"; compare without brackets.
+    plain = {re.sub(r"[()\s]", "", str(k)).lower(): v for k, v in parts.items() if isinstance(v, str)}
+    return {label: plain.get(re.sub(r"[()\s]", "", label).lower(), "") for label in labels}
+
+
+def key_marking(db, question_id, answer):
+    """Deterministic marking of a question whose every answerable part is multiple choice with a stored key (choice.py).
+    Returns the result to store, or None when any part needs the AI marker."""
+    row = db.execute("""SELECT q.choice_key, q.answer_forms, q.parts, q.question_text, q.marks, q.marks_exact, s.name
+        FROM exam_questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id WHERE q.id = %s""",
+        (question_id,)).fetchone()
+    if not row or not isinstance(row[0], dict) or not row[0]:
+        return None
+    keys, stored, parts, text, marks, exact, subject = row
+    labels = answer_forms.answerable(parts or []) or [""]
+    forms = answer_forms.for_question(text or "", subject, parts or [], stored)
+    pairs = []
+    for label in labels:
+        form = choice.find(forms.get(label))
+        if form is None or not isinstance(keys.get(label), dict):
+            return None
+        pairs.append((label, form, keys[label]))
+    total = float(exact) if exact is not None else float(marks or 1)
+    printed = {str(p.get("label")): p.get("marks") for p in parts or [] if isinstance(p, dict)}
+    shares = [printed.get(label) for label, _, _ in pairs]
+    if not all(isinstance(m, (int, float)) and m > 0 for m in shares):
+        shares = [total / len(pairs)] * len(pairs)
+    answers = _part_answers(answer, labels)
+    results = {label: choice.mark(form, key, answers.get(label, ""), share) for (label, form, key), share in zip(pairs, shares)}
+    awarded_exact = sum(r["marks_awarded"] for r in results.values())
+    available = int(marks) if marks and marks > 0 else max(1, round(total))
+    awarded = available if all(r["exact"] for r in results.values()) else min(available, int(awarded_exact * available / total) if total else 0)
+    feedback = "\n\n".join((f"Part {mathtext.display_label(label)}: " if label else "") + choice.feedback(r) for label, r in results.items())
+    return {"marks_awarded": awarded, "marks_available": available, "outcome": grade_for(awarded, available),
+            "feedback": feedback[:5000], "evidence": [], "missing": [], "confidence": 1.0,
+            "marked_by": "answer-key", "choice_results": results,
+            "net_marks": round(sum(r["net_marks"] for r in results.values()), 2), "net_marks_available": round(total, 2)}
+
+
 def marking_router(connect, authorised, model_reply, model_reply_vision=None):
     router = APIRouter(dependencies=[Depends(authorised)])
 
@@ -412,6 +521,9 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
                 LEFT JOIN resource_pages schedule ON schedule.resource_id = q.schedule_resource_id AND schedule.page = q.schedule_page
                 WHERE i.exam_id = %s AND i.question_id = %s""", (exam_id, question_id)).fetchone()
             style = style_for_topic(db, row[16]) if row else ""
+            if row and row[5]:
+                # The marker reads the wording the learner saw: equations restored, a scanned page's OCR mistakes corrected.
+                row = (*row[:5], mathtext.restored_text(db, question_id, row[5]), *row[6:])
         if not row:
             raise HTTPException(404, "Exam question not found")
         return row, style
@@ -489,6 +601,27 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
         row, style = load(exam_id, question_id)
         if not row[0] or not row[0].strip():
             raise HTTPException(422, "An answer is required")
+        with connect() as db:
+            scanned = db.execute("SELECT 1 FROM exam_answer_scans WHERE exam_id = %s AND question_id = %s", (exam_id, question_id)).fetchone()
+            keyed = None if scanned else key_marking(db, question_id, row[0])
+        if keyed is not None:
+            # Multiple choice with an answer key: marked here, the same every time, with no model and no second marker.
+            answer_hash = hashlib.sha256(f"{exam_id}|{question_id}|{row[0]}|answer-key".encode()).hexdigest()
+            with connect() as db:
+                db.execute("""INSERT INTO markings (exam_id, question_id, answer_hash, kind, result, model, answer_text)
+                    VALUES (%s, %s, %s, 'first', %s::jsonb, 'answer-key', %s)
+                    ON CONFLICT (exam_id, question_id, answer_hash, kind) DO UPDATE SET result = EXCLUDED.result""",
+                    (exam_id, question_id, answer_hash, json.dumps(keyed), row[0]))
+                override = db.execute("SELECT outcome, note FROM marking_overrides WHERE exam_id = %s AND question_id = %s",
+                                      (exam_id, question_id)).fetchone()
+            queue_choice_review(connect, exam_id, question_id, row, keyed)
+            ai_key = any(r["key_source"] == "ai" for r in keyed["choice_results"].values())
+            return {"exam_id": exam_id, "question_id": question_id, "experimental": ai_key, "cached": False, **keyed,
+                    "second_review": None, "disagreement": False,
+                    "disclaimer": ("Marked against an answer key written by AI; check it against your notes." if ai_key
+                                   else "Marked against the paper's own answer key; not an official result."),
+                    "paper": {"resource_id": row[7], "page": row[8]}, "schedule": {"resource_id": row[10], "page": row[11]},
+                    **({"override": {"outcome": override[0], "note": override[1]}} if override else {})}
         payload, available, schedule = prompt_payload(row, style)
         with connect() as db:
             payload["rapid_fire"] = bool(db.execute("SELECT 1 FROM exams WHERE id = %s AND kind = 'rapid'", (exam_id,)).fetchone())
@@ -705,16 +838,22 @@ def marking_router(connect, authorised, model_reply, model_reply_vision=None):
         questions = []
         awarded = 0
         available = 0
+        net = 0
+        net_available = 0
         for question_id, marks, number, first_mark, override_outcome in rows:
             q_available = first_mark.get("marks_available", marks or 0) if first_mark else marks or 0
             q_awarded = first_mark.get("marks_awarded", 0) if first_mark else 0
             available += q_available
             awarded += q_awarded
+            # Answer-key marks carry the printed (possibly fractional) marks and any negative marking.
+            net += first_mark.get("net_marks", q_awarded) if first_mark else 0
+            net_available += first_mark.get("net_marks_available", q_available) if first_mark else q_available
             questions.append({"question_id": question_id, "question_number": number,
                               "marks_available": q_available, "marks_awarded": q_awarded,
                               "outcome": override_outcome or (first_mark.get("outcome") if first_mark else None),
                               "marked": bool(first_mark), "overridden": bool(override_outcome)})
         return {"exam_id": exam_id, "marks_awarded": awarded, "marks_available": available,
+                "net_marks_awarded": round(max(0, net), 2), "net_marks_available": round(net_available, 2),
                 "outcome": "uncertain",
                 "questions": questions, "official_total_marks": exam[0],
                 "disclaimer": "Question scores only. Overall A/M/E requires the matching complete-paper schedule cut scores; percentages are not NCEA grades."}
