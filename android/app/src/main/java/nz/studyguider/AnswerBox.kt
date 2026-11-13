@@ -429,7 +429,7 @@ private fun OptionBody(api: Api, text: String, image: String, modifier: Modifier
 
 /** Selectable options: one answer (radio) or select all that apply (checkboxes), lettered by position. */
 @Composable
-private fun ChoiceBlock(api: Api, block: AnswerBlock.Choice, enabled: Boolean) {
+internal fun ChoiceBlock(api: Api, block: AnswerBlock.Choice, enabled: Boolean) {
     val form = block.form
     val colours = LocalStudyColours.current
     if (form.group.isNotBlank()) Text(form.group.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
@@ -493,7 +493,7 @@ fun ChoiceResultView(api: Api, result: org.json.JSONObject) {
         fun n(v: Double) = v.toBigDecimal().stripTrailingZeros().toPlainString()
         if (!available.isNaN() && available > 0) lines.add("${n(result.optDouble("marks_awarded", 0.0))} of ${n(available)} mark${if (available == 1.0) "" else "s"}")
         if (result.optDouble("penalty_applied", 0.0) > 0) lines.add("${n(result.optDouble("penalty_applied"))} taken off for wrong choices, net ${n(result.optDouble("net_marks", 0.0))}")
-        lines.add(when (result.optString("key_source")) { "official" -> "Marked from the paper's own answer key"; "ai" -> "AI-written answer key: check it"; else -> "Marked from the answer key" })
+        lines.add(when (result.optString("key_source")) { "official" -> "Marked from the paper's own answer key"; "ai" -> "AI-written answer key: check it"; "lesson" -> "Checked on this device from the lesson, which is AI-written"; else -> "Marked from the answer key" })
         Text(lines.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

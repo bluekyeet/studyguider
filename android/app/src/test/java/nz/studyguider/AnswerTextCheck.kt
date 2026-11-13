@@ -53,4 +53,18 @@ fun main() {
     val chosen = splitAnswer("Choice: A, C\n\nBecause of the catalyst.")
     check(chosen.choice == listOf("A", "C") && chosen.text == "Because of the catalyst.") { chosen.toString() }
     check(splitAnswer("Plain answer").choice.isEmpty())
+
+    // A lesson's choice block: stem, options with the correct one starred, then a reason per option.
+    val quiz = parseLessonChoice("Which change increases the rate?\nA. Lowering the temperature\nB. Adding a catalyst *\nC. Larger lumps\n---\nB: A lower activation energy.\nA: Fewer collisions.".split("\n"))!!
+    check(quiz.stem == "Which change increases the rate?" && quiz.options.map { it.key } == listOf("A", "B", "C"))
+    check(quiz.options[1].correct && quiz.options[1].text == "Adding a catalyst" && quiz.options[1].explanation == "A lower activation energy." && !quiz.multiple)
+    check(parseLessonChoice(listOf("No options here")) == null)
+    // In the reader the block becomes one quiz, and its raw lines stay in the section text so saved-answer keys do not change.
+    val chunk = lessonChunks("### Your Turn 1\nPick one.\n```choice\nWhich?\nA. One *\nB. Two\n```\nThen explain.").single()
+    check(chunk.choices.single().range == 1..5 && chunk.choices.single().choice.options.size == 2) { chunk.choices.toString() }
+    check(chunk.body == "Pick one.\n\n```choice\n\nWhich?\n\nA. One *\n\nB. Two\n\n```\n\nThen explain.") { chunk.body }
+    // The new lesson structure: pre-questions are not practice; the last Your Turn is free recall.
+    check(LessonChunk("Before you start", emptyList()).isPreQuestions && !LessonChunk("Before you start", emptyList()).isPractice)
+    check(LessonChunk("Your Turn 4", listOf("paragraph" to "Without looking back, write the key ideas of this lesson.")).isFreeRecall)
+    check(!LessonChunk("Your Turn 1", listOf("paragraph" to "Calculate the speed.")).isFreeRecall)
 }

@@ -279,3 +279,31 @@ fun appendEquation(text: String, equation: String): String {
     if (line.isEmpty()) return text
     return text + (if (text.isNotEmpty() && !text.endsWith("\n")) "\n" else "") + "\$\\ce{$line}\$\n"
 }
+
+// ---- multiple choice inside lesson text ------------------------------------------------------------------------------------
+
+/** One option of a lesson's multiple-choice block. */
+data class LessonOption(val key: String, val text: String, val correct: Boolean, val explanation: String = "")
+
+/** A ```choice block in a lesson (docs/api/multiple-choice.md, section 5): checked on the device, never marked. */
+data class LessonChoice(val stem: String, val options: List<LessonOption>) {
+    val multiple get() = options.count { it.correct } > 1
+}
+
+private val optionLine = Regex("^([A-J])[.)]\\s+(.*)$")
+private val explanationLine = Regex("^([A-J])\\s*[:.)]\\s*(.+)$")
+
+/** Reads the lines between ```choice and ```: the question, lettered options (" *" marks a correct one), then "---" and a reason per option. */
+fun parseLessonChoice(lines: List<String>): LessonChoice? {
+    val rule = lines.indexOfFirst { it.trim() == "---" }
+    val upper = (if (rule >= 0) lines.subList(0, rule) else lines).map { it.trim() }.filter { it.isNotEmpty() }
+    val reasons = (if (rule >= 0) lines.subList(rule + 1, lines.size) else emptyList()).mapNotNull { explanationLine.matchEntire(it.trim()) }
+        .associate { it.groupValues[1] to it.groupValues[2].trim() }
+    val stem = upper.takeWhile { !optionLine.matches(it) }.joinToString("\n")
+    val options = upper.mapNotNull { optionLine.matchEntire(it) }.map { match ->
+        val raw = match.groupValues[2].trim()
+        val correct = raw.endsWith("*")
+        LessonOption(match.groupValues[1], raw.removeSuffix("*").trim(), correct, reasons[match.groupValues[1]].orEmpty())
+    }
+    return if (options.size < 2 || options.none { it.correct }) null else LessonChoice(stem, options)
+}

@@ -126,21 +126,39 @@ private suspend fun deleteLesson(base: String, token: String, lessonId: Long) = 
 }
 
 /** A lesson section: a heading plus the material that follows it. */
-data class LessonChunk(val title: String, val blocks: List<Pair<String, String>>) {
+data class LessonChunk(val title: String, val blocks: List<Pair<String, String>>, val choices: List<ChoiceSpan> = emptyList()) {
     val body get() = blocks.joinToString("\n\n") { it.second }
+    /** "Before you start": questions to try before reading, where being wrong is expected. */
+    val isPreQuestions get() = Regex("before you (start|read|begin)|pre-?questions?|pre-?test", RegexOption.IGNORE_CASE).containsMatchIn(title)
     /** Sections that are practice rather than reading. */
-    val isPractice get() = title.contains("your turn", true) || title.contains("question", true) || title.contains("check", true) || title.contains("quiz", true)
+    val isPractice get() = !isPreQuestions && (title.contains("your turn", true) || title.contains("question", true) || title.contains("check", true) || title.contains("quiz", true))
+    /** The last Your Turn of a lesson asks for the key ideas from memory, without looking back. */
+    val isFreeRecall get() = isPractice && Regex("without looking|from memory|what you (can |do )?remember|everything you (can )?remember|key ideas (of|from) (this|the|today)", RegexOption.IGNORE_CASE).containsMatchIn(body)
 }
+
+/** A multiple-choice block inside a section: the blocks it covers (its raw lines, kept so answer keys do not change) and what it asks. */
+data class ChoiceSpan(val range: IntRange, val choice: LessonChoice)
 
 /** Splits a Markdown lesson into titled chunks so the reader can fold them. */
 fun lessonChunks(lesson: String): List<LessonChunk> {
     val chunks = mutableListOf<LessonChunk>()
     var title = "Overview"
     val current = mutableListOf<Pair<String, String>>()
-    fun flush() { if (current.isNotEmpty()) { chunks.add(LessonChunk(title, current.toList())); current.clear() } }
+    val spans = mutableListOf<ChoiceSpan>()
+    var fence: MutableList<String>? = null      // the lines of an open ```choice block
+    var fenceStart = 0
+    fun flush() { if (current.isNotEmpty()) { chunks.add(LessonChunk(title, current.toList(), spans.toList())); current.clear() }; spans.clear(); fence = null }
     lesson.lineSequence().forEach { line ->
         val trim = line.trim()
-        if (Regex("^#{1,6}\\s+").containsMatchIn(trim)) {
+        val open = fence
+        if (open == null && trim.startsWith("```choice")) { fence = mutableListOf(); fenceStart = current.size }
+        else if (open != null && trim == "```") {
+            current.add("paragraph" to trim)
+            parseLessonChoice(open)?.let { spans.add(ChoiceSpan(fenceStart until current.size, it)) }
+            fence = null
+            return@forEach
+        } else open?.add(line)
+        if (open == null && Regex("^#{1,6}\\s+").containsMatchIn(trim)) {
             flush()
             title = trim.dropWhile { it == '#' }.trim().replace(Regex("\\s+#+\\s*$"), "").ifBlank { "Overview" }
         } else if (trim.isNotEmpty() && trim !in setOf("---", "***", "___")) {
@@ -389,11 +407,20 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     MathText("**${chunk.title}**", modifier = Modifier.weight(1f))
-                    if (practice) StudyChip("Your turn", MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer)
+                    if (chunk.isFreeRecall) StudyChip("From memory", MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer)
+                    else if (practice) StudyChip("Your turn", MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer)
+                    else if (chunk.isPreQuestions) StudyChip("Try first", MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer)
+                    else if (chunk.title.contains("worked", true)) StudyChip("Worked example", MaterialTheme.colorScheme.onPrimaryContainer, MaterialTheme.colorScheme.primaryContainer)
                 }
                 AnimatedVisibility(visible = expanded) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        chunk.blocks.forEach { (kind, content) ->
+                        chunk.blocks.forEachIndexed { blockIndex, (kind, content) ->
+                            // A multiple-choice block is shown as options to pick, in place of its raw lines.
+                            val span = chunk.choices.firstOrNull { blockIndex in it.range }
+                            if (span != null) {
+                                if (blockIndex == span.range.first) LessonChoiceQuiz(base, token, span.choice)
+                                return@forEachIndexed
+                            }
                             when (kind) {
                                 "bullet" -> Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text("•", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyLarge)
@@ -444,7 +471,9 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                         })
                         CompositionLocalProvider(LocalAnswerPending provides pendingAnswers) {
                             if (practice) PracticePanel(base, token, draft, chunk)
-                            if (!practice && !chunk.title.contains("worked", true) && !chunk.body.contains("Solution:", true)) SectionQuestion(base, token, draft, chunk)
+                            else if (chunk.isPreQuestions) PreQuestionPanel(base, token, draft, chunk)
+                            // Worked examples and completion problems are read and finished by the learner; a made-up quick check would only get in the way.
+                            else if (!Regex("worked|completion|common mistakes", RegexOption.IGNORE_CASE).containsMatchIn(chunk.title) && !chunk.body.contains("Solution:", true) && chunk.choices.isEmpty()) SectionQuestion(base, token, draft, chunk)
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             if (index > 0) TextButton(enabled = canLeave, onClick = { openIndex = index - 1 }) { Text("Previous") }
@@ -628,8 +657,7 @@ private fun SectionQuestion(base: String, token: String, draft: JSONObject, chun
             scope.launch {
                 busy = true; error = ""
                 try {
-                    feedback = explainLesson(base, token, draft.getLong("id"),
-                        "Mark my answer to this question from the lesson. Say what is right, what is wrong and what a stronger answer would add.\nQuestion: ${question.prompt}\nMy answer: $answer")
+                    feedback = JSONObject(Api(base, token).post("/lessons/${draft.getLong("id")}/check", JSONObject().put("question", question.prompt.take(20000)).put("answer", answer))).getString("feedback")
                 } catch (e: Exception) { error = e.message ?: "Could not check the answer" }
                 finally { busy = false }
             }
@@ -655,43 +683,98 @@ private fun SectionQuestion(base: String, token: String, draft: JSONObject, chun
     }
 }
 
-/** Practice controls: reveal the lesson's answer, or ask the tutor to mark working. */
+/**
+ * A Your Turn question: the answer box with the forms its wording asks for (text with symbols, a table, a drawing or a graph),
+ * saved as the learner types, and checked against the lesson and its sources. The lesson's last Your Turn asks for the key
+ * ideas from memory.
+ */
 @Composable
 private fun PracticePanel(base: String, token: String, draft: JSONObject, chunk: LessonChunk) {
+    val api = remember(base, token) { Api(base, token) }
     val scope = rememberCoroutineScope()
+    val lessonId = draft.getLong("id")
+    val prompt = chunk.title + "\n" + chunk.body
+    val box = rememberAnswerBox(api, "$lessonId:${questionKey(prompt)}", null, "")
     var working by remember(chunk) { mutableStateOf("") }
-    var revealed by remember(chunk) { mutableStateOf(false) }
     var reply by remember(chunk) { mutableStateOf("") }
     var busy by remember(chunk) { mutableStateOf(false) }
     var error by remember(chunk) { mutableStateOf("") }
-    val answerLoaded = SavedAnswer(base, token, draft.getLong("id"), chunk.title + "\n" + chunk.body, working, reply, { working = it }, { reply = it })
+    val answerLoaded = SavedAnswer(base, token, lessonId, prompt, working, reply, { box.load(it); working = box.value }, { reply = it })
+    // The question lives in the lesson text, so the server reads which answer forms it asks for from its wording.
+    LaunchedEffect(lessonId, prompt, answerLoaded) {
+        if (!answerLoaded) return@LaunchedEffect
+        runCatching { answerForms(JSONObject(api.post("/answer-forms", JSONObject().put("question", prompt.take(30000)).put("subject", draft.optString("subject")))).opt("answer_forms")) }
+            .getOrNull()?.let { box.receive(it) }
+    }
     HorizontalDivider()
-    Text("Check your understanding", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
-    MathField(working, { working = it; reply = "" }, label = "Your working", minLines = 3, maxLines = 12, enabled = !busy && answerLoaded)
-    val prompt = chunk.title + "\n" + chunk.body
-    HintButton(base, token, "lesson", "${draft.getLong("id")}:${questionKey(prompt)}", answer = { working }, question = { prompt })
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(shape = RoundedCornerShape(50), enabled = !busy && working.isNotBlank() && working.length <= 2000, onClick = {
+    if (chunk.isFreeRecall) {
+        Text("Write what you remember", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
+        Text("Without looking back, write the key ideas of this lesson. Pulling them out of memory is what makes them stay; then check what you missed.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else Text("Your answer", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
+    AnswerBox(box, enabled = !busy && answerLoaded, label = if (chunk.isFreeRecall) "What you remember" else "Your working", collapsed = true, minLines = 3,
+        onChange = { if (answerLoaded && it != working) { working = it; reply = "" } })
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Button(shape = RoundedCornerShape(50), enabled = !busy && answerLoaded && working.isNotBlank() && working.length <= 50000, onClick = {
             scope.launch {
                 busy = true; error = ""
-                try { reply = explainLesson(base, token, draft.getLong("id"), "Mark my answer to the question in this lesson section. Keep feedback proportional to the question.\nSection: ${chunk.title}\nQuestion and context:\n${chunk.body}\nMy answer:\n$working") }
+                try {
+                    box.flush()         // a drawing still uploading is part of the answer
+                    working = box.value
+                    // Checked against this lesson and its sources; drawings and graphs go to the marker as images.
+                    reply = JSONObject(api.post("/lessons/$lessonId/check", JSONObject().put("question", prompt.take(20000)).put("answer", working))).getString("feedback")
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (e: Exception) { error = e.message ?: "Could not get feedback" }
                 finally { busy = false }
             }
         }) { Text("Check my answer") }
-        OutlinedButton(shape = RoundedCornerShape(50), onClick = { revealed = !revealed }) { Text(if (revealed) "Hide answer" else "Reveal answer") }
+        if (!chunk.isFreeRecall) HintButton(base, token, "lesson", "$lessonId:${questionKey(prompt)}", answer = { working }, question = { prompt })
     }
     if (busy) LoadingBar(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     if (reply.isNotBlank()) StudyCard(tone = CardTone.High) {
-        Text("TUTOR FEEDBACK", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+        Text("TUTOR FEEDBACK — AI, NOT A VERIFIED MARK", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
         TutorText(reply, draft)
-        TextButton(onClick = { reply = "" }) { Text("Dismiss") }
     }
-    AnimatedVisibility(visible = revealed) {
-        StudyCard(tone = CardTone.Low) {
-            Text("LESSON CONTENT — CHECK AGAINST SOURCES", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.Bold, textAlign = TextAlign.Start)
-            MathText(chunk.body)
+}
+
+/**
+ * "Before you start": two or three questions on today's content to try before reading. Trying first, even wrongly, helps the
+ * lesson stick, so nothing here is marked; the attempt is saved so it can be compared with the lesson afterwards.
+ */
+@Composable
+private fun PreQuestionPanel(base: String, token: String, draft: JSONObject, chunk: LessonChunk) {
+    var attempt by remember(chunk) { mutableStateOf("") }
+    var unused by remember(chunk) { mutableStateOf("") }
+    val loaded = SavedAnswer(base, token, draft.getLong("id"), chunk.title + "\n" + chunk.body, attempt, unused, { attempt = it }, { unused = it })
+    HorizontalDivider()
+    Text("Have a go before you read", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
+    Text("Guess if you need to. Getting these wrong now is fine: trying first makes the lesson easier to remember. They are not marked.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    MathField(attempt, { attempt = it }, label = "Your first thoughts", minLines = 3, maxLines = 12, enabled = loaded)
+}
+
+/** A multiple-choice block from the lesson text: pick, check on the device, read why each option is right or wrong. */
+@Composable
+private fun LessonChoiceQuiz(base: String, token: String, choice: LessonChoice) {
+    val api = remember(base, token) { Api(base, token) }
+    val form = remember(choice) { AnswerForm.Choice(choice.options.map { ChoiceOption(it.key, it.text) }, choice.multiple) }
+    var block by remember(choice) { mutableStateOf(AnswerBlock.Choice(form, emptyList())) }
+    var checked by remember(choice) { mutableStateOf(false) }
+    Surface(shape = RoundedCornerShape(14.dp), color = LocalStudyColours.current.containerHigh, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (choice.stem.isNotBlank()) MathText(choice.stem)
+            if (!checked) {
+                ChoiceBlock(api, block, enabled = true)
+                Button(enabled = block.chosen.isNotEmpty(), shape = RoundedCornerShape(50), onClick = { checked = true }) { Text("Check") }
+            } else {
+                val right = block.chosen.toSet() == choice.options.filter { it.correct }.map { it.key }.toSet()
+                ToneChip(if (right) "Correct" else "Not quite", if (right) "ok" else "bad")
+                ChoiceResultView(api, JSONObject().put("key_source", "lesson").put("options", JSONArray(choice.options.map {
+                    JSONObject().put("key", it.key).put("text", it.text).put("correct", it.correct).put("chosen", it.key in block.chosen).put("explanation", it.explanation)
+                })))
+                TextButton(onClick = { block = AnswerBlock.Choice(form, emptyList()); checked = false }) { Text("Try again") }
+            }
         }
     }
 }
