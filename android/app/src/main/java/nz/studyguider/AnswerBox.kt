@@ -497,3 +497,38 @@ fun ChoiceResultView(api: Api, result: org.json.JSONObject) {
         Text(lines.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+// ---- the answer box as a plain field ----------------------------------------------------------------------------------------
+
+/** The boxes on screen, each with a way to hand its latest text to its screen; see [flushAnswerBoxes]. */
+private val openBoxes = mutableListOf<Pair<AnswerBoxState, () -> Unit>>()
+
+/**
+ * Finishes every drawing still uploading and hands each box's latest text to its screen. Screens that keep answers as plain
+ * strings (exams, rapid, revision packs) call this before saving or marking, so a drawing made a moment ago is in the answer.
+ */
+suspend fun flushAnswerBoxes() {
+    openBoxes.toList().forEach { (state, sync) -> state.flush(); sync() }
+}
+
+/**
+ * The answer box used like a text field: [value] in, [onValueChange] out, for screens that hold each answer as a string.
+ * Loading a saved answer does not count as a change, so nothing is marked unsaved until the learner edits it.
+ */
+@Composable
+fun AnswerField(api: Api, key: Any?, forms: List<AnswerForm>?, value: String, onValueChange: (String) -> Unit, label: String = "Your answer",
+                enabled: Boolean = true, minLines: Int = 3, collapsed: Boolean = true, figurePath: String? = null) {
+    val box = rememberAnswerBox(api, key, forms, value)
+    var baseline by remember(key) { mutableStateOf(box.value) }
+    var emitted by remember(key) { mutableStateOf<String?>(null) }
+    val latest by rememberUpdatedState(onValueChange)
+    val emit = { text: String -> if (!(emitted == null && text == baseline)) { emitted = text; latest(text) } }
+    // An answer that arrives or changes from outside (loaded from the server, read from a photo) is laid out again.
+    LaunchedEffect(value) { if (value != box.value && value != emitted) { box.load(value); baseline = box.value; emitted = null } }
+    DisposableEffect(box) {
+        val entry = box to { emit(box.value) }
+        openBoxes.add(entry)
+        onDispose { openBoxes.remove(entry) }
+    }
+    AnswerBox(box, enabled, label, collapsed, minLines, figurePath, onChange = emit)
+}

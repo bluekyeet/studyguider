@@ -122,7 +122,8 @@ private fun ReviewBody(base: String, token: String, item: JSONObject, answer: St
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         QuestionView(base, token, item)
         Text("Your answer", style = MaterialTheme.typography.titleSmall)
-        if (answer.isBlank()) Text("You skipped this question.", color = MaterialTheme.colorScheme.onSurfaceVariant) else MathText(answer)
+        if (answer.isBlank()) Text("You skipped this question.", color = MaterialTheme.colorScheme.onSurfaceVariant) else AnswerContent(remember(base, token) { Api(base, token) }, answer)
+        (item.optJSONObject("choice_result") ?: item.optJSONObject("choice_results")?.optJSONObject(""))?.let { ChoiceResultView(remember(base, token) { Api(base, token) }, it) }
         if (feedback.isNotBlank()) StudyCard(tone = CardTone.Low) {
             Text("AI generated · verify with sources", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             MathText(feedback)
@@ -284,6 +285,7 @@ private fun RapidPlayer(base: String, token: String, start: RapidPhase.Play, onE
         scope.launch {
             busy = true; error = ""
             try {
+                if (!skip) flushAnswerBoxes()       // a drawing still uploading is part of the answer
                 val body = JSONObject().put("question_id", question.getLong("question_id")).put("answer", if (skip) "" else answer)
                     .put("seconds", ((System.currentTimeMillis() - startedAt) / 1000).toInt()).put("skip", skip)
                 val reply = JSONObject(rapidCall(base, token, "/rapid/${start.id}/next", "POST", body))
@@ -308,8 +310,8 @@ private fun RapidPlayer(base: String, token: String, start: RapidPhase.Play, onE
                 Text(sourceLine(question), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 QuestionView(base, token, question)
             }
-            TableAnswer(fullQuestionText(question), answer, { answer = it }, enabled = !busy)
-            MathField(answer, { answer = it }, label = "Your answer", enabled = !busy, minLines = 5, maxLines = 16)
+            AnswerField(remember(base, token) { Api(base, token) }, "${start.id}:${question.optLong("question_id")}", answerForms(question.opt("answer_forms")), answer, { answer = it },
+                enabled = !busy, minLines = 4)
             HintButton(base, token, "rapid", "${start.id}:${question.getLong("question_id")}", answer = { answer })
         }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -333,6 +335,7 @@ private fun RapidPlayer(base: String, token: String, start: RapidPhase.Play, onE
             scope.launch {
                 busy = true; error = ""
                 try {
+                    flushAnswerBoxes()
                     val body = JSONObject().put("question_id", question.getLong("question_id")).put("answer", answer).put("seconds", ((System.currentTimeMillis() - startedAt) / 1000).toInt())
                     rapidCall(base, token, "/rapid/${start.id}/end", "POST", body)
                     onEnd(start.id, "")

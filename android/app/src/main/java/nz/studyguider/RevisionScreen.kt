@@ -159,18 +159,20 @@ private fun PackQuestion(base: String, token: String, packId: Long, number: Int,
     var answer by remember(qid) { mutableStateOf(q.optJSONObject("result")?.str("your_answer").orEmpty()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
+    var choiceResult by remember(qid) { mutableStateOf<JSONObject?>(null) }
+    val api = remember(base, token) { Api(base, token) }
     val scope = rememberCoroutineScope()
     StudyCard(modifier = Modifier.animateContentSize()) {
         Text("Question $number", style = MaterialTheme.typography.labelLarge)
         MathText(q.str("question"))
-        TableAnswer(q.str("question"), answer, { answer = it }, enabled = !busy)
-        MathField(answer, { answer = it }, label = "Your answer", enabled = !busy, minLines = 3, maxLines = 12)
+        AnswerField(api, "pack:$packId:$qid", answerForms(q.opt("answer_forms")), answer, { answer = it }, enabled = !busy)
         HintButton(base, token, "review", qid.toString(), answer = { answer })
         Button(enabled = !busy && answer.isNotBlank(), shape = RoundedCornerShape(50), onClick = {
             busy = true
             scope.launch {
                 try {
-                    rapidCall(base, token, "/review-questions/$qid/answers", "POST", JSONObject().put("answer", answer).put("confidence", 3))
+                    flushAnswerBoxes()      // a drawing still uploading is part of the answer
+                    choiceResult = JSONObject(rapidCall(base, token, "/review-questions/$qid/answers", "POST", JSONObject().put("answer", answer).put("confidence", 3))).optJSONObject("choice_result")
                     // The pack view carries the marked result with the worked answer.
                     val latest = JSONObject(rapidCall(base, token, "/revision/packs/$packId"))
                     latest.optJSONArray("sections")?.items()?.flatMap { (it.optJSONArray("questions") ?: JSONArray()).items() }?.firstOrNull { it.getLong("id") == qid }?.optJSONObject("result")?.let { results[qid] = it }
@@ -184,6 +186,7 @@ private fun PackQuestion(base: String, token: String, packId: Long, number: Int,
             val correct = saved.optBoolean("correct")
             Text(if (correct) "Correct · it will come back later to keep it fresh." else "Not quite · it comes back tomorrow.",
                 color = if (correct) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
+            choiceResult?.let { ChoiceResultView(api, it) }
             if (saved.str("feedback").isNotEmpty()) MathText(saved.str("feedback"))
             if (saved.str("expected_answer").isNotEmpty()) {
                 var open by remember(qid) { mutableStateOf(false) }
