@@ -419,7 +419,7 @@ fun SketchBlock(api: Api, state: SketchState, number: Int, figure: ImageBitmap?,
         }
         if (!empty) OutlinedButton(enabled = enabled, onClick = { editing = true }, shape = RoundedCornerShape(50)) { Text("Edit ${kind.lowercase()}") }
     }
-    if (editing) Dialog(onDismissRequest = { editing = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    if (editing) FullScreenDialog(onDismissRequest = { editing = false }) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().systemBarsPadding()) {
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {

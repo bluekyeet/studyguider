@@ -48,3 +48,24 @@ fun StatusDot(colour: androidx.compose.ui.graphics.Color, label: String) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/**
+ * A dialog that takes the whole screen, drawn edge to edge like the main window: the content reaches behind the system bars
+ * (pad it with systemBarsPadding) and the bar icons follow the theme, so no grey strips show at the top and bottom.
+ */
+@Composable
+fun FullScreenDialog(onDismissRequest: () -> Unit, content: @Composable () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val view = androidx.compose.ui.platform.LocalView.current
+        val dark = Appearance.dark()
+        androidx.compose.runtime.SideEffect {
+            val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window ?: return@SideEffect
+            window.setDimAmount(0f)
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            androidx.core.view.WindowCompat.getInsetsController(window, view).apply { isAppearanceLightStatusBars = !dark; isAppearanceLightNavigationBars = !dark }
+        }
+        content()
+    }
+}
