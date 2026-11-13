@@ -376,7 +376,7 @@ private fun AllQuestions(all: List<JSONObject>, today: String, labelOf: (JSONObj
                     val due = q.optString("due_date") <= today
                     Row(Modifier.fillMaxWidth().clickable { onOpen(q) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            val snippet = q.optString("question").replace(Regex("\\s+"), " ").replace("$", "")
+                            val snippet = splitAnswer(q.optString("question")).text.replace(Regex("\\s+"), " ").replace("$", "")
                             Text(q.optString("concept").ifBlank { snippet.take(80) }.replace("$", ""), style = MaterialTheme.typography.titleSmall, maxLines = 2)
                             if (q.optString("concept").isNotBlank()) Text(snippet, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                             Text("${if (due) "Due now" else "Due ${q.optString("due_date")}"} · ${labelOf(q)} · ${if (q.optInt("answer_count") > 0) "answered ${q.optInt("answer_count")}×" else "not answered yet"}",
