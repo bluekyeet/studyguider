@@ -247,6 +247,11 @@ fun RewardsScreen(base: String, token: String, onDismiss: () -> Unit) {
     }
 }
 
+/** The backdrop the character stands on, the same in every place it appears: deep blue in the dark theme, pale in the light. */
+@Composable
+private fun stageBrush(): Brush = if (Appearance.dark()) Brush.verticalGradient(listOf(Color(0xFF5D6494), Color(0xFF383C62), Color(0xFF23253C)))
+    else Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFE3E8F8), Color(0xFFC9D1EC)))
+
 @Composable
 private fun Banner(base: String, me: JSONObject) {
     val colours = LocalStudyColours.current
@@ -256,8 +261,9 @@ private fun Banner(base: String, me: JSONObject) {
         Column(Modifier.background(Brush.linearGradient(listOf(colours.teal.copy(alpha = 0.14f), Color.Transparent, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)))).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Art(base, avatarPath(me.optJSONObject("outfit"), me.optString("skin"), 240, me.optString("build")), "Your character",
-                    Modifier.width(72.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp)).background(colours.containerHighest), ContentScale.Crop)
+                // Small pictures show head and shoulders, where the face still reads.
+                Art(base, avatarPath(me.optJSONObject("outfit"), me.optString("skin"), 240, me.optString("build"), crop = "bust"), "Your character",
+                    Modifier.size(76.dp).clip(RoundedCornerShape(18.dp)).background(stageBrush()), ContentScale.Crop)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("REWARDS", style = MaterialTheme.typography.labelSmall, color = colours.teal, letterSpacing = 1.5.sp, fontFamily = FontFamily.Monospace)
                     Text("Your collection", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -298,38 +304,41 @@ private fun CharacterTab(base: String, me: JSONObject, act: Act) {
     var slot by rememberSaveable { mutableStateOf("hat") }
     fun send(path: String, method: String, body: JSONObject) = act(path, method, body, null)
 
+    // The character stands on its own stage, as large as the screen allows; the controls sit underneath.
+    val worn = outfit.length()
     StudyCard(tone = CardTone.Container) {
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Art(base, avatarPath(outfit, skin, 480, me.optString("build")), "Your character",
-                Modifier.width(130.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(Brush.radialGradient(listOf(Color(0xFF5D6494), Color(0xFF23253C)))), ContentScale.Crop)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("BODY", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    catalog.getJSONArray("builds").objects().forEach { build ->
-                        val id = build.optString("id")
-                        FilterChip(selected = id == me.optString("build"), onClick = { send("/game/outfit", "PUT", JSONObject().put("build", id)) }, label = { Text(build.optString("name"), maxLines = 1) })
-                    }
-                }
-                Text("SKIN TONE", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val skins = catalog.getJSONArray("skins").objects()
-                skins.chunked(4).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { tone ->
-                            val on = tone.optString("id") == skin
-                            Box(Modifier.size(30.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(tone.optString("colour"))))
-                                .border(if (on) 3.dp else 1.dp, if (on) colours.teal else colours.outline.copy(alpha = 0.4f), CircleShape)
-                                .clickable(role = Role.RadioButton, onClickLabel = tone.optString("name")) { send("/game/outfit", "PUT", JSONObject().put("skin", tone.optString("id"))) })
-                        }
-                    }
-                }
-                val worn = outfit.length()
-                Text(if (worn == 0) "Wearing nothing yet" else "Wearing $worn piece${if (worn == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (worn > 0) OutlinedButton(onClick = { send("/game/outfit", "PUT", JSONObject().put("clear", true)) }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Undress") }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Switch(checked = me.optBoolean("visible"), onCheckedChange = { send("/game/settings", "PUT", JSONObject().put("visible", it)) })
-                    Text("On leaderboards", style = MaterialTheme.typography.bodySmall)
+        Box(Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(18.dp)).background(stageBrush())) {
+            Art(base, avatarPath(outfit, skin, 640, me.optString("build")), "Your character", Modifier.align(Alignment.Center).fillMaxHeight().aspectRatio(2f / 3f))
+            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), modifier = Modifier.align(Alignment.BottomStart).padding(10.dp)) {
+                Text(if (worn == 0) "Wearing nothing yet" else "Wearing $worn piece${if (worn == 1) "" else "s"}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+            }
+            if (worn > 0) FilledTonalButton(onClick = { send("/game/outfit", "PUT", JSONObject().put("clear", true)) }, contentPadding = PaddingValues(horizontal = 14.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)) { Text("Undress") }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("BODY", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(52.dp))
+            catalog.getJSONArray("builds").objects().forEach { build ->
+                val id = build.optString("id")
+                FilterChip(selected = id == me.optString("build"), onClick = { send("/game/outfit", "PUT", JSONObject().put("build", id)) }, label = { Text(build.optString("name"), maxLines = 1) })
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("SKIN", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(60.dp))
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween) {
+                catalog.getJSONArray("skins").objects().forEach { tone ->
+                    val on = tone.optString("id") == skin
+                    Box(Modifier.size(30.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(tone.optString("colour"))))
+                        .border(if (on) 3.dp else 1.dp, if (on) colours.teal else colours.outline.copy(alpha = 0.4f), CircleShape)
+                        .clickable(role = Role.RadioButton, onClickLabel = tone.optString("name")) { send("/game/outfit", "PUT", JSONObject().put("skin", tone.optString("id"))) })
                 }
             }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Show me on leaderboards", style = MaterialTheme.typography.bodyMedium)
+                Text("Other learners on this server see your character and points.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = me.optBoolean("visible"), onCheckedChange = { send("/game/settings", "PUT", JSONObject().put("visible", it)) })
         }
     }
 
@@ -559,7 +568,7 @@ private fun BoardsTab(base: String, token: String, onOpen: (Long) -> Unit, onErr
                         val first = index == 0
                         Box(Modifier.clickable(role = Role.Button) { onOpen(row.optLong("user_id")) }) {
                             Art(base, avatarPath(row.optJSONObject("outfit"), row.optString("skin"), 240, row.optString("build")), row.optString("username"),
-                                Modifier.width(if (first) 84.dp else 66.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).background(colours.containerHighest), ContentScale.Crop)
+                                Modifier.width(if (first) 96.dp else 72.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp)).background(stageBrush()), ContentScale.Crop)
                             val medal = listOf(Color(0xFFE0B13A), Color(0xFFB9BFCC), Color(0xFFC27C46))[index]
                             Text("${row.optInt("rank")}", Modifier.align(Alignment.TopEnd).offset(8.dp, (-8).dp).size(26.dp).clip(CircleShape).background(medal).padding(top = 3.dp),
                                 textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF2A1D00))
@@ -580,7 +589,7 @@ private fun BoardsTab(base: String, token: String, onOpen: (Long) -> Unit, onErr
             Surface(onClick = { onOpen(row.optLong("user_id")) }, shape = RoundedCornerShape(14.dp), color = if (mine) MaterialTheme.colorScheme.primaryContainer else colours.containerHigh) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("#${row.optInt("rank")}", fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(36.dp))
-                    Art(base, avatarPath(row.optJSONObject("outfit"), row.optString("skin"), 120, row.optString("build"), "bust"), null, Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF383C62)), ContentScale.Crop)
+                    Art(base, avatarPath(row.optJSONObject("outfit"), row.optString("skin"), 120, row.optString("build"), "bust"), null, Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(stageBrush()), ContentScale.Crop)
                     Text(if (mine) "${row.optString("username")} (you)" else row.optString("username"), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(row.optString("text"), color = colours.teal, fontWeight = FontWeight.Bold)
                 }
@@ -597,7 +606,7 @@ private fun PlayerCard(base: String, p: JSONObject, onDismiss: () -> Unit) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("PLAYER CARD", style = MaterialTheme.typography.labelSmall, color = colours.teal, fontFamily = FontFamily.Monospace, letterSpacing = 1.5.sp)
                 Art(base, avatarPath(p.optJSONObject("outfit"), p.optString("skin"), 400, p.optString("build")), p.optString("username"),
-                    Modifier.width(140.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(Brush.radialGradient(listOf(Color(0xFF5D6494), Color(0xFF23253C)))), ContentScale.Crop)
+                    Modifier.width(140.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(stageBrush()), ContentScale.Crop)
                 Text(if (p.optBoolean("you")) "${p.optString("username")} (you)" else p.optString("username"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 val estimate = p.optJSONObject("estimate")
                 val facts = listOf(p.optInt("networth").grouped() to "Net worth", p.optInt("questions").grouped() to "Questions", p.optInt("lessons").grouped() to "Lessons",

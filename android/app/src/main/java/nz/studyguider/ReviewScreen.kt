@@ -220,7 +220,7 @@ private fun ReviewCard(api: Api, base: String, token: String, question: JSONObje
     StudyCard(tone = CardTone.Container) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             StudyChip(label, MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer)
-            if (question.optBoolean("relearning")) StudyChip("Again: missed earlier", MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.errorContainer)
+            if (question.optBoolean("relearning")) StudyChip("Missed earlier", MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.errorContainer)
             else if (!due) StudyChip("Not due until ${question.optString("due_date")}", MaterialTheme.colorScheme.onSurfaceVariant, LocalStudyColours.current.containerHighest)
             if (left != null) Text("$left left", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -230,7 +230,8 @@ private fun ReviewCard(api: Api, base: String, token: String, question: JSONObje
         val current = result
         if (current == null) {
             AnswerBox(box, enabled = !busy, onChange = { answer = it })
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Working done on paper can be photographed and read into the box; not needed when the answer is picked from options.
+            if (!box.hasChoice) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(enabled = !busy, shape = RoundedCornerShape(50), onClick = {
                     val folder = File(context.cacheDir, "review-photos").apply { mkdirs() }
                     val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", File.createTempFile("review-$id-", ".jpg", folder))
