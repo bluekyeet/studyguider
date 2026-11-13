@@ -29,6 +29,7 @@ from reviews import create_review_tables, review_router
 from lessons import create_lesson_tables, lesson_router
 from marking import create_marking_tables, marking_router
 from answer_media import create_answer_media_tables, media_router
+from exam_import import create_exam_import_tables, exam_import_router
 from rapid import create_rapid_tables, rapid_router
 from revision import create_revision_tables, revision_router
 from exams import create_exam_tables, exam_router
@@ -137,6 +138,7 @@ def init_schema(db):
     create_game_tables(db)
     create_hint_tables(db)
     create_answer_media_tables(db)
+    create_exam_import_tables(db)
     # The global library (library_global.py): rows an account holds as read-only copies carry the library's id.
     for table in ("subjects", "topics", "exam_questions"):
         db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
@@ -423,6 +425,8 @@ app.include_router(game_router(connect, accounts_db, authorised))
 app.include_router(hint_router(connect, authorised, model_reply))
 app.include_router(diagram_router(connect, authorised, model_reply, model_reply_vision))
 app.include_router(media_router(connect, authorised, model_reply, model_reply_vision))
+app.include_router(exam_import_router(connect, authorised, lambda *args, **kwargs: model_reply_reliable(*args, **kwargs),
+                                      lambda *args: _store_resource(*args)))
 
 
 @app.get("/health")

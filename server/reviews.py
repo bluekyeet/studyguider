@@ -19,6 +19,7 @@ import mathtext
 import review_plan
 import answer_forms
 import answer_media
+import choice
 
 
 class ReviewQuestion(BaseModel):
@@ -29,6 +30,8 @@ class ReviewQuestion(BaseModel):
     standard_number: int | None = Field(default=None, gt=0)
     concept: str = Field(default="", max_length=200)
     answer_forms: list | None = Field(default=None, max_length=4)
+    # For a multiple-choice question: {"correct": ["B"], "explanations": {"A": "...", ...}} (choice.py).
+    choice_key: dict | None = None
 
 
 class ReviewAnswer(BaseModel):
@@ -122,12 +125,14 @@ def with_forms(db, questions):
     """Each listed question gets the answer forms it needs: those recorded when it was made, or inferred from its wording."""
     if not questions:
         return questions
-    stored = {row[0]: (row[1], row[2]) for row in db.execute("""SELECT q.id, q.answer_forms, s.name FROM review_questions q
+    stored = {row[0]: row[1:] for row in db.execute("""SELECT q.id, q.answer_forms, s.name, q.reps FROM review_questions q
         JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id WHERE q.id = ANY(%s)""",
         ([q["id"] for q in questions],)).fetchall()}
     for q in questions:
-        forms, subject = stored.get(q["id"], (None, ""))
+        forms, subject, reps = stored.get(q["id"], (None, "", 0))
         q["answer_forms"] = answer_forms.normalise(forms, subject, q["question"]) or answer_forms.infer(q["question"], subject)
+        # Multiple-choice options are shuffled afresh each time the question comes back.
+        q["answer_forms"] = choice.forms_with_order(q["answer_forms"], f"review:{q['id']}:{reps}")
     return questions
 
 
@@ -136,14 +141,17 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
 
     @router.post("/topics/{topic_id}/review-questions", status_code=201)
     def create_question(topic_id: int, body: ReviewQuestion):
+        forms, key, question = None, None, body.question.strip()
+        if body.answer_forms:
+            forms, key, question = answer_forms.with_choice(body.answer_forms, body.choice_key, text=question)
         with connect() as db:
             row = db.execute("""INSERT INTO review_questions
-                (topic_id, question, due_date, expected_answer, source, standard_number, concept, answer_forms)
-                SELECT id, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb FROM topics WHERE id = %s
+                (topic_id, question, due_date, expected_answer, source, standard_number, concept, answer_forms, choice_key)
+                SELECT id, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb FROM topics WHERE id = %s
                 RETURNING id""",
-                (body.question.strip(), body.due_date, body.expected_answer.strip(),
+                (question, body.due_date, body.expected_answer.strip(),
                  json.dumps(body.source), body.standard_number, body.concept.strip(),
-                 json.dumps(answer_forms.normalise(body.answer_forms, text=body.question)), topic_id)).fetchone()
+                 json.dumps(forms), json.dumps(key), topic_id)).fetchone()
             if row is None:
                 raise HTTPException(404, "Topic not found")
         return {"id": row[0], "topic_id": topic_id, "question": body.question.strip(),
@@ -274,17 +282,25 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
     def answer_question(question_id: int, body: ReviewAnswer):
         with connect() as db:
             question = db.execute("""SELECT q.interval_days, q.expected_answer, q.source, q.concept,
-                q.topic_id, t.name, s.name, q.standard_number
+                q.topic_id, t.name, s.name, q.standard_number, q.answer_forms, q.choice_key
                 FROM review_questions q JOIN topics t ON t.id = q.topic_id
                 JOIN subjects s ON s.id = t.subject_id
                 WHERE q.id = %s FOR UPDATE""", (question_id,)).fetchone()
             if question is None:
                 raise HTTPException(404, "Review question not found")
-            interval_days, expected, source, concept, topic_id, topic_name, subject_name, standard = question
+            interval_days, expected, source, concept, topic_id, topic_name, subject_name, standard, forms, choice_key = question
             correct = None
             feedback = ""
             outcome = None
-            if expected.strip() or source:
+            choice_result = None
+            form = choice.find(answer_forms.normalise(forms, subject_name) or [])
+            if form and isinstance(choice_key, dict) and choice_key.get("correct"):
+                # Multiple choice with an answer key: marked against the key, the same every time, with no model call.
+                choice_result = choice.mark(form, choice_key, body.answer, 1)
+                correct = choice_result["exact"]
+                feedback = choice.feedback(choice_result)
+                outcome = "correct" if correct else "incorrect"
+            elif expected.strip() or source:
                 payload = {
                     "subject": subject_name, "topic": topic_name, "standard_number": standard,
                     "question": db.execute("SELECT question FROM review_questions WHERE id = %s", (question_id,)).fetchone()[0],
@@ -329,7 +345,8 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                 "mastery": round(mastery or 0, 3), "topic_status": status, "answered_at": row[1],
                 # A wrong answer comes back later in this session until it is right once (successive relearning).
                 "grade": grade, "relearn": schedule["relearn"],
-                "confident_miss": correct is False and body.confidence >= 4}
+                "confident_miss": correct is False and body.confidence >= 4,
+                **({"choice_result": choice_result} if choice_result else {})}
 
     @router.post("/review-questions/{question_id}/scan")
     def scan_answer(question_id: int, file: UploadFile | None = File(None), files: list[UploadFile] = File(default=[])):

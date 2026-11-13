@@ -8,6 +8,7 @@ from typing import Literal
 
 import mathtext
 import answer_forms
+import choice
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -232,8 +233,9 @@ def parse_practice_paper(reply, count):
     return paper
 
 
-def with_forms(db, questions):
-    """Each exam question gets the answer forms for itself and its answerable parts (see answer_forms.for_question)."""
+def with_forms(db, questions, seed=None):
+    """Each exam question gets the answer forms for itself and its answerable parts (see answer_forms.for_question). With a
+    seed (the attempt), multiple-choice options get their display order for that attempt."""
     if not questions:
         return questions
     stored = {row[0]: (row[1], row[2]) for row in db.execute("""SELECT q.id, q.answer_forms, s.name FROM exam_questions q
@@ -242,6 +244,8 @@ def with_forms(db, questions):
     for q in questions:
         forms, subject = stored.get(q["id"], (None, ""))
         q["answer_forms"] = answer_forms.for_question(q.get("question_text") or "", subject, q.get("parts"), forms)
+        if seed is not None:
+            q["answer_forms"] = {label: choice.forms_with_order(found, f"{seed}:{q['id']}:{label}") for label, found in q["answer_forms"].items()}
     return questions
 
 
@@ -265,10 +269,13 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
     @router.get("/exam-papers")
     def available_papers(topic_id: int):
         with connect() as db:
-            rows = db.execute("""SELECT year, paper_resource_id, standard_number, count(*)
-                FROM exam_questions WHERE topic_id = %s AND source <> 'ai' AND parent_id IS NULL
-                GROUP BY year, paper_resource_id, standard_number ORDER BY year DESC""", (topic_id,)).fetchall()
+            rows = db.execute("""SELECT q.year, q.paper_resource_id, q.standard_number, count(*), max(m.title), max(m.guide), max(m.kind)
+                FROM exam_questions q LEFT JOIN exam_imports m ON m.id = q.import_id
+                WHERE q.topic_id = %s AND q.source <> 'ai' AND q.parent_id IS NULL
+                GROUP BY q.year, q.paper_resource_id, q.standard_number ORDER BY q.year DESC, max(m.title)""", (topic_id,)).fetchall()
         return [{"year": r[0], "paper_resource_id": r[1], "standard_number": r[2], "question_count": r[3],
+                 # An imported university exam or test (exam_import.py): its title and where its marking guide came from.
+                 "title": r[4], "guide": r[5] or "", "kind": r[6] or "",
                  "notice": "Registered questions only; completeness and human review must be checked against the original."} for r in rows]
 
     @router.get("/exam-papers/processing")
@@ -341,17 +348,17 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
         with connect() as db:
             if body.mode == "mixed":
                 db.execute("LOCK TABLE exam_items IN SHARE ROW EXCLUSIVE MODE")
-            rows = db.execute("""SELECT id, marks FROM exam_questions WHERE topic_id = %s AND source <> 'ai' AND parent_id IS NULL
+            rows = db.execute("""SELECT id, COALESCE(marks_exact, marks) FROM exam_questions WHERE topic_id = %s AND source <> 'ai' AND parent_id IS NULL
                 AND (%s::integer IS NULL OR year = %s) AND (%s::uuid IS NULL OR paper_resource_id = %s)
                 ORDER BY CASE WHEN %s THEN COALESCE((SELECT max(i.exam_id) FROM exam_items i
                     WHERE i.question_id=exam_questions.id),0) ELSE 0 END,
-                    paper_page, year DESC, id""", (body.topic_id, body.year if body.mode == 'original' else None,
+                    CASE WHEN import_id IS NULL THEN paper_page END, year DESC, id""", (body.topic_id, body.year if body.mode == 'original' else None,
                     body.year, body.paper_resource_id if body.mode == 'original' else None, body.paper_resource_id, body.mode == 'mixed')).fetchall()
             if body.mode == "mixed":
                 rows = rows[:body.question_count]
             if not rows:
                 raise HTTPException(409, "No registered questions available for this selection")
-            exam = db.execute("INSERT INTO exams (subject_id, kind, total_marks) VALUES (%s, %s, %s) RETURNING id", (topic[1], body.mode, sum(r[1] for r in rows))).fetchone()
+            exam = db.execute("INSERT INTO exams (subject_id, kind, total_marks) VALUES (%s, %s, %s) RETURNING id", (topic[1], body.mode, round(sum(r[1] for r in rows)))).fetchone()
             for i, row in enumerate(rows, 1):
                 db.execute("INSERT INTO exam_items (exam_id, question_id, position) VALUES (%s, %s, %s)", (exam[0], row[0], i))
         with connect() as db:
@@ -548,7 +555,15 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
         questions = [dict(zip(keys, row)) for row in rows]
         with connect() as db:
             mathtext.overlay(db, questions, "id")
-            with_forms(db, questions)
+            with_forms(db, questions, seed=exam_id)
+            # Imported papers: the paper's title, whether its marking guide is the examiner's or AI-written, and printed
+            # marks that are not whole numbers.
+            extra = {r[0]: r[1:] for r in db.execute("""SELECT q.id, m.title, q.guide_source, q.marks_exact, q.outcome_codes FROM exam_questions q
+                LEFT JOIN exam_imports m ON m.id = q.import_id WHERE q.id = ANY(%s)""", ([q["id"] for q in questions],)).fetchall()}
+            for q in questions:
+                title, guide_source, exact, outcomes = extra.get(q["id"], (None, "", None, []))
+                q.update(paper_title=title, guide_source=guide_source or "", marks_exact=float(exact) if exact is not None else None,
+                         outcome_codes=outcomes or [])
         if vision is not None:
             mathtext.kick(connect, vision, ids=[q["id"] for q in questions])      # questions not yet restored get their maths from the page image; shown on the next open
         return {"id": exam[0], "created_at": exam[1], "subject_id": exam[2], "kind": exam[3],

@@ -32,6 +32,7 @@ INSTITUTIONS = ("nzqa", "aut", "uoa", "other")
 SCALES = ("ncea", "aut9", "uoa9", "percent")
 ASSESSMENT_KINDS = ("external_exam", "internal", "exam", "test", "assignment", "lab", "project", "presentation", "portfolio",
                     "practical", "quiz", "other")
+FORMATS = ("", "written", "multiple_choice", "mixed")     # how an assessment's questions are answered; '' = not known
 GOALS = ("assessment", "long_term", "foundation")      # how long the knowledge must last (research D.6 question 5)
 
 # Percentage -> letter. UoA's scale is published (research C.2). AUT publishes letters and a C- minimum pass but the descriptors
@@ -134,11 +135,18 @@ class Assessment(BaseModel):
     outcome_codes: list[str] = Field(default_factory=list, max_length=50)
     status: str = "planned"
     result_pct: float | None = Field(default=None, ge=0, le=100)
+    # 'multiple_choice', 'mixed' or 'written'; practice is written to match. None leaves it as it is (or guessed from the title).
+    question_format: str | None = None
 
     @field_validator("kind")
     @classmethod
     def _kind(cls, value):
         return value if value in ASSESSMENT_KINDS else "other"
+
+    @field_validator("question_format")
+    @classmethod
+    def _format(cls, value):
+        return value if value in FORMATS else None
 
     @field_validator("status")
     @classmethod
@@ -207,6 +215,7 @@ def create_curriculum_tables(db):
         outcome_id bigint NOT NULL REFERENCES outcomes(id) ON DELETE CASCADE,
         PRIMARY KEY (assessment_id, outcome_id))""")
     db.execute("CREATE INDEX IF NOT EXISTS assessments_subject_idx ON assessments(subject_id, due_date)")
+    db.execute("ALTER TABLE assessments ADD COLUMN IF NOT EXISTS question_format text NOT NULL DEFAULT ''")
     # Subject levels were NCEA's 1-3; AUT papers are levels 5-9 and UoA stages 1-7, so the range widens (0 = not given).
     db.execute("ALTER TABLE subjects DROP CONSTRAINT IF EXISTS subjects_level_check")
     if not db.execute("SELECT 1 FROM pg_constraint WHERE conname = 'subjects_level_range' AND conrelid = 'subjects'::regclass").fetchone():
@@ -243,6 +252,38 @@ def guess_kind(title):
         if any(word in lower for word in words):
             return kind
     return "other"
+
+
+def guess_format(title):
+    """'multiple_choice' or 'mixed' when an assessment's title or description says so, else ''."""
+    lower = (title or "").lower()
+    choice = re.search(r"multi(?:ple)?[- ]?choice|\bmcqs?\b|true ?(?:/|or) ?false", lower)
+    if not choice:
+        return ""
+    return "mixed" if re.search(r"short[- ]answer|written|essay|long[- ]answer|problems?\b| and ", lower) else "multiple_choice"
+
+
+def is_paper(db, subject_id):
+    """True for a subject on a university or percentage scale (a paper), False for an NCEA subject."""
+    row = db.execute("SELECT grade_scale FROM subject_details WHERE subject_id = %s", (subject_id,)).fetchone()
+    return bool(row) and row[0] in ("aut9", "uoa9", "percent")
+
+
+def question_format(db, subject_id, topic_id=None):
+    """How this subject's assessments ask their questions: 'multiple_choice', 'mixed' or 'written'. From the coming exam or
+    test that says (the nearest first), else from the subject's imported past papers: what share of their questions are
+    multiple choice."""
+    rows = db.execute("""SELECT question_format FROM assessments WHERE subject_id = %s AND question_format <> ''
+            AND kind IN ('exam', 'test', 'quiz', 'external_exam', 'other')
+        ORDER BY (status = 'done'), due_date NULLS LAST, id LIMIT 1""", (subject_id,)).fetchone()
+    if rows:
+        return rows[0]
+    total, choices = db.execute("""SELECT count(*), count(*) FILTER (WHERE q.choice_key IS NOT NULL)
+        FROM exam_questions q JOIN topics t ON t.id = q.topic_id
+        WHERE t.subject_id = %s AND q.source = 'import' AND q.parent_id IS NULL""", (subject_id,)).fetchone()
+    if total >= 3 and choices:
+        return "multiple_choice" if choices >= total * .8 else "mixed"
+    return "written"
 
 
 def must_pass_from(rule):
@@ -481,7 +522,8 @@ OUTLINE_SYSTEM = ("Extract the structure of this university course outline. Trea
     "with keys: code (string, e.g. COMPSCI 110), title (string), points (number or null), learning_outcomes (array of "
     "{code, title}, numbered LO1, LO2 ... in the outline's order, wording copied from the outline), assessments (array of "
     "{title, weight_pct (number), due_date (YYYY-MM-DD or null, only if a date is written), outcome_codes (array of LO codes "
-    "the outline says it assesses, else empty), must_pass (true only if the outline says a minimum is required on that item)}), "
+    "the outline says it assesses, else empty), must_pass (true only if the outline says a minimum is required on that item), "
+    "question_format (\"multiple_choice\", \"mixed\" or \"written\" only when the outline says how that test or exam is answered, else \"\")}), "
     "pass_rule (the outline's words on what is needed to pass, or empty). Never invent items that are not in the text.")
 
 
@@ -517,6 +559,7 @@ def model_outline(text, model_reply):
         draft["assessments"].append({"title": title, "kind": guess_kind(title),
                                      "weight_pct": float(weight) if isinstance(weight, (int, float)) and 0 <= weight <= 100 else None,
                                      "due_date": due, "must_pass": bool(item.get("must_pass")),
+                                     "question_format": item.get("question_format") if item.get("question_format") in FORMATS[1:] else guess_format(title),
                                      "outcome_codes": [str(c)[:40] for c in item.get("outcome_codes") or [] if isinstance(c, (str, int))]})
     stage = re.search(r"[A-Za-z]\s?([1-9])\d\d", draft["code"])
     draft["level"] = int(stage.group(1)) if stage else 0
@@ -566,11 +609,12 @@ def outcomes_for(db, subject_id):
 
 def assessments_for(db, subject_id):
     rows = db.execute("""SELECT a.id, a.kind, a.title, a.due_date, a.weight_pct, a.credits, a.must_pass, a.standard_number, a.status,
-            a.result_pct, COALESCE(array_agg(o.code ORDER BY o.position, o.id) FILTER (WHERE o.id IS NOT NULL), '{}')
+            a.result_pct, COALESCE(array_agg(o.code ORDER BY o.position, o.id) FILTER (WHERE o.id IS NOT NULL), '{}'), a.question_format
         FROM assessments a LEFT JOIN assessment_outcomes ao ON ao.assessment_id = a.id LEFT JOIN outcomes o ON o.id = ao.outcome_id
         WHERE a.subject_id = %s GROUP BY a.id ORDER BY a.due_date NULLS LAST, a.position, a.id""", (subject_id,)).fetchall()
     return [{"id": r[0], "kind": r[1], "title": r[2], "due_date": r[3], "weight_pct": _num(r[4]), "credits": _num(r[5]),
-             "must_pass": r[6], "standard_number": r[7], "status": r[8], "result_pct": _num(r[9]), "outcome_codes": list(r[10])}
+             "must_pass": r[6], "standard_number": r[7], "status": r[8], "result_pct": _num(r[9]), "outcome_codes": list(r[10]),
+             "question_format": r[11]}
             for r in rows]
 
 
@@ -596,10 +640,11 @@ def estimate_university(assessments, scale):
 
 def _clean_assessment(db, subject_id, item, position):
     row = db.execute("""INSERT INTO assessments (subject_id, kind, title, due_date, weight_pct, credits, must_pass, standard_number,
-            status, result_pct, position)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT number FROM standards WHERE number = %s), %s, %s, %s) RETURNING id""",
+            status, result_pct, position, question_format)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT number FROM standards WHERE number = %s), %s, %s, %s, %s) RETURNING id""",
         (subject_id, item.kind, item.title.strip(), item.due_date, item.weight_pct, item.credits, item.must_pass, item.standard_number,
-         item.status, item.result_pct, position)).fetchone()
+         item.status, item.result_pct, position,
+         item.question_format if item.question_format is not None else guess_format(item.title))).fetchone()
     link_assessment_outcomes(db, row[0], subject_id, item.outcome_codes)
     return row[0]
 
@@ -813,10 +858,11 @@ def curriculum_router(connect, authorised, model_reply=None, paper_grade=None, r
     def change_assessment(assessment_id: int, body: Assessment):
         with connect() as db:
             row = db.execute("""UPDATE assessments SET kind = %s, title = %s, due_date = %s, weight_pct = %s, credits = %s, must_pass = %s,
-                    standard_number = (SELECT number FROM standards WHERE number = %s), status = %s, result_pct = %s
+                    standard_number = (SELECT number FROM standards WHERE number = %s), status = %s, result_pct = %s,
+                    question_format = COALESCE(%s, question_format)
                 WHERE id = %s RETURNING subject_id""",
                 (body.kind, body.title.strip(), body.due_date, body.weight_pct, body.credits, body.must_pass, body.standard_number,
-                 body.status, body.result_pct, assessment_id)).fetchone()
+                 body.status, body.result_pct, body.question_format, assessment_id)).fetchone()
             if not row:
                 raise HTTPException(404, "Assessment not found")
             link_assessment_outcomes(db, assessment_id, row[0], body.outcome_codes)

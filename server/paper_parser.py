@@ -177,7 +177,7 @@ def page_lines(page, ocr=False, tables=True):
     return result
 
 
-SPARE = re.compile(r"^\s*SPARE (?:GRIDS?|DIAGRAMS?|GRAPHS?|COPY|COPIES|AXES|TABLES?)", re.I)
+SPARE = re.compile(r"^\s*SPARE (?:GRIDS?|DIAGRAMS?|GRAPHS?|COPY|COPIES|AXES|TABLES?)\b", re.I)
 
 
 def split_parts(lines):
@@ -388,6 +388,23 @@ def scan_regions(page, lines):
     return kept
 
 
+def figure_boxes(page, lines=None, ocr=False):
+    """[x0, y0, x1, y1] for each figure on a page: its pictures, vector drawings and drawn chemical structures, or on a
+    scanned page the diagrams found in the page image. `lines` are the page's text lines when the caller already has them."""
+    tables = [fitz.Rect(bbox) + (-10, -10, 10, 10) for bbox, _ in page_tables(page)]
+    regions = [fitz.Rect(image["bbox"]) for image in page.get_image_info()] + drawing_regions(page)
+    if ocr and not page.get_text().strip():
+        regions = scan_regions(page, lines or page_lines(page, ocr=True))
+    # The ruling of a table that was read as a table is not a figure.
+    regions = [r for r in regions if not any((r & t).get_area() >= r.get_area() * .6 for t in tables)]
+    structures = [r for r in structure_regions(page) if not any((r & d).get_area() >= r.get_area() * .5 for d in regions)]
+    boxes = []
+    for region in regions + structures:
+        if region in structures or (region.width > 45 and region.height > 30) and region.get_area() < page.rect.get_area() * .7:
+            boxes.append([max(0, region.x0 - 8), max(0, region.y0 - 8), min(page.rect.width, region.x1 + 8), min(page.rect.height, region.y1 + 8)])
+    return boxes
+
+
 def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
     identity = file_identity(filenames[0] if filenames else Path(paper_path).name)
     other = file_identity(filenames[1] if filenames else Path(schedule_path).name)
@@ -411,18 +428,8 @@ def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
                 warnings.append(f"Question {q['question_number']}: schedule heading not identified; not safe to import")
             q["diagram_regions"] = []
             for number in q["pages"]:
-                page = paper[number - 1]
-                tables = [fitz.Rect(bbox) + (-10, -10, 10, 10) for bbox, _ in page_tables(page)]
-                regions = [fitz.Rect(image["bbox"]) for image in page.get_image_info()] + drawing_regions(page)
-                if ocr and not page.get_text().strip():
-                    regions = scan_regions(page, [line for line in q["lines"] if line["page"] == number] or page_lines(page, ocr=True))
-                # The ruling of a table that was read as a table is not a figure.
-                regions = [r for r in regions if not any((r & t).get_area() >= r.get_area() * .6 for t in tables)]
-                structures = [r for r in structure_regions(page) if not any((r & d).get_area() >= r.get_area() * .5 for d in regions)]
-                for region in regions + structures:
-                    if region in structures or (region.width > 45 and region.height > 35) and region.get_area() < page.rect.get_area() * .7:
-                        box = [max(0, region.x0 - 8), max(0, region.y0 - 8), min(page.rect.width, region.x1 + 8), min(page.rect.height, region.y1 + 8)]
-                        q["diagram_regions"].append({"page": number, "bbox": box, "association": "geometric reading order; labels need checking"})
+                for box in figure_boxes(paper[number - 1], [line for line in q["lines"] if line["page"] == number], ocr):
+                    q["diagram_regions"].append({"page": number, "bbox": box, "association": "geometric reading order; labels need checking"})
             for part in q['parts']:
                 part['text'] = '\n'.join(line['text'] for line in part['lines'])
                 part['diagrams'] = []
