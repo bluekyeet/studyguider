@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 import rapid_state
 import userspace
 import splitting
-from exams import PRACTICE_SYSTEM, parse_practice_paper, with_forms
+from exams import PRACTICE_SYSTEM, UNIVERSITY_PRACTICE_SYSTEM, parse_practice_paper, with_forms
+import curriculum
 import answer_forms
 import choice
 from marking import insert_review
@@ -38,7 +39,9 @@ _attempts = {}          # (exam_id, question_id) -> failed marking attempts
 _generating = set()     # exam ids with a generator running
 
 OUTCOMES = ("not_achieved", "achieved", "merit", "excellence")
-REVIEW_SYSTEM = ("You are an independent NCEA examiner checking an AI-written practice question and its rubric. "
+REVIEW_SYSTEM = ("You are an independent examiner (NCEA or university, as the topic suggests) checking an AI-written practice question "
+                 "and its rubric. For a multiple-choice question (it has options), also fail it if the option the rubric names as "
+                 "correct is wrong, if more than one option is defensible, or if a distractor is not plausible. "
                  "Return only a JSON object {\"pass\": boolean, \"issues\": [strings]}. Fail it if the question is ambiguous, "
                  "lacks a given it needs (values, units, context), cannot be answered from what is stated, tests content "
                  "outside the topic, or if the worked answer in the rubric is scientifically or numerically wrong. "
@@ -263,20 +266,27 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
         with connect() as db:
             standard = db.execute("SELECT standard_number FROM topic_standards WHERE topic_id = %s ORDER BY standard_number LIMIT 1", (topic_id,)).fetchone()
             recent = [r[0] for r in db.execute("SELECT left(question_text, 100) FROM exam_questions WHERE topic_id = %s AND source = 'ai' ORDER BY id DESC LIMIT 12", (topic_id,)).fetchall()]
-        if not standard:
+            subject_id = db.execute("SELECT subject_id FROM topics WHERE id = %s", (topic_id,)).fetchone()[0]
+            university = curriculum.is_paper(db, subject_id)
+            asked = choice.format_instruction(curriculum.question_format(db, subject_id))
+            outcomes = [r[0] for r in db.execute("""SELECT o.code || ': ' || o.title FROM topic_outcomes x JOIN outcomes o ON o.id = x.outcome_id
+                WHERE x.topic_id = %s ORDER BY o.position""", (topic_id,)).fetchall()]
+        if not standard and not university:
             return
         sources = search_resources(topic_id, topic_name)[:5]
         if not sources:
             return
-        messages = [{"role": "system", "content": PRACTICE_SYSTEM},
+        messages = [{"role": "system", "content": (UNIVERSITY_PRACTICE_SYSTEM if university else PRACTICE_SYSTEM) + asked},
                     {"role": "user", "content": json.dumps({"topic": topic_name, "count": want, "sources": sources,
+                        **({"learning_outcomes": outcomes} if university else {}),
                         "variety": "Cover different sub-topics and question styles. Do not repeat or closely resemble any question in avoid.",
                         "avoid": recent}, default=str)}]
         paper = parse_practice_paper(model_reply("education", messages, task="rapid-generate"), want)
         for item in paper:
             verdict = model_reply("education-reviewer", [
                 {"role": "system", "content": REVIEW_SYSTEM},
-                {"role": "user", "content": json.dumps({"topic": topic_name, "question": item["question"], "rubric": item["rubric"], "marks": item["marks"]})}],
+                {"role": "user", "content": json.dumps({"topic": topic_name, "question": item["question"], "rubric": item["rubric"], "marks": item["marks"],
+                                                         **({"options": choice.find(item["answer_forms"])["options"]} if item.get("choice_key") else {})})}],
                 task="rapid-review")
             try:
                 from reviews import _clean_json
@@ -289,10 +299,11 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                 if db.execute("SELECT 1 FROM rapid_sessions WHERE exam_id = %s AND ended_at IS NULL", (exam_id,)).fetchone() is None:
                     return
                 qid = db.execute("""INSERT INTO exam_questions (topic_id, standard_number, year, question_number, paper_page, schedule_page,
-                        marks, question_text, schedule_text, source, answer_forms)
-                    VALUES (%s, %s, EXTRACT(YEAR FROM now()), 'AI', 1, 1, %s, %s, %s, 'ai', %s::jsonb) RETURNING id""",
-                                 (topic_id, standard[0], item["marks"], item["question"], item["rubric"],
-                                  json.dumps({"": item.get("answer_forms") or answer_forms.infer(item["question"])}))).fetchone()[0]
+                        marks, question_text, schedule_text, source, answer_forms, choice_key)
+                    VALUES (%s, %s, EXTRACT(YEAR FROM now()), 'AI', 1, 1, %s, %s, %s, 'ai', %s::jsonb, %s::jsonb) RETURNING id""",
+                                 (topic_id, standard[0] if standard else None, item["marks"], item["question"], item["rubric"],
+                                  json.dumps({"": item.get("answer_forms") or answer_forms.infer(item["question"])}),
+                                  json.dumps({"": item["choice_key"]}) if item.get("choice_key") else None)).fetchone()[0]
                 db.execute("INSERT INTO rapid_queue (exam_id, question_id) VALUES (%s, %s)", (exam_id, qid))
 
     def fill_buffer(exam_id):
@@ -514,7 +525,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                 outcome = result.get("outcome")
                 item.update(status="marked", outcome=outcome, marks_awarded=result.get("marks_awarded"), marks_available=result.get("marks_available"),
                             feedback=result.get("feedback", ""), evidence=result.get("evidence", []), missing=result.get("missing", []),
-                            missed=outcome == "not_achieved")
+                            missed=outcome == "not_achieved",
+                            **({"choice_results": result["choice_results"], "marked_by": "answer-key"} if result.get("choice_results") else {}))
                 if second.get(row[1]) and second[row[1]].get("outcome") != outcome:
                     item["second_review_disagrees"] = True
                 breakdown[outcome if outcome in OUTCOMES else "unclear"] += 1

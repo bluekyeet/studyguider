@@ -9,6 +9,7 @@ from typing import Literal
 import mathtext
 import answer_forms
 import choice
+import curriculum
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -224,12 +225,15 @@ def parse_practice_paper(reply, count):
             marks = int(marks)
         if not isinstance(question, str) or not 20 <= len(question) <= 30000:
             raise ValueError(f"question {number} had no usable question text")
+        # A multiple-choice question: its options and key are checked; the key, written out, leads the rubric.
+        forms, key, question = answer_forms.with_choice(item.get("answer_forms"), item.get("choice_key"), text=question)
+        if key:
+            rubric = choice.key_text(forms[0], key) + (chr(10) + chr(10) + rubric if isinstance(rubric, str) and rubric.strip() else "")
         if not isinstance(rubric, str) or not 20 <= len(rubric) <= 60000:
             raise ValueError(f"question {number} had no usable rubric")
         if type(marks) is not int or not 1 <= marks <= 15:
             raise ValueError(f"question {number} had marks outside 1-15")
-        paper.append({"question": question, "rubric": rubric, "marks": marks,
-                      "answer_forms": answer_forms.normalise(item.get("answer_forms"), text=question) or answer_forms.infer(question)})
+        paper.append({"question": question, "rubric": rubric, "marks": marks, "answer_forms": forms, "choice_key": key})
     return paper
 
 
@@ -305,13 +309,14 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
             with connect() as db:
                 standard = db.execute("SELECT standard_number FROM topic_standards WHERE topic_id = %s ORDER BY standard_number LIMIT 1", (body.topic_id,)).fetchone()
                 scale = db.execute("SELECT grade_scale FROM subject_details WHERE subject_id = %s", (topic[1],)).fetchone()
+                asked = choice.format_instruction(curriculum.question_format(db, topic[1]))
                 outcomes = [r[0] for r in db.execute("""SELECT o.code || ': ' || o.title FROM topic_outcomes x JOIN outcomes o ON o.id = x.outcome_id
                     WHERE x.topic_id = %s ORDER BY o.position""", (body.topic_id,)).fetchall()]
             university = bool(scale) and scale[0] in ("aut9", "uoa9", "percent")
             if not standard and not university:
                 raise HTTPException(422, "Link an achievement standard to this topic first")
             messages = [
-                {"role": "system", "content": UNIVERSITY_PRACTICE_SYSTEM if university else PRACTICE_SYSTEM},
+                {"role": "system", "content": (UNIVERSITY_PRACTICE_SYSTEM if university else PRACTICE_SYSTEM) + asked},
                 {"role": "user", "content": json.dumps({"topic": topic[0], "count": body.question_count, "sources": sources,
                                                          **({"learning_outcomes": outcomes} if university else {})}, default=str)},
             ]
@@ -332,10 +337,11 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
                 ids = []
                 for i, q in enumerate(generated, 1):
                     row = db.execute("""INSERT INTO exam_questions (topic_id, standard_number, year, question_number,
-                        paper_page, schedule_page, marks, question_text, schedule_text, source, answer_forms)
-                        VALUES (%s, %s, EXTRACT(YEAR FROM now()), %s, 1, 1, %s, %s, %s, 'ai', %s::jsonb) RETURNING id""",
+                        paper_page, schedule_page, marks, question_text, schedule_text, source, answer_forms, choice_key)
+                        VALUES (%s, %s, EXTRACT(YEAR FROM now()), %s, 1, 1, %s, %s, %s, 'ai', %s::jsonb, %s::jsonb) RETURNING id""",
                         (body.topic_id, standard[0] if standard else None, str(i), q["marks"], q["question"], q["rubric"],
-                         json.dumps({"": q.get("answer_forms") or answer_forms.infer(q["question"])}))).fetchone()
+                         json.dumps({"": q.get("answer_forms") or answer_forms.infer(q["question"])}),
+                         json.dumps({"": q["choice_key"]}) if q.get("choice_key") else None)).fetchone()
                     ids.append(row[0])
                 exam = db.execute("INSERT INTO exams (subject_id, kind, total_marks) VALUES (%s, 'ai-practice', %s) RETURNING id", (topic[1], sum(q["marks"] for q in generated))).fetchone()
                 for i, qid in enumerate(ids, 1):

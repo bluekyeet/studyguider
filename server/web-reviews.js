@@ -1,5 +1,5 @@
 import { mathText, stash, aiBox, hintButton, inlineMath } from './web-common.js';
-import { answerBox } from './web-answer.js';
+import { answerBox, choiceResultView } from './web-answer.js';
 import { scanForm } from './web-exam-shared.js';
 
 const element = (tag, text, className) => {
@@ -243,10 +243,13 @@ export async function renderReviews(container, api) {
         dueList = dueList.filter(q => q.id !== question.id);
         if (result.relearn && back === 'due') dueList.splice(Math.min(3, dueList.length), 0, { ...question, relearning: true });
         const outcome = result.outcome === 'correct' ? ['Correct', 'ok'] : result.outcome === 'incorrect' ? ['Not quite', 'bad'] : ['Not independently marked', 'warn'];
-        const verdict = element('p'); verdict.append(element('span', outcome[0], `chip ${outcome[1]}`), element('span', ' AI judgement, advisory only.', 'muted'));
+        const verdict = element('p'); verdict.append(element('span', outcome[0], `chip ${outcome[1]}`),
+          element('span', result.choice_result ? ' Marked against the answer key.' : ' AI judgement, advisory only.', 'muted'));
         feedback.append(verdict);
         if (result.outcome === 'confidence-based') feedback.append(element('p', 'Scheduled using your confidence.', 'muted'));
-        if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(aiBox(explanation)); }
+        // Multiple choice: every option with why it is right or wrong, instead of a paragraph of AI feedback.
+        if (result.choice_result) feedback.append(choiceResultView(result.choice_result));
+        else if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(aiBox(explanation)); }
         if (result.relearn && back === 'due') feedback.append(element('p', 'You will get this one again in a few questions, after the answer above has had a moment to settle.', 'muted'));
         if (result.confident_miss) feedback.append(element('p', 'You were confident about this one. Misses like this are worth a careful look at the answer: they are often the easiest to fix.', 'muted'));
         feedback.append(element('p', `Next review ${result.next_due || 'not provided'}, planned from how well you recalled it${result.relearn ? '' : ' and when your assessments are'}.`, 'muted'));

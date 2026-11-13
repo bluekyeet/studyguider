@@ -5,6 +5,9 @@
 // table as a Markdown table, each drawing as ![Drawing 1](/answer-images/42) and each graph as its image plus a "Graph 1:" line
 // describing axes, points and curves (what the marker reads besides the picture). answer_media.py stores the pictures.
 //
+// A multiple-choice question (form kind "choice", docs/api/multiple-choice.md) shows its options to pick from; the pick is the
+// answer's first line, "Choice: B" or "Choice: A, C", and any working typed below follows it.
+//
 // answerBox() returns an element that behaves like a textarea for the pages using it: .value, .disabled, focus(), and an
 // 'input' event on every change. await box.flush() before submitting, so a drawing still uploading is included.
 import { mathText } from './web-common.js';
@@ -220,6 +223,92 @@ function tableBlock(form, saved, changed) {
     },
     set disabled(on) { for (const input of node.querySelectorAll('input, textarea, button')) input.disabled = on; },
   };
+}
+
+// ---- multiple choice -------------------------------------------------------------------------------------------------------
+const CHOICE_LINE = /^\s*choices?\s*[:\-]\s*(.*)$/i;
+const LETTERS = 'ABCDEFGHIJ';
+let choiceGroups = 0;
+
+// An option's wording and picture, as question text is drawn.
+function optionBody(option) {
+  const body = el('div', undefined, 'choice-body');
+  if (option.text) body.append(mathText(option.text));
+  if (option.image) {
+    const image = el('img', undefined, 'choice-image'); image.src = option.image; image.loading = 'lazy'; image.alt = option.text || 'Option shown as a picture';
+    body.append(image);
+  }
+  return body;
+}
+
+function choiceBlock(form, saved, changed) {
+  const node = el('div', undefined, 'answer-block choice-answer');
+  const head = el('div', undefined, 'block-head');
+  head.append(el('strong', form.instructions || (form.multiple ? 'Select all that apply.' : 'Choose one answer.')));
+  if (form.group) head.append(el('span', form.group, 'chip'));
+  node.append(head);
+  if (form.penalty > 0) node.append(el('p', `Wrong answers lose ${form.penalty} mark${form.penalty === 1 ? '' : 's'} in this paper; leaving it blank loses nothing.`, 'choice-penalty'));
+  const byKey = new Map((form.options || []).map(option => [option.key, option]));
+  const order = (form.display_order || []).filter(key => byKey.has(key));
+  for (const key of byKey.keys()) if (!order.includes(key)) order.push(key);
+  const picked = new Set((saved || []).filter(key => byKey.has(key)));
+  const name = `choice-${++choiceGroups}`;
+  const list = el('div', undefined, 'choice-options'); list.setAttribute('role', form.multiple ? 'group' : 'radiogroup');
+  list.setAttribute('aria-label', form.multiple ? 'Options: select all that apply' : 'Options: choose one');
+  const inputs = [];
+  order.forEach((key, position) => {
+    const option = byKey.get(key);
+    const row = el('label', undefined, 'choice-option');
+    const input = el('input'); input.type = form.multiple ? 'checkbox' : 'radio'; input.name = name; input.value = key; input.checked = picked.has(key);
+    // The letter shown is the option's place in this attempt's order; the answer sent is the option's own key.
+    row.append(input, el('span', LETTERS[position] || '', 'choice-letter'), optionBody(option));
+    row.classList.toggle('chosen', input.checked);
+    input.onchange = () => {
+      if (!form.multiple) picked.clear();
+      if (input.checked) picked.add(key); else picked.delete(key);
+      for (const other of inputs) other.closest('.choice-option').classList.toggle('chosen', other.checked);
+      changed();
+    };
+    inputs.push(input); list.append(row);
+  });
+  node.append(list);
+  if (!form.multiple) {
+    const clear = btn('Clear choice', 'small quiet');
+    clear.onclick = () => { picked.clear(); for (const input of inputs) { input.checked = false; input.closest('.choice-option').classList.remove('chosen'); } changed(); };
+    node.append(clear);
+  }
+  return {
+    node, kind: 'choice',
+    text: () => picked.size ? `Choice: ${[...picked].sort().join(', ')}` : '',
+    set disabled(on) { for (const input of node.querySelectorAll('input, button')) input.disabled = on; },
+  };
+}
+
+// The outcome of a marked multiple-choice answer (choice_result in the API): each option with whether it was right and chosen,
+// and why. Options are named by their words, since letters differ between attempts.
+export function choiceResultView(result, label = '') {
+  const box = el('div', undefined, 'choice-result stack');
+  const verdict = !result.chosen?.length ? 'No option chosen' : result.exact ? 'Correct' : 'Not correct';
+  const head = el('div', undefined, 'toolbar');
+  head.append(el('strong', `${label ? `${label} ` : ''}${verdict}`), el('span', `${result.net_marks ?? result.marks_awarded} / ${result.marks_available} marks`, `chip ${result.exact ? 'ok' : 'bad'}`));
+  if (result.penalty_applied) head.append(el('span', `includes −${result.penalty_applied} for a wrong answer`, 'chip warn'));
+  box.append(head);
+  const list = el('div', undefined, 'choice-options marked');
+  for (const option of result.options || []) {
+    const row = el('div', undefined, `choice-option ${option.correct ? 'right' : option.chosen ? 'wrong' : ''}`);
+    const mark = el('span', option.correct ? '✓' : option.chosen ? '✗' : '', 'choice-letter'); mark.setAttribute('aria-hidden', 'true');
+    const body = optionBody(option);
+    const tags = el('div', undefined, 'toolbar');
+    if (option.chosen) tags.append(el('span', 'Your choice', `chip ${option.correct ? 'ok' : 'bad'}`));
+    if (option.correct) tags.append(el('span', 'Correct answer', 'chip ok'));
+    if (tags.childElementCount) body.append(tags);
+    if (option.explanation) { const why = mathText(option.explanation); why.classList.add('choice-why'); body.append(why); }
+    row.append(mark, body); list.append(row);
+  }
+  box.append(list);
+  box.append(el('p', result.key_source === 'official' ? 'Marked against the answer key from the paper\u2019s own guide. Explanations may be AI-written.'
+    : 'The answer key and explanations were written by AI, not taken from a marking guide. Check them if something looks wrong.', 'muted'));
+  return box;
 }
 
 // ---- drawing and graph canvas ------------------------------------------------------------------------------------------------
@@ -521,7 +610,14 @@ const IMAGE_LINE = /^!\[((?:Drawing|Graph) \d+)\]\(\/answer-images\/(\d+)\)\s*$/
 export function splitAnswer(value) {
   const lines = String(value || '').split('\n');
   const tables = [], images = [], text = [];
+  let choice = null, started = false;
   for (let i = 0; i < lines.length; i++) {
+    // A multiple-choice pick is the first line of the answer.
+    if (!started && lines[i].trim()) {
+      started = true;
+      const picked = CHOICE_LINE.exec(lines[i]);
+      if (picked) { choice = [...new Set((picked[1].toUpperCase().match(/\b[A-J]\b/g) || []))]; continue; }
+    }
     if (tableLine(lines[i]) && i + 1 < lines.length && ruleLine(lines[i + 1])) {
       const rows = [tableCells(lines[i])]; i += 2;
       while (i < lines.length && tableLine(lines[i])) rows.push(tableCells(lines[i++]));
@@ -535,7 +631,7 @@ export function splitAnswer(value) {
     }
     text.push(lines[i]);
   }
-  return { tables, images, text: text.join('\n').replace(/\n{3,}/g, '\n\n').trim() };
+  return { tables, images, choice, text: text.join('\n').replace(/\n{3,}/g, '\n\n').trim() };
 }
 
 export function answerBox({ api, forms = null, value = '', figure = null, collapsed = false, rows = 6, maxLength = 50000, label = 'Your answer' } = {}) {
@@ -557,20 +653,23 @@ export function answerBox({ api, forms = null, value = '', figure = null, collap
     return item;
   };
   const make = (form, saved = null) => {
+    if (form.kind === 'choice') return choiceBlock(form, saved, emit);      // part of the question, so it cannot be removed
     if (form.kind === 'table') return removable(tableBlock(form, saved, emit));
     return removable(sketchBlock({ graph: form.kind === 'graph', form, saved, figure, upload, changed: emit, number: 1 }));
   };
   const place = item => {
-    // Extra blocks go before the text, in the order the question asks for them.
-    items.splice(items.indexOf(textBlock), 0, item);
-    blocks.insertBefore(item.node, textBlock.node);
+    // Extra blocks go before the text, in the order the question asks for them; the options of a multiple-choice question
+    // come first, so "Choice: B" is the answer's first line.
+    const at = item.kind === 'choice' ? 0 : items.indexOf(textBlock);
+    blocks.insertBefore(item.node, items[at].node);
+    items.splice(at, 0, item);
     renumber();
   };
 
   let rich = null;
   // make() for a saved drawing: fetch its strokes, then rebuild that block in place.
   const makeAny = (form, saved) => {
-    if (!saved?.pendingId) return make(form, saved);
+    if (form.kind === 'choice' || !saved?.pendingId) return make(form, saved);
     const id = saved.pendingId;
     const holder = { kind: form.kind, node: el('div', 'Loading drawing…', 'answer-block muted'), number: 1, text: () => `![${form.kind === 'graph' ? 'Graph' : 'Drawing'} ${holder.number}](/answer-images/${id})`, flush: () => Promise.resolve() };
     loading++;
@@ -591,10 +690,15 @@ export function answerBox({ api, forms = null, value = '', figure = null, collap
     textBlock.node = el('div', undefined, 'answer-block text-block'); textBlock.node.append(rich);
     items = [textBlock]; blocks.replaceChildren(textBlock.node);
     const parsed = splitAnswer(saved);
-    textarea.value = parsed.text;
+    const choiceForm = (wanted || []).find(f => f.kind === 'choice');
+    // Without options to show (an older client's form, or none), a "Choice:" line stays in the text as typed.
+    textarea.value = (parsed.choice && !choiceForm ? `Choice: ${parsed.choice.join(', ')}\n\n` : '') + parsed.text;
     const tables = [...parsed.tables], images = [...parsed.images];
+    box.classList.toggle('has-choice', Boolean(choiceForm));
+    textarea.placeholder = choiceForm ? 'Working or reason (optional)' : '';
     for (const form of (wanted || []).filter(f => f.kind !== 'text')) {
-      if (form.kind === 'table') place(makeAny(form, tables.shift() || null));
+      if (form.kind === 'choice') place(makeAny(form, parsed.choice));
+      else if (form.kind === 'table') place(makeAny(form, tables.shift() || null));
       else {
         const at = images.findIndex(image => image.graph === (form.kind === 'graph'));
         place(makeAny(form, at >= 0 ? { pendingId: images.splice(at, 1)[0].id } : null));

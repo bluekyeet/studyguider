@@ -1,5 +1,5 @@
 import { mathText, mathInput, autosave, aiBox } from './web-common.js';
-import { answerBox } from './web-answer.js';
+import { answerBox, choiceResultView } from './web-answer.js';
 import { el, field, option, json, levelPicker, reflow, withoutLabel, displayLabel, scanForm, mathsNote } from './web-exam-shared.js';
 import { renderRapid } from './web-rapid.js';
 import { renderRevision } from './web-revision.js';
@@ -40,27 +40,48 @@ async function renderClassicExams(container, api) {
   start.type = 'submit'; start.disabled = true;
   const modeNotice = el('p', '', 'muted');
   builder.append(el('h2', 'Start an exam'), fields, modeNotice, start);
+  // Past exams and tests of a university paper are uploaded here and read by AI (exam_import.py). NCEA papers are paired from
+  // the Library by their NZQA file names.
+  const importer = el('section', '', 'card stack'); importer.hidden = true;
+  const importForm = el('form', '', 'stack');
+  const paperFile = el('input'); paperFile.type = 'file'; paperFile.required = true; paperFile.accept = '.pdf,.docx,.txt,.md,.png,.jpg,.jpeg';
+  const guideFile = el('input'); guideFile.type = 'file'; guideFile.accept = paperFile.accept;
+  const importTitle = el('input'); importTitle.maxLength = 200; importTitle.placeholder = 'For example: Mid-semester test 2025';
+  const importYear = el('input'); importYear.type = 'number'; importYear.min = '1950'; importYear.max = '2100'; importYear.value = String(new Date().getFullYear());
+  const importKind = el('select'); option(importKind, 'exam', 'Exam'); option(importKind, 'test', 'Test'); option(importKind, 'quiz', 'Quiz');
+  const importFields = el('div', '', 'fields');
+  importFields.append(field('The exam or test paper', paperFile), field('Marking guide, model answers or answer key (optional)', guideFile),
+    field('Name', importTitle), field('Year', importYear), field('Kind', importKind));
+  const importStart = el('button', 'Import this paper', 'primary'); importStart.type = 'submit';
+  importForm.append(importFields, el('p', 'The questions, their marks and any multiple-choice options are read by AI and checked against the paper\u2019s own wording. If you have no marking guide, AI writes one and it is labelled as AI-written wherever it is used. Reading a paper takes a few minutes.', 'muted'), importStart);
+  const importList = el('div', '', 'stack');
+  importer.append(el('h2', 'Import a past exam or test'), importForm, importList);
   const saved = el('section', '', 'card stack');
   const detail = el('section', '', 'stack');
   detail.append(el('p', 'Start a new exam on the left, or open a saved one, to see the paper here.', 'empty'));
   const head = el('div', '', 'page-head'); const title = el('div');
-  title.append(el('h1', 'Exams'), el('p', 'AI marking is study feedback, not an official or verified NZQA grade. Compare questions, diagrams and schedules with the originals.', 'muted'));
+  title.append(el('h1', 'Exams'), el('p', 'AI marking is study feedback, not an official or verified grade from NZQA or your university. Compare questions, diagrams and marking guides with the originals.', 'muted'));
   head.append(title);
-  const rail = el('div', '', 'exam-rail stack'); rail.append(builder, saved);
+  const rail = el('div', '', 'exam-rail stack'); rail.append(builder, importer, saved);
   const layout = el('div', '', 'exam-layout'); layout.append(rail, detail);
   root.append(head, error, layout);
   let papers = [], subjectRequest = 0, topicRequest = 0, openRequest = 0;
   let drafts = [], busy = false, stopClock = () => {};
   const dirty = () => drafts.some(d => d.value() !== d.saved);
   const canLeave = () => !busy && (!dirty() || window.confirm('Discard unsaved exam answers?'));
+  let subjectKinds = new Map(), importTimer = null;
+  const isPaper = () => subjectKinds.get(String(subject.value)) === 'paper';
   const updateMode = () => {
     paperField.hidden = mode.value !== 'original';
     countField.hidden = mode.value === 'original';
     count.disabled = mode.value === 'original';
     start.disabled = !topic.value || (mode.value === 'original' && !papers[paper.value]);
     modeNotice.replaceChildren();
-    if (mode.value === 'ai') modeNotice.textContent = 'Starting generates an AI practice paper from the files you have uploaded for this topic, not official NZQA material.';
-    else if (topic.value && !papers.length) {
+    if (mode.value === 'ai') modeNotice.textContent = isPaper() ? 'Starting generates an AI practice paper from the files you have uploaded for this topic. It is not one of the paper\u2019s own exams.'
+      : 'Starting generates an AI practice paper from the files you have uploaded for this topic, not official NZQA material.';
+    else if (topic.value && !papers.length && isPaper()) {
+      modeNotice.textContent = 'No past exams or tests are imported for this topic yet. Import one below (they are kept under the topic \u201cPast exams and tests\u201d unless you are on another topic), or choose AI practice.';
+    } else if (topic.value && !papers.length) {
       // A new account has no past papers yet: say how to add them and what works in the meantime.
       const library = el('a', 'Library'); library.href = '#library';
       modeNotice.append('No past papers are registered for this topic yet. Upload an NZQA exam paper and its marking schedule in the ', library,
@@ -77,7 +98,8 @@ async function renderClassicExams(container, api) {
       const rows = await api(`/exam-papers?topic_id=${encodeURIComponent(topic.value)}`);
       if (!alive() || request !== topicRequest) return;
       papers = rows.filter(p => p.paper_resource_id);
-      papers.forEach((p, index) => option(paper, index, `${p.year} · AS ${p.standard_number} · ${p.question_count} registered questions`));
+      papers.forEach((p, index) => option(paper, index, p.standard_number ? `${p.year} · AS ${p.standard_number} · ${p.question_count} registered questions`
+        : `${p.title || 'Imported paper'} · ${p.year} · ${p.question_count} questions${p.guide === 'ai' ? ' · AI-written guide' : ''}`));
       if (!papers.length) option(paper, '', 'No registered original papers');
       updateMode();
     } catch (err) { if (request === topicRequest) { report(err); updateMode(); } }
@@ -94,7 +116,86 @@ async function renderClassicExams(container, api) {
       await loadPapers();
     } catch (err) { if (request === subjectRequest) report(err); }
   };
-  subject.addEventListener('change', loadTopics);
+  // ---- importing a past exam or test ----
+  const importRow = (item) => {
+    const row = el('div', '', 'import-status');
+    const state = item.status === 'reading' ? ['Reading…', ''] : item.status === 'imported' ? ['Imported', 'ok']
+      : item.status === 'needs_attention' ? ['Imported · check the notes', 'warn'] : ['Could not import', 'bad'];
+    const head = el('div', '', 'toolbar');
+    head.append(el('strong', `${item.title} · ${item.year}`), el('span', state[0], `chip ${state[1]}`.trim()));
+    row.append(head);
+    if (item.status === 'reading') row.append(el('p', item.stage || 'Waiting to start', 'muted'));
+    else if (item.status === 'failed') row.append(el('p', item.error || 'The import stopped.', 'error'));
+    else {
+      row.append(el('p', `${item.question_count} questions${item.choice_count ? ` (${item.choice_count} multiple choice)` : ''} · ${item.total_marks} marks`, 'muted'));
+      if (item.guide_note) row.append(el('p', item.guide_note, item.guide === 'official' ? 'muted' : 'choice-penalty'));
+    }
+    if (item.warnings?.length) {
+      const notes = el('details'); notes.append(el('summary', `${item.warnings.length} note${item.warnings.length === 1 ? '' : 's'} to check`));
+      const list = el('ul'); for (const warning of item.warnings) list.append(el('li', warning));
+      notes.append(list); row.append(notes);
+    }
+    const actions = el('div', '', 'toolbar');
+    if (item.status === 'imported' || item.status === 'needs_attention') {
+      const sit = el('button', 'Sit this paper', 'small primary'); sit.type = 'button';
+      sit.onclick = async () => {
+        topic.value = String(item.topic_id); mode.value = 'original'; await loadPapers();
+        const index = papers.findIndex(p => p.paper_resource_id === item.paper_resource_id);
+        if (index >= 0) { paper.value = String(index); updateMode(); builder.requestSubmit(); }
+      };
+      actions.append(sit);
+    }
+    if (item.status === 'failed') {
+      const again = el('button', 'Try again', 'small'); again.type = 'button';
+      again.onclick = async () => { again.disabled = true; try { await api(`/exam-imports/${item.id}/retry`, { method: 'POST' }); await loadImports(); } catch (err) { report(err); } };
+      actions.append(again);
+    }
+    if (item.status !== 'reading') {
+      const remove = el('button', 'Delete', 'small danger'); remove.type = 'button'; remove.setAttribute('aria-label', `Delete the import ${item.title}`);
+      remove.onclick = async () => {
+        if (!window.confirm(`Delete the imported paper "${item.title}" and its questions? The uploaded files stay in the Library.`)) return;
+        remove.disabled = true;
+        try { await api(`/exam-imports/${item.id}`, { method: 'DELETE' }); await Promise.all([loadImports(), loadPapers()]); } catch (err) { report(err); remove.disabled = false; }
+      };
+      actions.append(remove);
+    }
+    row.append(actions);
+    return row;
+  };
+  const loadImports = async () => {
+    clearTimeout(importTimer);
+    importer.hidden = !subject.value || !isPaper();
+    if (importer.hidden) return;
+    const wanted = subject.value;
+    try {
+      const rows = await api(`/subjects/${encodeURIComponent(wanted)}/exam-imports`);
+      if (!alive() || wanted !== subject.value) return;
+      const wasReading = importList.dataset.reading === 'true';
+      const reading = rows.some(r => r.status === 'reading');
+      importList.replaceChildren(...rows.map(importRow));
+      importList.dataset.reading = String(reading);
+      // While a paper is being read its progress is refreshed; when it finishes, the topic and paper lists pick it up.
+      if (reading) importTimer = setTimeout(loadImports, 4000);
+      else if (wasReading) { const keep = topic.value; await loadTopics(); if ([...topic.options].some(o => o.value === keep)) { topic.value = keep; await loadPapers(); } }
+    } catch (err) { report(err); }
+  };
+  importForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!paperFile.files[0] || !subject.value) return;
+    const form = new FormData();
+    form.append('paper', paperFile.files[0]);
+    if (guideFile.files[0]) form.append('guide', guideFile.files[0]);
+    form.append('title', importTitle.value.trim()); form.append('year', importYear.value || String(new Date().getFullYear())); form.append('kind', importKind.value);
+    importStart.disabled = true; error.textContent = '';
+    try {
+      await api(`/subjects/${encodeURIComponent(subject.value)}/exam-imports`, { method: 'POST', body: form });
+      importForm.reset(); importYear.value = String(new Date().getFullYear());
+      importList.dataset.reading = 'true';
+      await loadImports();
+    } catch (err) { report(err); }
+    finally { importStart.disabled = false; }
+  });
+  subject.addEventListener('change', () => { loadTopics(); loadImports(); });
   topic.addEventListener('change', loadPapers);
 
   const link = (label, path) => {
@@ -102,6 +203,15 @@ async function renderClassicExams(container, api) {
     return a;
   };
   const feedbackView = (result) => {
+    // Multiple choice marked against its answer key: no AI marker took part, so it is shown as a result, not as AI feedback.
+    const keyed = result.marked_by === 'answer-key' ? result : (result.marks || []).find(mark => mark.marked_by === 'answer-key');
+    if (keyed) {
+      const view = el('div', '', 'stack');
+      view.append(el('h4', `Marked against the answer key: ${keyed.net_marks ?? keyed.marks_awarded} / ${keyed.net_marks_available ?? keyed.marks_available} marks`));
+      for (const [label, outcome] of Object.entries(keyed.choice_results || {})) view.append(choiceResultView(outcome, label ? `Part ${displayLabel(label)}:` : ''));
+      if (result.override) view.append(el('p', `Your separate override: ${result.override.outcome}`), mathText(result.override.note || ''));
+      return view;
+    }
     const view = el('div', '', 'ai-box stack');
     view.append(el('span', 'AI generated · unofficial practice feedback', 'ai-badge'), el('p', result.disclaimer || 'AI-generated study feedback, not an official or verified grade.', 'muted'));
     const marks = result.marks || [{ ...result, kind: 'first' }, ...(result.second_review ? [{ ...result.second_review, kind: 'second' }] : [])];
@@ -213,19 +323,25 @@ async function renderClassicExams(container, api) {
         navButtons.push(navButton); nav.append(navButton);
         const card = el('article', '', 'card stack');
         const title = el('div', '', 'toolbar');
-        title.append(el('h3', `Question ${q.position}`), el('span', `AS ${q.standard_number} · ${q.year}`, 'chip'));
-        if (q.marks > 0) title.append(el('span', `${q.marks} mark${q.marks === 1 ? '' : 's'}`, 'chip'));
+        title.append(el('h3', `Question ${q.position}`), el('span', q.standard_number ? `AS ${q.standard_number} · ${q.year}` : `${q.paper_title || 'AI practice'} · ${q.year}`, 'chip'));
+        const printed = q.marks_exact ?? q.marks;
+        if (printed > 0) title.append(el('span', `${printed} mark${printed === 1 ? '' : 's'}`, 'chip'));
+        // An imported paper with no marking guide of its own: the guide, and so the marking, is the AI's.
+        if (q.guide_source === 'ai' || q.guide_source === 'mixed') title.append(el('span', q.guide_source === 'ai' ? 'AI-written marking guide' : 'Marking guide partly AI-written', 'chip warn'));
+        for (const code of q.outcome_codes || []) title.append(el('span', code, 'chip'));
         if (String(q.question_number) !== String(q.position)) title.append(el('span', `Paper question ${q.question_number}`, 'chip'));
         card.append(title);
         const sources = el('div', '', 'toolbar');
         if (q.paper_resource_id) sources.append(link(`Original paper · page ${q.paper_page}`, `/resources/${encodeURIComponent(q.paper_resource_id)}/download#page=${q.paper_page}`));
-        if (q.schedule_resource_id) sources.append(link(`Original schedule · page ${q.schedule_page}`, `/resources/${encodeURIComponent(q.schedule_resource_id)}/download#page=${q.schedule_page}`));
+        if (q.schedule_resource_id) sources.append(link(q.guide_source ? 'Uploaded marking guide' : `Original schedule · page ${q.schedule_page}`, `/resources/${encodeURIComponent(q.schedule_resource_id)}/download#page=${q.schedule_page}`));
         if (q.figure_pages?.length) card.append(el('p', `Check original figure pages: ${q.figure_pages.join(', ')}`, 'muted'));
         card.append(sources);
         if (q.schedule_text) {
           const schedule = el('details');
-          schedule.append(el('summary', q.schedule_resource_id ? 'Compare with schedule excerpt' : 'Compare with AI practice rubric (unofficial)'));
-          if (q.schedule_resource_id) {
+          schedule.append(el('summary', q.guide_source === 'ai' ? 'Compare with the AI-written marking guide (not the examiner\u2019s)'
+            : q.guide_source ? 'Compare with the marking guide' : q.schedule_resource_id ? 'Compare with schedule excerpt' : 'Compare with AI practice rubric (unofficial)'));
+          if (q.guide_source) schedule.append(mathText(q.schedule_text));
+          else if (q.schedule_resource_id) {
             // PDF tables lose their columns when extracted, so show the text as-is and point to the original.
             schedule.append(el('p', 'Extracted text; table layout is lost. Use the original schedule page above to compare.', 'muted'), el('pre', q.schedule_text, 'schedule-text'));
           } else schedule.append(mathText(q.schedule_text));
@@ -518,13 +634,14 @@ async function renderClassicExams(container, api) {
       try {
         const subjects = await api('/subjects');
         if (!alive()) return;
+        subjectKinds = new Map(subjects.map(s => [String(s.id), s.kind]));
         levelPicker(level, subject, subjects);
         if (!subjects.length) option(subject, '', 'Add subjects in management first');
-        await loadTopics();
+        await Promise.all([loadTopics(), loadImports()]);
       } catch (err) { report(err); }
     })(),
   ]);
-  return () => stopClock();
+  return () => { stopClock(); clearTimeout(importTimer); };
 }
 
 // Exams is a hub of three sections so the main menu stays short.

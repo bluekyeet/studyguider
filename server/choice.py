@@ -256,3 +256,15 @@ PROMPT = ("When the instructions say to include multiple-choice questions, write
           "right, ...}}. Give four or five options (two for true/false), one clearly best answer, and distractors that are "
           "plausible because each one matches a common mistake or misconception, which its explanation names. Options are "
           "similar in length and style; avoid \"all of the above\". Use $...$ LaTeX in options where needed.")
+
+
+def format_instruction(question_format):
+    """What a practice generator is told about multiple choice, from how the paper is assessed (curriculum.question_format).
+    Empty for a paper assessed by written answers: its practice stays written."""
+    if question_format == "multiple_choice":
+        return (" This paper is assessed by multiple choice, so write every question as a multiple-choice question worth 1 or 2 "
+                "marks. " + PROMPT)
+    if question_format == "mixed":
+        return (" This paper is assessed partly by multiple choice, so write about half of the questions as multiple-choice "
+                "questions worth 1 or 2 marks and the rest as written questions. " + PROMPT)
+    return ""
