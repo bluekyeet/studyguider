@@ -39,22 +39,20 @@ private suspend fun homeGet(base: String, token: String, path: String): String =
 private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 private fun percent(value: Double) = "${Math.round(value * 100)}%"
 
-/** Counts of saved records plus one labelled rough estimate; the same figures as the website Home. */
-private class HomeSnapshot(val token: String, val summary: JSONObject, val todayCount: Int, val todo: List<Pair<JSONObject, Boolean>>)
+/** Counts of saved records, the planner's list and the grade estimates; the same figures as the website Home. */
+private class HomeSnapshot(val token: String, val summary: JSONObject, val todayCount: Int, val todo: List<Pair<JSONObject, Boolean>>,
+                           val setUp: Boolean?, val coming: List<JSONObject>, val estimates: List<JSONObject>)
 private var homeCache: HomeSnapshot? = null
 
 @Composable
-fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit, onGoTo: (Int) -> Unit, onOpenRewards: () -> Unit = {}) {
+fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit, onGoTo: (Int) -> Unit, onOpenRewards: () -> Unit = {}, onChooseTopics: () -> Unit = {}) {
     // What Home showed last time appears at once and is refreshed quietly, so switching back to it never starts from empty.
-    val cached = homeCache?.takeIf { it.token == token }
-    var summary by remember { mutableStateOf<JSONObject?>(cached?.summary) }
-    var todo by remember { mutableStateOf<List<Pair<JSONObject, Boolean>>>(cached?.todo ?: emptyList()) } // lesson, started
-    var todayCount by remember { mutableIntStateOf(cached?.todayCount ?: 0) }
-    var loading by remember { mutableStateOf(cached == null) }
+    var shown by remember { mutableStateOf(homeCache?.takeIf { it.token == token }) }
+    var loading by remember { mutableStateOf(shown == null) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(base, token, reload) {
-        if (summary == null) loading = true
+        if (shown == null) loading = true
         error = ""
         try {
             val data = JSONObject(homeGet(base, token, "/study-summary"))
@@ -67,26 +65,45 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
             val started = open.map { lesson ->
                 runCatching { JSONObject(homeGet(base, token, "/lessons/${lesson.getLong("id")}/progress")).optInt("section", 0) > 0 }.getOrDefault(false)
             }
-            summary = data; todayCount = todays.size; todo = open.zip(started)
-            homeCache = HomeSnapshot(token, data, todays.size, todo)
+            // The plan, readiness and estimates are extras: Home still shows without them (an older server, say).
+            val setUp = runCatching { JSONObject(homeGet(base, token, "/curriculum")).optBoolean("set_up") }.getOrNull()
+            val coming = runCatching { JSONObject(homeGet(base, token, "/review-plan")).optJSONArray("assessments")?.objects().orEmpty() }.getOrDefault(emptyList())
+            val estimates = runCatching { JSONArray(homeGet(base, token, "/grade-estimates")).objects() }.getOrDefault(emptyList())
+            shown = HomeSnapshot(token, data, todays.size, open.zip(started), setUp, coming, estimates).also { homeCache = it }
         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load Home" }
         finally { loading = false }
     }
-    val data = summary
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (loading) DelayedLoading { Column { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Loading…") } }
         if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); OutlinedButton(onClick = { reload++ }) { Text("Try again") } }
-        if (data == null) return@Column
+        val home = shown ?: return@Column
+        val data = home.summary
+        val todo = home.todo; val todayCount = home.todayCount
         val reviews = data.getJSONObject("reviews")
         val topics = data.getJSONArray("topics").objects()
         val due = reviews.optInt("due")
+        val graded = home.estimates.filter { !it.isNull("estimate") }
+
+        // Existing learners are offered the new setup; nothing changes until they choose to.
+        if (home.setUp == false) StudyCard(tone = CardTone.High, modifier = Modifier.staggeredEnter(0, data)) {
+            SectionLabel("Plan around your assessment dates", "NEW")
+            Text("Tell StudyGuider whether you are doing NCEA or university papers (AUT, University of Auckland or elsewhere) and when your assessments are. Reviews then come back on a schedule that keeps what you learn, and lessons switch to exam practice as a date gets close. Everything you already have stays as it is.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = { onGoTo(4) }, shape = androidx.compose.foundation.shape.RoundedCornerShape(50)) { Text("Set up my plan") }
+        }
 
         // Headline numbers
-        val estimated = topics.count { !it.isNull("estimated_grade") }
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Stat((data.optDouble("overall_mastery") * 100).toFloat(), { "${Math.round(it)}%" }, "Overall mastery", Modifier.weight(1f).fillMaxHeight().staggeredEnter(0, data))
-            Stat((todayCount - todo.size).toFloat(), { "${Math.round(it)}/$todayCount" }, "Lessons done today", Modifier.weight(1f).fillMaxHeight().staggeredEnter(1, data))
-            Stat(due.toFloat(), { "${Math.round(it)}" }, "Reviews due", Modifier.weight(1f).fillMaxHeight().staggeredEnter(2, data))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Nothing answered yet is no recall figure at all, not 0%.
+                val anyAnswered = topics.any { it.optInt("reviewed_questions") > 0 }
+                Stat((data.optDouble("overall_mastery") * 100).toFloat(), { if (anyAnswered) "${Math.round(it)}%" else "—" }, "Expected recall", Modifier.weight(1f).fillMaxHeight().staggeredEnter(0, data))
+                Stat((todayCount - todo.size).toFloat(), { "${Math.round(it)} / $todayCount" }, "Lessons done today", Modifier.weight(1f).fillMaxHeight().staggeredEnter(1, data))
+            }
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Stat(due.toFloat(), { "${Math.round(it)}" }, "Reviews due", Modifier.weight(1f).fillMaxHeight().staggeredEnter(2, data))
+                Stat(graded.size.toFloat(), { "${Math.round(it)} / ${home.estimates.size}" }, "Subjects with a grade estimate", Modifier.weight(1f).fillMaxHeight().staggeredEnter(3, data))
+            }
         }
 
         // Lessons to do: a plain list, not cards
@@ -109,30 +126,55 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
                 }
             }
             if (due > 0) FilledTonalButton(onClick = { onGoTo(2) }, modifier = Modifier.padding(top = 4.dp)) { Text("Start $due review${if (due == 1) "" else "s"}") }
+            if (reviews.optInt("left_out") > 0) Text("${reviews.optInt("left_out")} more due, kept for another day (daily limit ${reviews.optInt("cap")}).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        // Topics, progress and estimated grade
-        Section("Topics", Modifier.staggeredEnter(4, data)) {
-            if (topics.isEmpty()) Text("Choose topics in Settings to see them here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Coming assessments, with predicted recall on the day
+        if (home.coming.isNotEmpty()) Section("Coming up", Modifier.staggeredEnter(4, data)) {
+            home.coming.take(5).forEachIndexed { index, a ->
+                if (index > 0) HorizontalDivider()
+                AssessmentReadiness(a.optString("subject"), a, a, a.optInt("days"))
+            }
+            TextButton(onClick = { onGoTo(4) }, contentPadding = PaddingValues(0.dp)) { Text("Open my plan") }
+        }
+
+        if (graded.isNotEmpty()) Section("Grade estimates", Modifier.staggeredEnter(4, data)) {
+            graded.forEachIndexed { index, e ->
+                if (index > 0) HorizontalDivider()
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(e.optString("name"), style = MaterialTheme.typography.bodyLarge)
+                        Text(e.optString("summary"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    ToneChip(e.optString("estimate"), estimateTone(e))
+                }
+            }
+            Text("NCEA: a full past paper, AI-marked, graded with that paper’s own cut scores. University: the marks you entered, weighted by each assessment. Neither is an official result.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        // Topics and how much of each is remembered
+        Section("Topics", Modifier.staggeredEnter(5, data)) {
+            if (topics.isEmpty()) {
+                Text("Choose the topics you are learning to see them here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = onChooseTopics) { Text("Choose topics") }
+            }
             topics.forEachIndexed { index, topic ->
                 if (index > 0) HorizontalDivider()
                 val mastery = topic.optDouble("mastery")
-                val fill = animatedFill(mastery.toFloat().coerceIn(0f, 1f))
+                // Recall counts only questions that have been answered: a topic not started is not 0% remembered.
+                val reviewed = topic.optInt("reviewed_questions")
+                val fill = animatedFill(if (reviewed > 0) mastery.toFloat().coerceIn(0f, 1f) else 0f)
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${topic.optString("subject")} · ${topic.optString("topic")}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        Text(percent(mastery), style = MaterialTheme.typography.bodyMedium)
+                        Text(if (reviewed > 0) percent(mastery) else "—", style = MaterialTheme.typography.bodyMedium)
                     }
                     LinearProgressIndicator(progress = { fill }, modifier = Modifier.fillMaxWidth())
-                    val grade = if (topic.isNull("estimated_grade")) null else topic.getString("estimated_grade")
-                    Text(
-                        grade?.let { "Estimated: $it" } ?: "Needs ${5 - minOf(topic.optInt("review_answers"), 5)} more review answers for an estimate",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (grade == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.secondary,
-                    )
+                    Text("$reviewed of ${topic.optInt("questions")} question${if (topic.optInt("questions") == 1) "" else "s"} answered", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (topics.isNotEmpty()) Text("$estimated of ${topics.size} topics have an estimate. ${data.optString("estimate_rule")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (topics.isNotEmpty()) Text(data.optString("estimate_rule"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         // Weak concepts
