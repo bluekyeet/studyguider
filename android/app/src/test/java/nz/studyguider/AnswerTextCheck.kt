@@ -67,4 +67,8 @@ fun main() {
     check(LessonChunk("Before you start", emptyList()).isPreQuestions && !LessonChunk("Before you start", emptyList()).isPractice)
     check(LessonChunk("Your Turn 4", listOf("paragraph" to "Without looking back, write the key ideas of this lesson.")).isFreeRecall)
     check(!LessonChunk("Your Turn 1", listOf("paragraph" to "Calculate the speed.")).isFreeRecall)
+    // A table in a lesson section is one table: found as a run of rows, and kept on consecutive lines for the answer forms.
+    val tabled = lessonChunks("### Your Turn 2\nComplete the table.\n| Molecule | Shape |\n| --- | --- |\n| CO2 | |\nThen explain.").single()
+    check(tabled.tableRunAt(1) == 1..3 && tabled.tableRunAt(3) == 1..3 && tabled.tableRunAt(0) == null)
+    check(tabled.wording == "Complete the table.\n\n| Molecule | Shape |\n| --- | --- |\n| CO2 | |\n\nThen explain.") { tabled.wording }
 }

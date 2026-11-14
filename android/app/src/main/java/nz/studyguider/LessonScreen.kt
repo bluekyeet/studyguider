@@ -132,6 +132,21 @@ data class LessonChunk(val title: String, val blocks: List<Pair<String, String>>
     val isPreQuestions get() = Regex("before you (start|read|begin)|pre-?questions?|pre-?test", RegexOption.IGNORE_CASE).containsMatchIn(title)
     /** Sections that are practice rather than reading. */
     val isPractice get() = !isPreQuestions && (title.contains("your turn", true) || title.contains("question", true) || title.contains("check", true) || title.contains("quiz", true))
+    /** The blocks of the Markdown table that block [index] belongs to, or null when it is not a table row. */
+    fun tableRunAt(index: Int): IntRange? {
+        fun row(i: Int) = blocks.getOrNull(i)?.second?.let { isTableRow(it) } == true
+        if (!row(index)) return null
+        var start = index; while (row(start - 1)) start--
+        var end = index; while (row(end + 1)) end++
+        return if (end > start && isRuleRow(blocks[start + 1].second)) start..end else null
+    }
+    /** The section's wording as written, with table rows kept on consecutive lines so a table reads as a table. */
+    val wording: String get() = buildString {
+        blocks.forEachIndexed { i, (_, text) ->
+            if (i > 0) append(if (isTableRow(text) && isTableRow(blocks[i - 1].second)) "\n" else "\n\n")
+            append(text)
+        }
+    }
     /** The last Your Turn of a lesson asks for the key ideas from memory, without looking back. */
     val isFreeRecall get() = isPractice && Regex("without looking|from memory|what you (can |do )?remember|everything you (can )?remember|key ideas (of|from) (this|the|today)", RegexOption.IGNORE_CASE).containsMatchIn(body)
 }
@@ -421,6 +436,12 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
                                 if (blockIndex == span.range.first) LessonChoiceQuiz(base, token, span.choice)
                                 return@forEachIndexed
                             }
+                            // Consecutive Markdown table rows are one table, drawn as a table rather than lines of bars.
+                            val table = chunk.tableRunAt(blockIndex)
+                            if (table != null) {
+                                if (blockIndex == table.first) QuestionWording(chunk.blocks.subList(table.first, table.last + 1).joinToString("\n") { it.second })
+                                return@forEachIndexed
+                            }
                             when (kind) {
                                 "bullet" -> Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text("•", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyLarge)
@@ -504,7 +525,8 @@ private fun ColumnScope.LessonArticle(base: String, token: String, draft: JSONOb
         }
     }
     }
-    ExtendedFloatingActionButton(onClick = {
+    // Explain is for reading; on a practice page it would sit over the answer box.
+    if (chunks.getOrNull(openIndex)?.let { it.isPractice || it.isPreQuestions } != true) ExtendedFloatingActionButton(onClick = {
         val current = chunks.getOrNull(openIndex)
         helpParagraph = current?.let { "${it.title}\n\n${it.body}".take(4000) }.orEmpty()
         helpQuestion = "Explain this section in more detail."
@@ -703,7 +725,7 @@ private fun PracticePanel(base: String, token: String, draft: JSONObject, chunk:
     // The question lives in the lesson text, so the server reads which answer forms it asks for from its wording.
     LaunchedEffect(lessonId, prompt, answerLoaded) {
         if (!answerLoaded) return@LaunchedEffect
-        runCatching { answerForms(JSONObject(api.post("/answer-forms", JSONObject().put("question", prompt.take(30000)).put("subject", draft.optString("subject")))).opt("answer_forms")) }
+        runCatching { answerForms(JSONObject(api.post("/answer-forms", JSONObject().put("question", (chunk.title + "\n" + chunk.wording).take(30000)).put("subject", draft.optString("subject")))).opt("answer_forms")) }
             .getOrNull()?.let { box.receive(it) }
     }
     HorizontalDivider()
