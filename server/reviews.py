@@ -20,6 +20,7 @@ import review_plan
 import answer_forms
 import answer_media
 import choice
+import variants
 
 
 class ReviewQuestion(BaseModel):
@@ -56,6 +57,7 @@ def create_review_tables(db):
     db.execute("ALTER TABLE review_answers ADD COLUMN IF NOT EXISTS next_due date")
     db.execute("ALTER TABLE review_answers ADD COLUMN IF NOT EXISTS concept text")
     review_plan.create_schedule_columns(db)
+    variants.create_variant_tables(db)      # fresh versions of returning procedure questions
     # The answer inputs a question needs (answer_forms.py); NULL for older questions, whose forms are inferred when shown.
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS answer_forms jsonb")
     # The answer key of a multiple-choice question (choice.py); marked against it with no model call.
@@ -243,7 +245,7 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                 db.execute("UPDATE lessons SET review_generated_at = now() WHERE id = %s", (lesson_id,))
         with connect() as db:
             rows, _ = due_list(db, as_of)
-            return with_forms(db, [_due_item(row) for row in rows])
+            return variants.overlay(db, with_forms(db, [_due_item(row) for row in rows]))
 
     @router.get("/review-plan")
     def review_plan_today(as_of: date | None = None):
@@ -252,7 +254,7 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
         with connect() as db:
             rows, info = due_list(db, as_of)
             ready = review_plan.readiness(db, as_of)
-            items = with_forms(db, [_due_item(row) for row in rows])
+            items = variants.overlay(db, with_forms(db, [_due_item(row) for row in rows]))
         return {"today": as_of, "items": items, **info, "assessments": ready,
                 "note": "Predicted recall comes from the FSRS memory model on your review answers; it is an estimate, not a mark."}
 
@@ -331,7 +333,7 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                 ORDER BY q.due_date, q.id LIMIT %s OFFSET %s""", (topic_id, topic_id, limit, offset)).fetchall()
             keys = ("id", "topic_id", "question", "due_date", "concept", "standard_number", "mastery",
                     "interval_days", "answer_count", "last_answered_at", "reps", "material")
-            return with_forms(db, [dict(zip(keys, row)) for row in rows if not is_admin_question(row[2], row[4])])
+            return variants.overlay(db, with_forms(db, [dict(zip(keys, row)) for row in rows if not is_admin_question(row[2], row[4])]))
 
     @router.post("/review-questions/{question_id}/answers", status_code=201)
     def answer_question(question_id: int, body: ReviewAnswer):
@@ -344,6 +346,11 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
             if question is None:
                 raise HTTPException(404, "Review question not found")
             interval_days, expected, source, concept, topic_id, topic_name, subject_name, standard, forms, choice_key = question
+            asked = db.execute("SELECT question FROM review_questions WHERE id = %s", (question_id,)).fetchone()[0]
+            # A returning procedure question is shown as a fresh version (variants.py); it is marked against that version.
+            variant = variants.current(db, question_id)
+            if variant:
+                asked, expected = variant[1], variant[2]
             correct = None
             feedback = ""
             outcome = None
@@ -358,8 +365,7 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
             elif expected.strip() or source:
                 payload = {
                     "subject": subject_name, "topic": topic_name, "standard_number": standard,
-                    "question": db.execute("SELECT question FROM review_questions WHERE id = %s", (question_id,)).fetchone()[0],
-                    "expected_answer": expected, "source": source, "answer": answer_media.for_marker(body.answer),
+                    "question": asked, "expected_answer": expected, "source": source, "answer": answer_media.for_marker(body.answer),
                 }
                 try:
                     image = answer_media.answer_image(connect, body.answer)
@@ -388,10 +394,12 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
             schedule = review_plan.record_review(db, question_id, grade, now)
             next_due, interval = schedule["next_due"], schedule["interval_days"]
             row = db.execute("""INSERT INTO review_answers
-                (question_id, answer, confidence, correct, feedback, outcome, next_due, concept, answered_at, grade, retrievability, elapsed_days)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, answered_at""",
+                (question_id, answer, confidence, correct, feedback, outcome, next_due, concept, answered_at, grade, retrievability, elapsed_days, variant_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, answered_at""",
                 (question_id, body.answer.strip(), body.confidence, correct, feedback, outcome, next_due, concept, now,
-                 grade, schedule["retrievability_before"], schedule["elapsed_days"])).fetchone()
+                 grade, schedule["retrievability_before"], schedule["elapsed_days"], variant[0] if variant else None)).fetchone()
+            if variant:
+                db.execute("UPDATE review_variants SET answered_at = %s WHERE id = %s", (now, variant[0]))
             db.execute("UPDATE review_questions SET concept = COALESCE(NULLIF(%s, ''), concept) WHERE id = %s", (concept, question_id))
             mastery, status = db.execute("SELECT mastery, status FROM topics WHERE id = %s", (topic_id,)).fetchone()
         return {"id": row[0], "question_id": question_id, "answer": body.answer.strip(),
@@ -401,6 +409,7 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                 # A wrong answer comes back later in this session until it is right once (successive relearning).
                 "grade": grade, "relearn": schedule["relearn"],
                 "confident_miss": correct is False and body.confidence >= 4,
+                **({"variant": True, "expected_answer": expected} if variant else {}),
                 **({"choice_result": choice_result} if choice_result else {})}
 
     @router.post("/review-questions/{question_id}/scan")

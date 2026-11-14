@@ -35,7 +35,7 @@ ENV XDG_CACHE_HOME=/tmp/studyguider-cache
 COPY game.py game_items.py transcribe.py hints.py ./
 COPY fsrs_model.py clock.py curriculum.py review_plan.py ./
 COPY answer_forms.py answer_media.py ./
-COPY choice.py exam_import.py ./
+COPY choice.py exam_import.py variants.py ./
 COPY set_password.py .
 COPY manage.html .
 COPY web.html web.css web*.js ./

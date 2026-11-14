@@ -1522,6 +1522,11 @@ def prepare_daily_reviews():
     route = next(route for route in app.routes if route.path == "/review-questions/due" and "GET" in route.methods)
     route.endpoint(clock.today())
     replan_daily()
+    try:
+        import variants
+        variants.write_versions(connect, model_reply_reliable)     # new numbers for procedure questions coming back soon
+    except Exception:
+        log.exception("Could not write fresh versions of review questions")
 
 
 def replan_daily():

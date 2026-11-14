@@ -197,6 +197,7 @@ export async function renderReviews(container, api) {
     if (question.relearning) meta.append(element('span', 'Again: you missed this earlier', 'chip warn'));
     card.append(meta);
     if (question.concept) card.append(inlineMath(question.concept, 'h2'));     // titles can carry maths, such as $K_c$
+    if (question.variant) card.append(element('p', 'A new version of this question, with new numbers, so you practise the method rather than remember the answer. Written by AI.', 'muted'));
     const prompt = element('div'); mathText(prompt, question.question); card.append(prompt);
 
     const form = element('form', undefined, 'stack');
