@@ -302,7 +302,7 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                         marks, question_text, schedule_text, source, answer_forms, choice_key)
                     VALUES (%s, %s, EXTRACT(YEAR FROM now()), 'AI', 1, 1, %s, %s, %s, 'ai', %s::jsonb, %s::jsonb) RETURNING id""",
                                  (topic_id, standard[0] if standard else None, item["marks"], item["question"], item["rubric"],
-                                  json.dumps({"": item.get("answer_forms") or answer_forms.infer(item["question"])}),
+                                  json.dumps({"": answer_forms.resolve(item.get("answer_forms"), text=item["question"])}),
                                   json.dumps({"": item["choice_key"]}) if item.get("choice_key") else None)).fetchone()[0]
                 db.execute("INSERT INTO rapid_queue (exam_id, question_id) VALUES (%s, %s)", (exam_id, qid))
 

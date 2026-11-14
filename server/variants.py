@@ -123,7 +123,7 @@ def write_versions(connect, model_reply, limit=PER_TICK):
                 db.execute("UPDATE review_questions SET variant_failed_at = now() WHERE id = %s", (question_id,))
                 continue
             text = mathtext.normalise_maths(new["question"].strip())
-            shown = answer_forms.normalise(forms, subject, text) or answer_forms.infer(text, subject)
+            shown = answer_forms.resolve(forms, subject, text)
             db.execute("""INSERT INTO review_variants (question_id, question, expected_answer, answer_forms) VALUES (%s, %s, %s, %s::jsonb)""",
                        (question_id, text, mathtext.normalise_maths(new["expected_answer"].strip()), json.dumps(shown)))
             written += 1

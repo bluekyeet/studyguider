@@ -132,7 +132,7 @@ def with_forms(db, questions):
         ([q["id"] for q in questions],)).fetchall()}
     for q in questions:
         forms, subject, reps = stored.get(q["id"], (None, "", 0))
-        q["answer_forms"] = answer_forms.normalise(forms, subject, q["question"]) or answer_forms.infer(q["question"], subject)
+        q["answer_forms"] = answer_forms.resolve(forms, subject, q["question"])
         # Multiple-choice options are shuffled afresh each time the question comes back.
         q["answer_forms"] = choice.forms_with_order(q["answer_forms"], f"review:{q['id']}:{reps}")
     return questions
@@ -241,7 +241,7 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                         VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb)""",
                         (topic_id, mathtext.normalise_maths(item["question"]), clock.today(), mathtext.normalise_maths(item["expected_answer"]),
                          json.dumps(sources), item["concept"], item["kind"],
-                         json.dumps(answer_forms.normalise(item.get("answer_forms"), text=item["question"]) or answer_forms.infer(item["question"]))))
+                         json.dumps(answer_forms.resolve(item.get("answer_forms"), text=item["question"]))))
                 db.execute("UPDATE lessons SET review_generated_at = now() WHERE id = %s", (lesson_id,))
         with connect() as db:
             rows, _ = due_list(db, as_of)

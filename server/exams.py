@@ -340,7 +340,7 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
                         paper_page, schedule_page, marks, question_text, schedule_text, source, answer_forms, choice_key)
                         VALUES (%s, %s, EXTRACT(YEAR FROM now()), %s, 1, 1, %s, %s, %s, 'ai', %s::jsonb, %s::jsonb) RETURNING id""",
                         (body.topic_id, standard[0] if standard else None, str(i), q["marks"], q["question"], q["rubric"],
-                         json.dumps({"": q.get("answer_forms") or answer_forms.infer(q["question"])}),
+                         json.dumps({"": answer_forms.resolve(q.get("answer_forms"), text=q["question"])}),
                          json.dumps({"": q["choice_key"]}) if q.get("choice_key") else None)).fetchone()
                     ids.append(row[0])
                 exam = db.execute("INSERT INTO exams (subject_id, kind, total_marks) VALUES (%s, 'ai-practice', %s) RETURNING id", (topic[1], sum(q["marks"] for q in generated))).fetchone()

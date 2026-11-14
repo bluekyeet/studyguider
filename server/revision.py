@@ -273,7 +273,7 @@ def revision_router(connect, authorised, model_reply, search_resources):
         for s in row[7]:
             pack["sections"].append({"concept": s["concept"], "why": s["why"], "teaching": s["teaching"],
                                      "questions": [{"id": q["id"], "question": q["question"],
-                                                   "answer_forms": choice.forms_with_order(q.get("answer_forms") or answer_forms.infer(q["question"]), f"pack:{q['id']}"), **({"result": latest[q["id"]]} if q["id"] in latest else {})} for q in s["questions"]]})
+                                                   "answer_forms": choice.forms_with_order(answer_forms.resolve(q.get("answer_forms"), text=q["question"]), f"pack:{q['id']}"), **({"result": latest[q["id"]]} if q["id"] in latest else {})} for q in s["questions"]]})
         total = len(ids)
         pack["answered"] = len(latest)
         pack["correct"] = sum(1 for v in latest.values() if v["correct"])

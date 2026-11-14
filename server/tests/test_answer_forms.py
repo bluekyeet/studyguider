@@ -72,7 +72,7 @@ def test_a_paper_question_gets_forms_per_answerable_part_from_its_own_lines():
     assert forms["b"][0]["purpose"] == "lewis"                     # the table's words are in the question text, not the part
     assert kinds(forms["c(i)"]) == ["text"]
     stored = for_question(text, "Chemistry", parts, {"a": [{"kind": "graph"}]})
-    assert kinds(stored["a"]) == ["graph", "text"]
+    assert kinds(stored["a"]) == ["graph", "table", "text"]      # a stored form adds to the table the wording asks for
 
 
 def test_a_single_answer_box_merges_its_parts_forms():
@@ -84,3 +84,40 @@ def test_the_generation_prompt_names_every_kind():
     import choice
     for kind in answer_forms.KINDS:
         assert f'"kind": "{kind}"' in (choice.PROMPT if kind == "choice" else answer_forms.PROMPT)
+
+
+def test_the_wording_wins_over_a_stated_text_only_form():
+    # The revision-pack question that came back from the model with only [{"kind": "text"}].
+    question = "Draw the Lewis structure, name the shape, and determine the polarity of $\text{SF}_4$."
+    forms = answer_forms.resolve([{"kind": "text"}], "Chemistry", question)
+    assert [f["kind"] for f in forms] == ["drawing", "text"] and forms[0]["purpose"] == "lewis"
+    for wording, kind in (("Sketch the graph of y = f'(x) on the axes below.", "graph"),
+                          ("Complete the table below for each compound.", "table"),
+                          ("Plot the points and draw a line of best fit.", "graph"),
+                          ("Label the nodes on the diagram below.", "drawing")):
+        assert kind in [f["kind"] for f in answer_forms.resolve([{"kind": "text"}], "Physics", wording, has_figure=True)], wording
+
+
+def test_a_stated_form_can_add_but_not_take_away():
+    stated = [{"kind": "drawing", "background": "blank", "purpose": "diagram"}, {"kind": "text"}]
+    forms = answer_forms.resolve(stated, "Physics", "Sketch a graph of velocity against time for the car.")
+    assert [f["kind"] for f in forms] == ["drawing", "graph", "text"]
+    stated = [{"kind": "graph", "x_label": "t", "y_label": "v"}, {"kind": "text"}]
+    # A question whose wording asks for nothing special keeps exactly what was stated.
+    assert [f["kind"] for f in answer_forms.resolve(stated, "Physics", "Explain why the car slows down.")] == ["graph", "text"]
+
+
+def test_a_multiple_choice_question_keeps_its_stated_forms():
+    stated = [{"kind": "choice", "options": [{"text": "A sketch"}, {"text": "A table"}]}, {"kind": "text"}]
+    forms = answer_forms.resolve(stated, "", "Which graph shows the sketch of y = x^2?")
+    assert [f["kind"] for f in forms] == ["choice", "text"]
+
+
+def test_stored_forms_of_older_questions_gain_what_their_wording_requires():
+    forms = answer_forms.for_question("(a) Complete the table.\n| Ion | Charge |\n| --- | --- |\n| Na | |", "Chemistry",
+                                      [{"label": "a", "text": "(a) Complete the table.\n| Ion | Charge |\n| --- | --- |\n| Na | |"}],
+                                      {"a": [{"kind": "text"}]})
+    assert forms["a"][0]["kind"] == "table" and forms["a"][0]["columns"] == ["Ion", "Charge"]
+    # Generated questions go through the same rule.
+    made, _, _ = answer_forms.with_choice([{"kind": "text"}], None, "Chemistry", "Draw the structural formula of the products.")
+    assert [f["kind"] for f in made] == ["drawing", "text"]

@@ -175,6 +175,24 @@ def normalise(value, subject="", text=""):
     return forms
 
 
+def resolve(value, subject="", text="", has_figure=False):
+    """The forms a question gets: those the model or importer stated, plus every form the wording itself asks for ("Draw the
+    Lewis structure", "Sketch", "Complete the table", "Plot", "Label the diagram") that they left out. A stated form can add to
+    what the wording asks for but never takes away from it. A multiple-choice question is answered by its pick, so it keeps
+    exactly its stated forms."""
+    stated = normalise(value, subject, text)
+    required = infer(text, subject, has_figure)
+    if not stated:
+        return required
+    if any(f["kind"] == "choice" for f in stated):
+        return stated
+    forms = [f for f in stated if f["kind"] != "text"]
+    for form in required:
+        if form["kind"] != "text" and not any(f["kind"] == form["kind"] for f in forms):
+            forms.append(form)
+    return forms[:3] + [next(f for f in stated if f["kind"] == "text")]
+
+
 def with_choice(value, key_value, subject="", text="", source="ai"):
     """Forms and answer key for a generated question that may be multiple choice: (forms, key, question text). A choice form
     without a usable key cannot be marked, so its options are written into the question and it becomes a written question."""
@@ -184,7 +202,7 @@ def with_choice(value, key_value, subject="", text="", source="ai"):
     form = choice.normalise_form(raw) if raw else None
     key = choice.normalise_key(key_value, form, source) if form else None
     rest = [f for f in value if f is not raw] if isinstance(value, list) else None
-    forms = normalise(rest, subject, text) or infer(text, subject)
+    forms = resolve(rest, subject, text)
     forms = [f for f in forms if f["kind"] != "choice"]
     if form and key:
         return [choice.public(form)] + [f for f in forms if f["kind"] == "text"], key, text
@@ -216,11 +234,10 @@ def _segment(question_text, label):
 
 def for_question(question_text, subject="", parts=None, stored=None):
     """Forms for a whole question: {"": forms} for the question itself plus {label: forms} for each answerable part.
-    Stored forms (recorded when the question was made) win; anything missing is inferred."""
+    Stored forms (recorded when the question was made) are kept, with any form the wording requires added (resolve)."""
     stored = stored if isinstance(stored, dict) else {"": stored} if isinstance(stored, list) else {}
     parts = [p for p in (parts or []) if isinstance(p, dict)]
-    result = {"": normalise(stored.get(""), subject, question_text)
-              or infer(question_text, subject, any(p.get("diagrams") for p in parts))}
+    result = {"": resolve(stored.get(""), subject, question_text, any(p.get("diagrams") for p in parts))}
     by_label = {str(p.get("label") or ""): p for p in parts}
     for label in answerable(parts):
         part = by_label[label]
@@ -228,7 +245,7 @@ def for_question(question_text, subject="", parts=None, stored=None):
         segment = _segment(question_text, label)
         if len(segment) > len(wording):
             wording = segment
-        result[label] = normalise(stored.get(label), subject, wording) or infer(wording, subject, bool(part.get("diagrams")))
+        result[label] = resolve(stored.get(label), subject, wording, bool(part.get("diagrams")))
     return result
 
 

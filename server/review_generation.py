@@ -64,7 +64,7 @@ def review_generation_router(authorised, model_reply, search_resources, connect=
                     "concept": str(item.get("concept", ""))[:200],
                     "source_page": item.get("source_page"),
                     "source_resource_id": item.get("source_resource_id"),
-                    "answer_forms": answer_forms.normalise(item.get("answer_forms"), text=question) or answer_forms.infer(question),
+                    "answer_forms": answer_forms.resolve(item.get("answer_forms"), text=question),
                 })
         except (ValueError, TypeError):
             raise HTTPException(502, "Model returned invalid review questions")
