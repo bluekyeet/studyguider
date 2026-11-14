@@ -195,7 +195,7 @@ def mark(form, key, answer, marks=1):
 
 
 def _option_name(option):
-    return option["text"] or "the option shown as a picture"
+    return option["text"].rstrip(" .") or "the option shown as a picture"
 
 
 def feedback(result):

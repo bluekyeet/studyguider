@@ -44,7 +44,9 @@ PACK_SYSTEM = (
 REVIEW_SYSTEM = ("You are an independent NCEA examiner checking AI-written revision questions and their expected answers. "
                  "Return only JSON {\"fail\": [{\"section\": integer, \"question\": integer, \"reason\": string}]} listing zero-based "
                  "positions of questions that are ambiguous, lack a value or unit they need, cannot be answered from what is stated, "
-                 "are outside the topic, or whose expected answer is scientifically or numerically wrong. An empty list means all pass.")
+                 "are outside the topic, or whose expected answer is scientifically or numerically wrong. For a multiple-choice question "
+                 "(it has a choice_key), also fail it when the keyed option is wrong or more than one option is defensible. An empty "
+                 "list means all pass.")
 
 
 class PackStart(BaseModel):
@@ -144,11 +146,14 @@ def parse_pack(reply):
             raise ValueError(f"section {number} did not have 2 to 6 questions")
         items = []
         for q in questions:
-            if (not isinstance(q, dict) or not isinstance(q.get("question"), str) or not isinstance(q.get("expected_answer"), str)
-                    or not 15 <= len(q["question"]) <= 4000 or not 5 <= len(q["expected_answer"]) <= 8000):
+            if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not 15 <= len(q["question"]) <= 4000:
                 raise ValueError(f"a question in section {number} was unusable")
             forms, key, question = answer_forms.with_choice(q.get("answer_forms"), q.get("choice_key"), text=q["question"].strip())
-            items.append({"question": question, "expected_answer": (choice.key_text(forms[0], key) + chr(10) if key else "") + q["expected_answer"].strip(),
+            expected = q.get("expected_answer").strip() if isinstance(q.get("expected_answer"), str) else ""
+            # A multiple-choice question's key and its explanations are its worked answer; any other needs one written out.
+            if (not key and not 5 <= len(expected) <= 8000) or len(expected) > 8000:
+                raise ValueError(f"a question in section {number} had no usable expected answer")
+            items.append({"question": question, "expected_answer": (choice.key_text(forms[0], key) + chr(10) if key else "") + expected,
                           "answer_forms": forms, **({"choice_key": key} if key else {})})
         clean.append({"concept": concept.strip(), "why": str(why or "").strip()[:500], "teaching": teaching.strip(), "questions": items})
     return clean

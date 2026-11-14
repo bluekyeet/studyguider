@@ -15,8 +15,10 @@ import logging
 import os
 import re
 import time
+from datetime import timedelta
 
 import answer_forms
+import clock
 import mathtext
 
 log = logging.getLogger("uvicorn.error")
@@ -92,10 +94,10 @@ def pending(db, limit=PER_TICK):
     return db.execute("""SELECT q.id, q.question, q.expected_answer, q.answer_forms, s.name FROM review_questions q
         JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
         WHERE q.material = 'procedure' AND q.reps > 0 AND q.choice_key IS NULL
-          AND q.due_date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date + 1
+          AND q.due_date <= %s
           AND (q.variant_failed_at IS NULL OR q.variant_failed_at < now() - interval '1 day')
           AND NOT EXISTS (SELECT 1 FROM review_variants v WHERE v.question_id = q.id AND v.answered_at IS NULL)
-        ORDER BY q.due_date, q.id LIMIT %s""", (limit,)).fetchall()
+        ORDER BY q.due_date, q.id LIMIT %s""", (clock.today() + timedelta(days=1), limit)).fetchall()
 
 
 def write_versions(connect, model_reply, limit=PER_TICK):

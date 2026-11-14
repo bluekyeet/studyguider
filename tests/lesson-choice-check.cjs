@@ -10,6 +10,7 @@ const block = parseChoiceBlock(['Which change increases the rate?', 'A. Lowering
 assert.deepStrictEqual(block.options.map(o => [o.key, o.correct]), [['A', false], ['B', true], ['C', false]]);
 assert.strictEqual(block.stem, 'Which change increases the rate?');
 assert.strictEqual(block.reasons.B, 'A catalyst lowers the activation energy.');
+assert.strictEqual(parseChoiceBlock(['A. one *', 'B. two', '---', 'A: right *']).reasons.A, 'right');
 assert.strictEqual(block.multiple, false);
 assert.strictEqual(parseChoiceBlock(['A. one *', 'B. two *', 'C. three']).multiple, true);
 assert.strictEqual(parseChoiceBlock(['print("hello")']), null);

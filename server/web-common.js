@@ -121,7 +121,7 @@ export function parseChoiceBlock(lines) {
     if (!line) continue;
     if (/^-{3,}$/.test(line)) { after = true; continue; }
     const reason = after && /^\(?([A-J])\)?\s*[:.)-]\s*(.+)$/i.exec(line);
-    if (reason) { reasons[reason[1].toUpperCase()] = reason[2]; continue; }
+    if (reason) { reasons[reason[1].toUpperCase()] = reason[2].replace(/\s+\*$/, ''); continue; }
     const option = !after && /^\(?([A-J])\)?[.)]\s+(.+?)(\s+\*)?$/i.exec(line);
     if (option) { options.push({ key: option[1].toUpperCase(), text: option[2], correct: Boolean(option[3]) }); continue; }
     if (!after && !options.length) stem.push(line);
