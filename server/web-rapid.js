@@ -2,7 +2,7 @@
 // A rapid session is one-way: questions flash up, you answer or skip and move on, and you see nothing about
 // how you are doing until you end the session. The server enforces that; this page just never asks for results early.
 import { mathText, stash, aiBox, countUp, hintButton } from './web-common.js';
-import { answerBox } from './web-answer.js';
+import { answerBox, choiceResultView } from './web-answer.js';
 import { el, field, option, json, levelPicker, scanForm, questionView } from './web-exam-shared.js';
 
 const GRADE = { not_achieved: 'Not achieved', achieved: 'Achieved', merit: 'Merit', excellence: 'Excellence' };
@@ -25,7 +25,9 @@ function reviewBody(item) {
   const body = el('div', '', 'stack');
   body.append(questionView(item));
   body.append(el('h4', 'Your answer'), item.answer ? mathText(item.answer) : el('p', 'You skipped this question.', 'muted'));
-  if (item.feedback) {
+  if (item.choice_results) {
+    for (const [label, result] of Object.entries(item.choice_results)) body.append(choiceResultView(result, label ? `Part ${label}:` : ''));
+  } else if (item.feedback) {
     const parts = [mathText(item.feedback)];
     for (const evidence of item.evidence || []) parts.push(el('blockquote', evidence.quote), mathText(`${evidence.marks} marks: ${evidence.explanation || ''}`));
     if (item.missing?.length) { parts.push(el('h4', 'Missing evidence / next steps')); for (const m of item.missing) parts.push(mathText(m)); }

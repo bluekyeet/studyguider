@@ -19,6 +19,8 @@ import mathtext
 import review_plan
 import answer_forms
 import answer_media
+import choice
+import variants
 
 
 class ReviewQuestion(BaseModel):
@@ -29,6 +31,8 @@ class ReviewQuestion(BaseModel):
     standard_number: int | None = Field(default=None, gt=0)
     concept: str = Field(default="", max_length=200)
     answer_forms: list | None = Field(default=None, max_length=4)
+    # For a multiple-choice question: {"correct": ["B"], "explanations": {"A": "...", ...}} (choice.py).
+    choice_key: dict | None = None
 
 
 class ReviewAnswer(BaseModel):
@@ -53,8 +57,11 @@ def create_review_tables(db):
     db.execute("ALTER TABLE review_answers ADD COLUMN IF NOT EXISTS next_due date")
     db.execute("ALTER TABLE review_answers ADD COLUMN IF NOT EXISTS concept text")
     review_plan.create_schedule_columns(db)
+    variants.create_variant_tables(db)      # fresh versions of returning procedure questions
     # The answer inputs a question needs (answer_forms.py); NULL for older questions, whose forms are inferred when shown.
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS answer_forms jsonb")
+    # The answer key of a multiple-choice question (choice.py); marked against it with no model call.
+    db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS choice_key jsonb")
 
 
 def _clean_json(reply):
@@ -120,13 +127,64 @@ def with_forms(db, questions):
     """Each listed question gets the answer forms it needs: those recorded when it was made, or inferred from its wording."""
     if not questions:
         return questions
-    stored = {row[0]: (row[1], row[2]) for row in db.execute("""SELECT q.id, q.answer_forms, s.name FROM review_questions q
+    stored = {row[0]: row[1:] for row in db.execute("""SELECT q.id, q.answer_forms, s.name, q.reps FROM review_questions q
         JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id WHERE q.id = ANY(%s)""",
         ([q["id"] for q in questions],)).fetchall()}
     for q in questions:
-        forms, subject = stored.get(q["id"], (None, ""))
+        forms, subject, reps = stored.get(q["id"], (None, "", 0))
         q["answer_forms"] = answer_forms.normalise(forms, subject, q["question"]) or answer_forms.infer(q["question"], subject)
+        # Multiple-choice options are shuffled afresh each time the question comes back.
+        q["answer_forms"] = choice.forms_with_order(q["answer_forms"], f"review:{q['id']}:{reps}")
     return questions
+
+
+def calibration(db, days=None, topic_id=None):
+    """How often the learner was right at each confidence rating, overall and per topic, and their recent confident misses.
+    Only answers that were marked (by the AI marker or an answer key) count: a confidence-scheduled answer says nothing about
+    whether the confidence was right (research A.11, D.2 item 12)."""
+    window = "AND a.answered_at > now() - make_interval(days => %s)" if days else "AND %s::int IS NULL"
+    rows = db.execute(f"""SELECT a.confidence, count(*), count(*) FILTER (WHERE a.correct)
+        FROM review_answers a JOIN review_questions q ON q.id = a.question_id
+        WHERE a.correct IS NOT NULL AND a.outcome IN ('correct', 'incorrect') {window}
+          AND (%s::bigint IS NULL OR q.topic_id = %s)
+        GROUP BY a.confidence ORDER BY a.confidence""", (days, topic_id, topic_id)).fetchall()
+    levels = {r[0]: (r[1], r[2]) for r in rows}
+    out = [{"confidence": c, "answers": levels.get(c, (0, 0))[0], "correct": levels.get(c, (0, 0))[1],
+            "correct_rate": round(levels[c][1] / levels[c][0], 3) if levels.get(c, (0, 0))[0] else None} for c in range(1, 6)]
+    topics = db.execute(f"""SELECT t.id, s.name, t.name, count(*), count(*) FILTER (WHERE a.correct),
+            count(*) FILTER (WHERE a.confidence >= 4), count(*) FILTER (WHERE a.confidence >= 4 AND a.correct),
+            avg(a.confidence)
+        FROM review_answers a JOIN review_questions q ON q.id = a.question_id JOIN topics t ON t.id = q.topic_id
+        JOIN subjects s ON s.id = t.subject_id
+        WHERE a.correct IS NOT NULL AND a.outcome IN ('correct', 'incorrect') {window}
+        GROUP BY t.id, s.name, t.name HAVING count(*) >= 3 ORDER BY s.name, t.name""", (days,)).fetchall()
+    misses = db.execute(f"""SELECT q.id, q.question, a.confidence, a.answered_at, t.name, q.concept
+        FROM review_answers a JOIN review_questions q ON q.id = a.question_id JOIN topics t ON t.id = q.topic_id
+        WHERE a.correct IS FALSE AND a.outcome = 'incorrect' AND a.confidence >= 4 {window}
+          AND (%s::bigint IS NULL OR q.topic_id = %s)
+        ORDER BY a.answered_at DESC LIMIT 10""", (days, topic_id, topic_id)).fetchall()
+    marked = sum(level["answers"] for level in out)
+    sure = [level for level in out if level["confidence"] >= 4 and level["answers"]]
+    sure_rate = sum(l["correct"] for l in sure) / sum(l["answers"] for l in sure) if sure else None
+    unsure = [level for level in out if level["confidence"] <= 2 and level["answers"]]
+    unsure_rate = sum(l["correct"] for l in unsure) / sum(l["answers"] for l in unsure) if unsure else None
+    if marked < 10:
+        summary = "Answer a few more review questions to see how well your confidence matches your results."
+    elif sure_rate is not None and sure_rate < 0.75:
+        summary = (f"When you felt confident (4 or 5) you were right {round(sure_rate * 100)}% of the time. Check answers you feel sure "
+                   "about against the worked answer: confident mistakes are the easiest to fix once you see them.")
+    elif unsure_rate is not None and unsure_rate > 0.75:
+        summary = (f"When you felt unsure (1 or 2) you were still right {round(unsure_rate * 100)}% of the time: you know more than "
+                   "you think.")
+    else:
+        summary = "Your confidence matches your results well: you tend to be right when you feel sure and less so when you do not."
+    return {"levels": out, "marked_answers": marked, "summary": summary,
+            "topics": [{"topic_id": r[0], "subject": r[1], "topic": r[2], "answers": r[3], "correct_rate": round(r[4] / r[3], 3),
+                        "confident_answers": r[5], "confident_correct_rate": round(r[6] / r[5], 3) if r[5] else None,
+                        "average_confidence": round(float(r[7]), 2)} for r in topics],
+            "confident_misses": [{"question_id": r[0], "question": r[1][:500], "confidence": r[2], "answered_at": r[3], "topic": r[4],
+                                  "concept": r[5]} for r in misses if not is_admin_question(r[1], r[5])],
+            "note": "Counts only answers that were marked (by the AI marker or an answer key). AI marks are advisory."}
 
 
 def review_router(connect, authorised, model_reply, model_reply_vision=None):
@@ -134,14 +192,17 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
 
     @router.post("/topics/{topic_id}/review-questions", status_code=201)
     def create_question(topic_id: int, body: ReviewQuestion):
+        forms, key, question = None, None, body.question.strip()
+        if body.answer_forms:
+            forms, key, question = answer_forms.with_choice(body.answer_forms, body.choice_key, text=question)
         with connect() as db:
             row = db.execute("""INSERT INTO review_questions
-                (topic_id, question, due_date, expected_answer, source, standard_number, concept, answer_forms)
-                SELECT id, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb FROM topics WHERE id = %s
+                (topic_id, question, due_date, expected_answer, source, standard_number, concept, answer_forms, choice_key)
+                SELECT id, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb FROM topics WHERE id = %s
                 RETURNING id""",
-                (body.question.strip(), body.due_date, body.expected_answer.strip(),
+                (question, body.due_date, body.expected_answer.strip(),
                  json.dumps(body.source), body.standard_number, body.concept.strip(),
-                 json.dumps(answer_forms.normalise(body.answer_forms, text=body.question)), topic_id)).fetchone()
+                 json.dumps(forms), json.dumps(key), topic_id)).fetchone()
             if row is None:
                 raise HTTPException(404, "Topic not found")
         return {"id": row[0], "topic_id": topic_id, "question": body.question.strip(),
@@ -184,7 +245,7 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                 db.execute("UPDATE lessons SET review_generated_at = now() WHERE id = %s", (lesson_id,))
         with connect() as db:
             rows, _ = due_list(db, as_of)
-            return with_forms(db, [_due_item(row) for row in rows])
+            return variants.overlay(db, with_forms(db, [_due_item(row) for row in rows]))
 
     @router.get("/review-plan")
     def review_plan_today(as_of: date | None = None):
@@ -193,9 +254,15 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
         with connect() as db:
             rows, info = due_list(db, as_of)
             ready = review_plan.readiness(db, as_of)
-            items = with_forms(db, [_due_item(row) for row in rows])
+            items = variants.overlay(db, with_forms(db, [_due_item(row) for row in rows]))
         return {"today": as_of, "items": items, **info, "assessments": ready,
                 "note": "Predicted recall comes from the FSRS memory model on your review answers; it is an estimate, not a mark."}
+
+    @router.get("/review-calibration")
+    def review_calibration(days: int | None = Query(default=None, ge=1, le=3650), topic_id: int | None = None):
+        """Confidence against correctness: "when you rated 5 you were right 60% of the time"."""
+        with connect() as db:
+            return calibration(db, days, topic_id)
 
     @router.get("/study-summary")
     def study_summary():
@@ -266,27 +333,39 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                 ORDER BY q.due_date, q.id LIMIT %s OFFSET %s""", (topic_id, topic_id, limit, offset)).fetchall()
             keys = ("id", "topic_id", "question", "due_date", "concept", "standard_number", "mastery",
                     "interval_days", "answer_count", "last_answered_at", "reps", "material")
-            return with_forms(db, [dict(zip(keys, row)) for row in rows if not is_admin_question(row[2], row[4])])
+            return variants.overlay(db, with_forms(db, [dict(zip(keys, row)) for row in rows if not is_admin_question(row[2], row[4])]))
 
     @router.post("/review-questions/{question_id}/answers", status_code=201)
     def answer_question(question_id: int, body: ReviewAnswer):
         with connect() as db:
             question = db.execute("""SELECT q.interval_days, q.expected_answer, q.source, q.concept,
-                q.topic_id, t.name, s.name, q.standard_number
+                q.topic_id, t.name, s.name, q.standard_number, q.answer_forms, q.choice_key
                 FROM review_questions q JOIN topics t ON t.id = q.topic_id
                 JOIN subjects s ON s.id = t.subject_id
                 WHERE q.id = %s FOR UPDATE""", (question_id,)).fetchone()
             if question is None:
                 raise HTTPException(404, "Review question not found")
-            interval_days, expected, source, concept, topic_id, topic_name, subject_name, standard = question
+            interval_days, expected, source, concept, topic_id, topic_name, subject_name, standard, forms, choice_key = question
+            asked = db.execute("SELECT question FROM review_questions WHERE id = %s", (question_id,)).fetchone()[0]
+            # A returning procedure question is shown as a fresh version (variants.py); it is marked against that version.
+            variant = variants.current(db, question_id)
+            if variant:
+                asked, expected = variant[1], variant[2]
             correct = None
             feedback = ""
             outcome = None
-            if expected.strip() or source:
+            choice_result = None
+            form = choice.find(answer_forms.normalise(forms, subject_name) or [])
+            if form and isinstance(choice_key, dict) and choice_key.get("correct"):
+                # Multiple choice with an answer key: marked against the key, the same every time, with no model call.
+                choice_result = choice.mark(form, choice_key, body.answer, 1)
+                correct = choice_result["exact"]
+                feedback = choice.feedback(choice_result)
+                outcome = "correct" if correct else "incorrect"
+            elif expected.strip() or source:
                 payload = {
                     "subject": subject_name, "topic": topic_name, "standard_number": standard,
-                    "question": db.execute("SELECT question FROM review_questions WHERE id = %s", (question_id,)).fetchone()[0],
-                    "expected_answer": expected, "source": source, "answer": answer_media.for_marker(body.answer),
+                    "question": asked, "expected_answer": expected, "source": source, "answer": answer_media.for_marker(body.answer),
                 }
                 try:
                     image = answer_media.answer_image(connect, body.answer)
@@ -315,10 +394,12 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
             schedule = review_plan.record_review(db, question_id, grade, now)
             next_due, interval = schedule["next_due"], schedule["interval_days"]
             row = db.execute("""INSERT INTO review_answers
-                (question_id, answer, confidence, correct, feedback, outcome, next_due, concept, answered_at, grade, retrievability, elapsed_days)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, answered_at""",
+                (question_id, answer, confidence, correct, feedback, outcome, next_due, concept, answered_at, grade, retrievability, elapsed_days, variant_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, answered_at""",
                 (question_id, body.answer.strip(), body.confidence, correct, feedback, outcome, next_due, concept, now,
-                 grade, schedule["retrievability_before"], schedule["elapsed_days"])).fetchone()
+                 grade, schedule["retrievability_before"], schedule["elapsed_days"], variant[0] if variant else None)).fetchone()
+            if variant:
+                db.execute("UPDATE review_variants SET answered_at = %s WHERE id = %s", (now, variant[0]))
             db.execute("UPDATE review_questions SET concept = COALESCE(NULLIF(%s, ''), concept) WHERE id = %s", (concept, question_id))
             mastery, status = db.execute("SELECT mastery, status FROM topics WHERE id = %s", (topic_id,)).fetchone()
         return {"id": row[0], "question_id": question_id, "answer": body.answer.strip(),
@@ -327,7 +408,9 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                 "mastery": round(mastery or 0, 3), "topic_status": status, "answered_at": row[1],
                 # A wrong answer comes back later in this session until it is right once (successive relearning).
                 "grade": grade, "relearn": schedule["relearn"],
-                "confident_miss": correct is False and body.confidence >= 4}
+                "confident_miss": correct is False and body.confidence >= 4,
+                **({"variant": True, "expected_answer": expected} if variant else {}),
+                **({"choice_result": choice_result} if choice_result else {})}
 
     @router.post("/review-questions/{question_id}/scan")
     def scan_answer(question_id: int, file: UploadFile | None = File(None), files: list[UploadFile] = File(default=[])):

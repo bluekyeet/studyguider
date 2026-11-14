@@ -17,6 +17,16 @@ class DebugRequest(BaseModel):
     image_base64: str | None = Field(default=None, max_length=14_000_000)
 
 
+def model_workers(default):
+    """How many model calls background work (maths restore, rapid splitting) may make at once. STUDYGUIDER_MODEL_WORKERS
+    lowers it for a gateway that should not be hit in parallel; it never raises it."""
+    try:
+        cap = int(os.environ.get("STUDYGUIDER_MODEL_WORKERS", "0"))
+    except ValueError:
+        cap = 0
+    return max(1, min(default, cap)) if cap > 0 else default
+
+
 def create_usage_tables(db):
     db.execute("""CREATE TABLE IF NOT EXISTS ai_runs (
         id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

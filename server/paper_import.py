@@ -9,7 +9,7 @@ import answer_forms
 
 
 # Raised whenever the paper parser learns to read more of a paper; papers read by an older version are read again.
-PARSER_VERSION = 9
+PARSER_VERSION = 12
 
 
 def create_import_tables(db):

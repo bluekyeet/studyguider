@@ -80,5 +80,7 @@ def test_a_single_answer_box_merges_its_parts_forms():
 
 
 def test_the_generation_prompt_names_every_kind():
+    # Multiple choice is asked for only when the paper is assessed that way, with its own prompt (choice.PROMPT).
+    import choice
     for kind in answer_forms.KINDS:
-        assert f'"kind": "{kind}"' in answer_forms.PROMPT
+        assert f'"kind": "{kind}"' in (choice.PROMPT if kind == "choice" else answer_forms.PROMPT)

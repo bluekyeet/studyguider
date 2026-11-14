@@ -49,6 +49,12 @@ account in `answer_images`; the marker gets them as one captioned image beside t
 answers, exam feedback, rapid results) draw these images. The Android app shows the image line as text and keeps it when the
 answer is edited there.
 
+**Multiple choice** is one more form (`choice.py`, contract in `docs/api/multiple-choice.md`): the options as radio buttons or
+checkboxes (select all that apply), in an order shuffled per attempt where the question allows it, option pictures where the
+paper has them, and a negative-marking note. The pick is the answer's first line (`Choice: B`); working is optional. It is
+marked against the answer key with no model call, and the result lists every option with whether it was right, whether it
+was chosen, and why. Lessons can hold a ```` ```choice ```` block, checked on the device.
+
 ## Global shell
 
 - **Sign-in screen** shown when there is no session: username and password fields, Sign in button, error text.
@@ -115,10 +121,18 @@ Short spaced-repetition questions made from completed lessons and wrong exam ans
 - **All questions**: every saved question, due or not, with filters (topic, status: any/due/
   coming up/never answered, text search). Each row shows concept, snippet, topic, due date, times
   answered, mastery, and Answer or Practise now. Answering early works the same way.
+- **How sure vs how right** (calibration): for each confidence rating, how often the marked answer was right, by topic, and
+  recent confident misses with Try it again.
+- A returning procedure question can show as a fresh version with new numbers ("A new version of this question...").
 - Empty states: nothing due (offer to browse all), no questions at all.
 - An unsent answer survives a reload.
 
 ## Exams (`#exams`)
+
+**Import a past exam or test** (university papers only, under the set-up): the paper and an optional marking guide, model
+answers or answer key, a name, year and kind. The import shows its progress while AI reads it, then the number of questions
+(and how many are multiple choice), the marks, whether the guide is the uploaded one or AI-written, notes to check, and Sit
+this paper / Try again / Delete.
 
 **Set-up**
 - Choose subject and topic, then a mode:

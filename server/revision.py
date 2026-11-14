@@ -7,6 +7,8 @@ back through spaced repetition. Everything here is AI-written and unofficial; it
 """
 import json
 import answer_forms
+import choice
+import curriculum
 import logging
 import userspace
 import re
@@ -42,7 +44,9 @@ PACK_SYSTEM = (
 REVIEW_SYSTEM = ("You are an independent NCEA examiner checking AI-written revision questions and their expected answers. "
                  "Return only JSON {\"fail\": [{\"section\": integer, \"question\": integer, \"reason\": string}]} listing zero-based "
                  "positions of questions that are ambiguous, lack a value or unit they need, cannot be answered from what is stated, "
-                 "are outside the topic, or whose expected answer is scientifically or numerically wrong. An empty list means all pass.")
+                 "are outside the topic, or whose expected answer is scientifically or numerically wrong. For a multiple-choice question "
+                 "(it has a choice_key), also fail it when the keyed option is wrong or more than one option is defensible. An empty "
+                 "list means all pass.")
 
 
 class PackStart(BaseModel):
@@ -142,11 +146,15 @@ def parse_pack(reply):
             raise ValueError(f"section {number} did not have 2 to 6 questions")
         items = []
         for q in questions:
-            if (not isinstance(q, dict) or not isinstance(q.get("question"), str) or not isinstance(q.get("expected_answer"), str)
-                    or not 15 <= len(q["question"]) <= 4000 or not 5 <= len(q["expected_answer"]) <= 8000):
+            if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not 15 <= len(q["question"]) <= 4000:
                 raise ValueError(f"a question in section {number} was unusable")
-            items.append({"question": q["question"].strip(), "expected_answer": q["expected_answer"].strip(),
-                          "answer_forms": answer_forms.normalise(q.get("answer_forms"), text=q["question"]) or answer_forms.infer(q["question"])})
+            forms, key, question = answer_forms.with_choice(q.get("answer_forms"), q.get("choice_key"), text=q["question"].strip())
+            expected = q.get("expected_answer").strip() if isinstance(q.get("expected_answer"), str) else ""
+            # A multiple-choice question's key and its explanations are its worked answer; any other needs one written out.
+            if (not key and not 5 <= len(expected) <= 8000) or len(expected) > 8000:
+                raise ValueError(f"a question in section {number} had no usable expected answer")
+            items.append({"question": question, "expected_answer": (choice.key_text(forms[0], key) + chr(10) if key else "") + expected,
+                          "answer_forms": forms, **({"choice_key": key} if key else {})})
         clean.append({"concept": concept.strip(), "why": str(why or "").strip()[:500], "teaching": teaching.strip(), "questions": items})
     return clean
 
@@ -201,10 +209,21 @@ def revision_router(connect, authorised, model_reply, search_resources):
             if not sources:
                 raise ValueError("No extracted resources match this topic; upload and extract resources first")
             payload = json.dumps({"topic": topic_name, "mistakes": mistakes, "sources": sources, "avoid_repeating": previous}, ensure_ascii=False)
+            with connect() as db:
+                subject_id = db.execute("SELECT subject_id FROM topics WHERE id = %s", (topic_id,)).fetchone()[0]
+                style = curriculum.question_format(db, subject_id)
+            # Recall first, recognition for exam practice: the quick check of each idea stays a written answer; only the
+            # exam-style questions follow the paper's multiple-choice format.
+            system = PACK_SYSTEM
+            if style != "written":
+                system += (" 6. This paper is assessed " + ("by" if style == "multiple_choice" else "partly by") + " multiple choice: in "
+                           "each section keep the first question as a written quick check, and write "
+                           + ("the" if style == "multiple_choice" else "one or two of the") + " later exam-style questions as "
+                           "multiple-choice questions. " + choice.PROMPT)
             sections = None
             for attempt in range(2):
                 try:
-                    sections = parse_pack(model_reply("education", [{"role": "system", "content": PACK_SYSTEM}, {"role": "user", "content": payload}], task="revision-pack"))
+                    sections = parse_pack(model_reply("education", [{"role": "system", "content": system}, {"role": "user", "content": payload}], task="revision-pack"))
                     break
                 except ValueError as bad:
                     error = str(bad)
@@ -226,10 +245,10 @@ def revision_router(connect, authorised, model_reply, search_resources):
                 standard = row[0] if row else None
                 for s, section in enumerate(sections):
                     for n, item in enumerate(section["questions"]):
-                        item["id"] = db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, answer_forms, exam_origin)
-                            VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date + 3650, %s, %s::jsonb, %s, %s, %s::jsonb, %s) RETURNING id""",
+                        item["id"] = db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, standard_number, concept, answer_forms, choice_key, exam_origin)
+                            VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Pacific/Auckland')::date + 3650, %s, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, %s) RETURNING id""",
                             (topic_id, item["question"], item["expected_answer"], json.dumps(sources), standard, section["concept"][:200],
-                             json.dumps(item.get("answer_forms")),
+                             json.dumps(item.get("answer_forms")), json.dumps(item.pop("choice_key", None)),
                              f"pack:{pack_id}:{s}.{n}")).fetchone()[0]
                 db.execute("UPDATE revision_packs SET status = 'ready', sections = %s::jsonb, finished_at = now(), error = '' WHERE id = %s", (json.dumps(sections), pack_id))
         except Exception as caught:
@@ -254,7 +273,7 @@ def revision_router(connect, authorised, model_reply, search_resources):
         for s in row[7]:
             pack["sections"].append({"concept": s["concept"], "why": s["why"], "teaching": s["teaching"],
                                      "questions": [{"id": q["id"], "question": q["question"],
-                                                   "answer_forms": q.get("answer_forms") or answer_forms.infer(q["question"]), **({"result": latest[q["id"]]} if q["id"] in latest else {})} for q in s["questions"]]})
+                                                   "answer_forms": choice.forms_with_order(q.get("answer_forms") or answer_forms.infer(q["question"]), f"pack:{q['id']}"), **({"result": latest[q["id"]]} if q["id"] in latest else {})} for q in s["questions"]]})
         total = len(ids)
         pack["answered"] = len(latest)
         pack["correct"] = sum(1 for v in latest.values() if v["correct"])
@@ -268,9 +287,12 @@ def revision_router(connect, authorised, model_reply, search_resources):
         with connect() as db:
             counts = mistake_counts(db)
             rows = db.execute("""SELECT t.id, t.name, s.name, s.level, (SELECT p.id FROM revision_packs p WHERE p.topic_id = t.id ORDER BY p.id DESC LIMIT 1),
-                    (SELECT p.status FROM revision_packs p WHERE p.topic_id = t.id ORDER BY p.id DESC LIMIT 1)
-                FROM topics t JOIN subjects s ON s.id = t.subject_id ORDER BY s.level, s.name, t.name""").fetchall()
-        return [{"topic_id": r[0], "topic": r[1], "subject": r[2], "level": r[3], "mistakes": counts.get(r[0], 0), "latest_pack": r[4], "latest_status": r[5]} for r in rows]
+                    (SELECT p.status FROM revision_packs p WHERE p.topic_id = t.id ORDER BY p.id DESC LIMIT 1), COALESCE(d.grade_scale, 'ncea')
+                FROM topics t JOIN subjects s ON s.id = t.subject_id LEFT JOIN subject_details d ON d.subject_id = s.id
+                ORDER BY s.level, s.name, t.name""").fetchall()
+        # kind: 'ncea' unless the subject is a paper on a university or percentage scale, as /subjects reports it.
+        return [{"topic_id": r[0], "topic": r[1], "subject": r[2], "level": r[3], "kind": "ncea" if r[6] == "ncea" else "paper",
+                 "mistakes": counts.get(r[0], 0), "latest_pack": r[4], "latest_status": r[5]} for r in rows]
 
     @router.post("/revision/packs", status_code=202)
     def start(body: PackStart):

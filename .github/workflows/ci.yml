@@ -35,6 +35,8 @@ jobs:
         run: node -e "const fs=require('fs'); new Function(fs.readFileSync('server/manage.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1])"
       - name: Check manager image cookie authentication
         run: node tests/image-auth-check.cjs
+      - name: Check multiple-choice blocks in lesson text
+        run: node tests/lesson-choice-check.cjs
   integration:
     runs-on: ubuntu-latest
     env:
@@ -71,6 +73,8 @@ jobs:
         run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/library_check.py
       - name: Check the curriculum model, its migration, and spaced review planned over simulated days
         run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/curriculum_check.py
+      - name: Check multiple choice and past-exam imports, and their migration
+        run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/choice_check.py
       - name: Check rapid exam sessions
         run: docker compose -f compose.yaml exec -T api python - < server/tests/rapid_check.py
       - name: Check unprivileged font rendering

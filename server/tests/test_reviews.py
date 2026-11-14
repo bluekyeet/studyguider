@@ -33,9 +33,11 @@ class Database:
 
     def execute(self, sql, params=()):
         self.calls.append((sql, params))
+        if "review_variants" in sql:
+            return Result()     # no fresh version of this question
         if "FROM review_questions q JOIN topics t" in sql:
             return Result((8, "Osmosis is diffusion of water.", [], "osmosis", 1,
-                           "Cells", "Biology", 91164))
+                           "Cells", "Biology", 91164, None, None))
         if "SELECT question FROM review_questions" in sql:
             return Result(("What is osmosis?",))
         if "INSERT INTO review_answers" in sql:
@@ -163,7 +165,7 @@ class ReviewTests(unittest.TestCase):
             pass
 
         router = review_router(None, authorised, lambda *args: "")
-        self.assertEqual(len(router.routes), 8)
+        self.assertEqual(len(router.routes), 9)      # including /review-calibration
         self.assertTrue(all(route.dependencies[0].dependency is authorised for route in router.routes))
 
 
@@ -182,8 +184,10 @@ def test_all_questions_lists_due_and_future_questions_with_optional_topic_filter
         def __exit__(self, *args): pass
         def execute(self, sql, params=()):
             assert "review_questions q" in sql
+            if "review_variants" in sql:
+                return Result([])
             if "answer_forms" in sql:       # the forms each listed question needs: stored for 1, inferred for 2
-                return Result([(1, [{"kind": "graph"}], "Physics"), (2, None, "Physics")])
+                return Result([(1, [{"kind": "graph"}], "Physics", 2), (2, None, "Physics", 0)])
             self.calls.append(params)
             return Result([(1, 2, "Now?", date(2026, 11, 3), "force", None, 0.5, 1, 2, None, 2, "concept"),
                            (2, 2, "Later?", date(2026, 12, 1), "", 91171, 0.0, 0, 0, None, 0, "fact")])

@@ -29,6 +29,7 @@ from reviews import create_review_tables, review_router
 from lessons import create_lesson_tables, lesson_router
 from marking import create_marking_tables, marking_router
 from answer_media import create_answer_media_tables, media_router
+from exam_import import create_exam_import_tables, exam_import_router
 from rapid import create_rapid_tables, rapid_router
 from revision import create_revision_tables, revision_router
 from exams import create_exam_tables, exam_router
@@ -137,6 +138,7 @@ def init_schema(db):
     create_game_tables(db)
     create_hint_tables(db)
     create_answer_media_tables(db)
+    create_exam_import_tables(db)
     # The global library (library_global.py): rows an account holds as read-only copies carry the library's id.
     for table in ("subjects", "topics", "exam_questions"):
         db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
@@ -423,6 +425,8 @@ app.include_router(game_router(connect, accounts_db, authorised))
 app.include_router(hint_router(connect, authorised, model_reply))
 app.include_router(diagram_router(connect, authorised, model_reply, model_reply_vision))
 app.include_router(media_router(connect, authorised, model_reply, model_reply_vision))
+app.include_router(exam_import_router(connect, authorised, lambda *args, **kwargs: model_reply_reliable(*args, **kwargs),
+                                      lambda *args: _store_resource(*args)))
 
 
 @app.get("/health")
@@ -1518,6 +1522,11 @@ def prepare_daily_reviews():
     route = next(route for route in app.routes if route.path == "/review-questions/due" and "GET" in route.methods)
     route.endpoint(clock.today())
     replan_daily()
+    try:
+        import variants
+        variants.write_versions(connect, model_reply_reliable)     # new numbers for procedure questions coming back soon
+    except Exception:
+        log.exception("Could not write fresh versions of review questions")
 
 
 def replan_daily():
@@ -1531,6 +1540,8 @@ def replan_daily():
         map_ncea_standards(db)
         review_plan.replan(db, clock.today())
         review_plan.refresh_topics(db)
+        import answer_media
+        answer_media.remove_unused(db)      # drawings left behind by edits (each edit stores a new picture)
         db.execute("""INSERT INTO settings (key, value) VALUES ('replanned_on', %s)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""", (today,))
 

@@ -15,6 +15,7 @@ import re
 import threading
 
 import userspace
+from usage import model_workers
 
 log = logging.getLogger("uvicorn.error")
 
@@ -206,7 +207,7 @@ def split_pending(connect, model_reply, topic_id=None, limit=500, workers=4):
         rows = pending(db, topic_id, limit)
     done = failed = single = retry = 0
     reasons = []
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="split") as pool:
+    with ThreadPoolExecutor(max_workers=model_workers(workers), thread_name_prefix="split") as pool:
         # each call keeps the caller's account, so the model-usage log lands in the right schema
         contexts = [contextvars.copy_context() for _ in rows]
         for row, (units, error) in zip(rows, pool.map(lambda pair: pair[1].run(_units_for, model_reply, pair[0]), zip(rows, contexts))):
