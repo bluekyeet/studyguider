@@ -81,6 +81,7 @@ fun ExplanationSettings(base: String, token: String) {
                 Button(enabled = notes != savedNotes, shape = RoundedCornerShape(50), onClick = { val sent = notes; save { api.put("/style-profile", JSONObject().put("content", sent)); savedNotes = sent } }) { Text("Save notes") }
             }
         }
-        if (status.isNotEmpty()) Text(status, style = MaterialTheme.typography.bodySmall, color = if (bad) MaterialTheme.colorScheme.error else LocalStudyColours.current.teal)
+        // The line is always there, so the card does not jump when "Saved" appears.
+        Text(status.ifEmpty { " " }, style = MaterialTheme.typography.bodySmall, color = if (bad) MaterialTheme.colorScheme.error else LocalStudyColours.current.teal)
     }
 }

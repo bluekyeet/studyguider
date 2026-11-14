@@ -465,21 +465,25 @@ internal fun ChoiceBlock(api: Api, block: AnswerBlock.Choice, enabled: Boolean) 
  * Options are named by their text, as the feedback does, so the order they were shown in does not matter.
  */
 @Composable
-fun ChoiceResultView(api: Api, result: org.json.JSONObject) {
+fun ChoiceResultView(api: Api, result: org.json.JSONObject, shownOrder: List<String>? = null) {
     val colours = LocalStudyColours.current
-    val options = result.optJSONArray("options")?.objectList().orEmpty()
+    // In the order and with the letters the options were shown in, when that is known.
+    val options = result.optJSONArray("options")?.objectList().orEmpty().let { all ->
+        if (shownOrder.isNullOrEmpty()) all else all.sortedBy { shownOrder.indexOf(it.optString("key")).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        options.forEach { option ->
+        options.forEachIndexed { position, option ->
+            val letter = if (shownOrder.isNullOrEmpty()) "" else "${choiceLetter(position)} · "
             val correct = option.optBoolean("correct"); val chosen = option.optBoolean("chosen")
             val tone = when { correct -> colours.achieved; chosen -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.outlineVariant }
             Surface(shape = RoundedCornerShape(14.dp), color = if (correct) colours.achieved.copy(alpha = 0.10f) else if (chosen) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surface,
                 border = androidx.compose.foundation.BorderStroke(if (correct || chosen) 2.dp else 1.dp, tone), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(when {
-                        correct && chosen -> "✓ Correct · your choice"
-                        correct -> "✓ Correct answer"
-                        chosen -> "✗ Your choice"
-                        else -> "Not correct"
+                        correct && chosen -> "${letter}✓ Correct · your choice"
+                        correct -> "${letter}✓ Correct answer"
+                        chosen -> "${letter}✗ Your choice"
+                        else -> "${letter}Not correct"
                     }, style = MaterialTheme.typography.labelLarge, color = if (correct) colours.achieved else if (chosen) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                     OptionBody(api, option.optString("text"), option.stringOrNull("image").orEmpty())
                     option.optString("explanation").takeIf { it.isNotBlank() }?.let {

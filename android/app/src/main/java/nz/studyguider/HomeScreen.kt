@@ -95,7 +95,9 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
         // Headline numbers
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Stat((data.optDouble("overall_mastery") * 100).toFloat(), { "${Math.round(it)}%" }, "Expected recall", Modifier.weight(1f).fillMaxHeight().staggeredEnter(0, data))
+                // Nothing answered yet is no recall figure at all, not 0%.
+                val anyAnswered = topics.any { it.optInt("reviewed_questions") > 0 }
+                Stat((data.optDouble("overall_mastery") * 100).toFloat(), { if (anyAnswered) "${Math.round(it)}%" else "—" }, "Expected recall", Modifier.weight(1f).fillMaxHeight().staggeredEnter(0, data))
                 Stat((todayCount - todo.size).toFloat(), { "${Math.round(it)} / $todayCount" }, "Lessons done today", Modifier.weight(1f).fillMaxHeight().staggeredEnter(1, data))
             }
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

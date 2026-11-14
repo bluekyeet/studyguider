@@ -71,7 +71,7 @@ private class ReviewResult(val reply: JSONObject, val relearn: Boolean)
  * questions tab lists every saved question for practising ahead.
  */
 @Composable
-fun ReviewScreen(base: String, token: String) {
+fun ReviewScreen(base: String, token: String, onNextQuestion: () -> Unit = {}) {
     val api = remember(base, token) { Api(base, token) }
     var today by remember { mutableStateOf(LocalDate.now(ZoneId.of("Pacific/Auckland")).toString()) }
     var plan by remember(base, token) { mutableStateOf<List<JSONObject>>(emptyList()) }
@@ -159,6 +159,7 @@ fun ReviewScreen(base: String, token: String) {
                             val rest = plan.drop(1).toMutableList()
                             if (relearn) rest.add(minOf(3, rest.size), JSONObject(question.toString()).put("relearning", true))
                             plan = rest
+                            onNextQuestion()        // the next question starts at the top, with its topic and the count left
                         },
                         nextLabel = if (plan.size <= 1) "Finish review" else "Next question")
                 }
@@ -276,12 +277,12 @@ private fun ReviewCard(api: Api, base: String, token: String, question: JSONObje
                 }
             }) { Text("Submit answer") }
             if (confidence == 0 && answer.isNotBlank()) Text("Choose how confident you are to submit.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else ReviewOutcome(api, current, inSession = left != null, nextLabel = nextLabel, onNext = { onNext(current.relearn) })
+        } else ReviewOutcome(api, current, forms, inSession = left != null, nextLabel = nextLabel, onNext = { onNext(current.relearn) })
     }
 }
 
 @Composable
-private fun ReviewOutcome(api: Api, result: ReviewResult, inSession: Boolean, nextLabel: String, onNext: () -> Unit) {
+private fun ReviewOutcome(api: Api, result: ReviewResult, forms: List<AnswerForm>?, inSession: Boolean, nextLabel: String, onNext: () -> Unit) {
     val colours = LocalStudyColours.current
     val reply = result.reply
     val (label, fg, bg) = when (reply.optString("outcome")) {
@@ -294,7 +295,7 @@ private fun ReviewOutcome(api: Api, result: ReviewResult, inSession: Boolean, ne
         Text(if (reply.optJSONObject("choice_result")?.optString("marked_by") == "answer-key") "Marked from the answer key" else "AI judgement, advisory only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (reply.optString("outcome") == "confidence-based") Text("Scheduled using your confidence.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    reply.optJSONObject("choice_result")?.let { ChoiceResultView(api, it) }
+    reply.optJSONObject("choice_result")?.let { ChoiceResultView(api, it, forms?.filterIsInstance<AnswerForm.Choice>()?.firstOrNull()?.options?.map { o -> o.key }) }
     reply.optString("feedback").takeIf { it.isNotBlank() }?.let {
         Surface(shape = RoundedCornerShape(12.dp), color = colours.containerHigh, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

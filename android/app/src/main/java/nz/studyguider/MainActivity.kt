@@ -325,7 +325,8 @@ private fun StudyApp() {
     var pendingSection by remember { mutableStateOf<Int?>(null) }
     var rapidStart by remember { mutableStateOf<JSONObject?>(null) }
     var confirmExamExit by remember { mutableStateOf(false) }
-    var tab by remember { mutableIntStateOf(5) }
+    // Kept across a rotation, so turning the phone does not jump back to Home.
+    var tab by rememberSaveable { mutableIntStateOf(5) }
     var subjectTitle by remember { mutableStateOf("") }
     var topicTitle by remember { mutableStateOf("") }
     var showAddSubject by remember { mutableStateOf(false) }
@@ -490,7 +491,7 @@ private fun StudyApp() {
                         3 -> null
                         4 -> null
                         5 -> null
-                        else -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else "Resources"
+                        else -> if (selectedTopic != 0L) "$subjectTitle · $topicTitle" else null
                     }
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(start = 20.dp, end = 8.dp),
@@ -632,8 +633,11 @@ private fun StudyApp() {
                         onOpenLesson = { id, title, lessonId -> selectedLesson = lessonId; openTopic(id, title); subjectTitle = findSubject(id) },
                     )
                 }
-                2 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                    ReviewScreen(base, token)
+                2 -> {
+                    val reviewScroll = rememberScrollState()
+                    Column(Modifier.fillMaxSize().verticalScroll(reviewScroll).padding(horizontal = 16.dp)) {
+                        ReviewScreen(base, token, onNextQuestion = { scope.launch { reviewScroll.animateScrollTo(0) } })
+                    }
                 }
                 5 -> HomeScreen(base, token,
                     onOpenLesson = { topic, title, lesson -> selectedLesson = lesson; openTopic(topic, title); subjectTitle = findSubject(topic); tab = 1 },
