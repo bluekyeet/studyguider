@@ -134,19 +134,28 @@ non-negative integer, `outcome`, `feedback`, `evidence` is `[]`, `missing`, `con
   "marked_by": "answer-key",
   "choice_results": {"": { …same shape as choice_result above… }},
   "net_marks": 0.75,
+  "net_marks_available": 2.5,
   "second_review": null,
   "disagreement": false
 }
 ```
 
 - `choice_results` is keyed by part label like `answer_forms` (`""` for a question without parts).
-- `net_marks` (a number, possibly fractional or negative) is `marks_awarded` minus negative marking. It is only different
-  from `marks_awarded` when the paper states negative marking. `marks_awarded` itself never goes below 0.
+- `net_marks` (a number, possibly fractional or negative) is the marks earned at the paper's printed value minus negative
+  marking; `net_marks_available` is the printed value. They differ from the integer `marks_awarded`/`marks_available` when a
+  question is printed as worth a fraction (2.5 marks) or the paper states negative marking. `marks_awarded` never goes below 0.
+  Show `net_marks`/`net_marks_available` when present.
 - Select-all-that-apply in an exam gets part marks only when the paper's guide says so; otherwise all-or-nothing.
 - There is no second marker for answer-key marking (`second_review` is `null`).
 
-`GET /exams/{exam_id}/marks` adds `net_marks_awarded` (the paper total after negative marking, never below 0) beside
-`marks_awarded`.
+`GET /exams/{exam_id}/marks` adds `net_marks_awarded` (the paper total after negative marking, never below 0) and
+`net_marks_available` beside `marks_awarded`/`marks_available`.
+
+Exam questions from an imported paper also carry (additive, `GET /exams/{id}` → `questions[]`): `paper_title` (the
+imported exam or test's name, `null` for NCEA papers), `guide_source` (`"official"`, `"ai"` when the marking guide was
+written by AI because none was uploaded, `"mixed"`, or `""` for NCEA schedules and AI practice), `marks_exact` (printed marks
+when not whole, else `null`) and `outcome_codes` (learning outcomes the question assesses). Show "AI-written marking guide"
+when `guide_source` is `"ai"` or `"mixed"`.
 
 `GET /exams/{exam_id}/answers/{question_id}/feedback` returns the stored result in `marks[]` with the same extra fields.
 
@@ -154,11 +163,25 @@ non-negative integer, `outcome`, `feedback`, `evidence` is `[]`, `missing`, `con
 
 - **Imported past papers** (NCEA and university): options, the correct option from the answer key or marking guide when one
   was uploaded (`key_source: "official"`), otherwise an AI-written key (`key_source: "ai"`, shown as "AI-written answer").
-- **AI practice** (practice exams, rapid questions, revision packs, review questions): the model writes the options, the
-  key and an explanation per option (`key_source: "ai"`). Practice for a paper assessed by multiple choice includes
-  multiple-choice questions; other papers get written questions.
-- **Spaced review** asks an idea as free recall first and uses multiple choice for exam-style practice (see the research
-  note in `docs/research/study-methods-and-curricula.md`, A.2).
+- **AI practice** (practice exams, rapid questions, revision packs): the model writes the options, the key and an
+  explanation per option (`key_source: "ai"`). A paper is "assessed by multiple choice" when its coming test or exam says so
+  (assessments carry `question_format`: `"multiple_choice"`, `"mixed"`, `"written"` or `""`, set in Plan or read from the
+  outline) or, failing that, when most of its imported past-paper questions are multiple choice. Other papers, and every NCEA
+  subject, get written practice.
+- **Spaced review** asks an idea as free recall first and uses multiple choice for exam-style practice (research A.2:
+  recognition builds weaker long-term memory than recall). Review questions written from lessons stay free recall. A missed
+  multiple-choice exam question comes back in review as a written question when its stem stands on its own ("Name the
+  volatile storage..."), and as multiple choice only when the stem needs its options ("Which of the following is FALSE?").
+  Revision packs keep each section's first question a written check and use multiple choice for the later exam-style ones.
+
+### Other additive fields on review items
+
+- `variant: true` and `variant_id` on a review item mean the question is shown as a fresh version (new numbers, same method)
+  of a procedure question being reviewed again. Show "A new version of this question, written by AI". Answer it as usual;
+  the answer response then also has `variant: true` and the `expected_answer` it was marked against.
+- `GET /review-calibration` (optional `days`, `topic_id`): `levels` (for confidence 1-5: `answers`, `correct`,
+  `correct_rate` or `null`), `marked_answers`, `summary` (one sentence), `topics[]` and `confident_misses[]`
+  (`question_id`, `question`, `confidence`, `answered_at`, `topic`, `concept`).
 
 ## 5. Lessons
 
@@ -181,3 +204,20 @@ The option marked ` *` is correct (several for select all that apply); lines aft
 that do not render the block show it as a code block; the web app shows selectable options and checks the choice on the
 device, with no model call. The block is part of the lesson text, so the key is visible to anyone who reads the source;
 that is acceptable for lesson practice, which is not marked.
+
+## 6. Importing a past exam or test (university papers)
+
+All additive; NCEA papers are still paired from the Library by their NZQA file names.
+
+- `POST /subjects/{subject_id}/exam-imports` (multipart): `paper` (PDF, .docx, .txt, .md, PNG or JPEG, up to 30 MiB), optional
+  `guide` (marking guide, model answers or answer key), `title`, `year`, `kind` (`exam`, `test`, `quiz`), optional `topic_id`
+  (default: a topic "Past exams and tests" in that subject). Returns `202 {"id", "status": "reading", "topic_id"}`. A paper
+  already imported returns 409.
+- `GET /subjects/{subject_id}/exam-imports` and `GET /exam-imports/{id}`: `status` (`reading`, `imported`,
+  `needs_attention`, `failed`), `stage` (progress text while reading), `error`, `warnings[]` (things to check),
+  `question_count`, `choice_count`, `total_marks`, `guide` (`official`, `ai`, `mixed`) and `guide_note` (one sentence to
+  show). `GET /exam-imports/{id}` adds `questions[]`. Poll every few seconds while `reading`; a paper takes one to three minutes.
+- `POST /exam-imports/{id}/retry` reads it again; `DELETE /exam-imports/{id}` removes it and its questions (409 when an
+  exam already used them).
+- The imported paper is then an "original" paper of its topic: `GET /exam-papers?topic_id=` lists it with `title`, `guide`
+  and `kind`, and `POST /exams/start` with `mode: "original"` sits it as for NCEA papers.

@@ -63,6 +63,16 @@ Strength is my reading of the evidence, stated per claim.
 
 **Implication.** Every study activity that can be a retrieval attempt should be one (write the answer before seeing it). Re-reading a lesson should not count as study.
 
+**Decision on multiple choice (2026-11-14, implementation, not research).** Multiple choice was added because some university
+papers are assessed by it, and practising in the assessment's own form matters before that assessment. Because recognition
+builds weaker long-term memory than recall (Rowland 2014 above), spaced review keeps free recall as the default: review
+questions written from lessons are always free recall; a missed multiple-choice exam question returns in review as a written
+question when its stem makes sense without the options, and keeps its options only when it does not ("Which of the following
+is FALSE?"); revision packs keep each concept's first question written and use multiple choice for the later exam-style
+questions; lessons for such papers end with an exam-style multiple-choice check after the free-recall Your Turn questions.
+Practice exams and rapid questions follow the paper's format. Feedback explains why each wrong option is wrong, since
+feedback after multiple choice reduces lure intrusions (Butler & Roediger 2008, A.10).
+
 ### A.3 Spacing: how far apart, as a function of when you need the knowledge
 
 **Cepeda et al. 2008** is the key quantitative source. More than 1,350 people learned facts, had one review after a gap of 0 to 3.5 months, and were tested up to a year later. The best gap rose with the retention interval, but as a share of it fell from about 20-40% of a 1-week delay to about 5-10% of a 1-year delay. [P] https://pubmed.ncbi.nlm.nih.gov/19076480/

@@ -27,6 +27,8 @@ const INSTITUTIONS = [['nzqa', 'NCEA (school)'], ['aut', 'AUT'], ['uoa', 'Univer
 const KINDS = [['exam', 'Exam'], ['test', 'Test'], ['assignment', 'Assignment'], ['lab', 'Lab'], ['project', 'Project'], ['presentation', 'Presentation'],
   ['portfolio', 'Portfolio'], ['practical', 'Practical'], ['quiz', 'Quiz'], ['internal', 'NCEA internal'], ['external_exam', 'NCEA external exam'], ['other', 'Other']];
 const GOALS = [['long_term', 'Keep it long term'], ['foundation', 'Later papers build on it'], ['assessment', 'Only for its assessments']];
+// How a test or exam is answered; practice questions follow it (multiple choice only where the assessment uses it).
+const FORMATS = [['', 'Not known'], ['written', 'Written answers'], ['multiple_choice', 'Multiple choice'], ['mixed', 'Multiple choice and written']];
 const SCALES = [['ncea', 'NCEA (N/A/M/E)'], ['aut9', 'AUT (A+ to D)'], ['uoa9', 'University of Auckland (A+ to D-)'], ['percent', 'Percentage']];
 
 export async function renderPlan(root, api) {
@@ -249,7 +251,7 @@ function assessmentTable(api, subject) {
     const weight = input('number', a.weight_pct ?? '', { min: 0, max: 100, step: 0.5 }); weight.setAttribute('aria-label', `Weight of ${a.title}`);
     const mark = input('number', a.result_pct ?? '', { min: 0, max: 100, step: 0.5, placeholder: 'Not back yet' }); mark.setAttribute('aria-label', `Your mark for ${a.title}`);
     const name = el('div'); name.append(el('strong', a.title));
-    const tags = [KINDS.find(k => k[0] === a.kind)?.[1], a.must_pass ? 'Must pass' : '', a.outcome_codes.length ? a.outcome_codes.join(', ') : '', a.credits ? `${a.credits} credits` : ''].filter(Boolean);
+    const tags = [KINDS.find(k => k[0] === a.kind)?.[1], a.question_format && a.question_format !== 'written' ? FORMATS.find(f => f[0] === a.question_format)?.[1] : '', a.must_pass ? 'Must pass' : '', a.outcome_codes.length ? a.outcome_codes.join(', ') : '', a.credits ? `${a.credits} credits` : ''].filter(Boolean);
     name.append(el('div', tags.join(' · '), 'muted'));
     const note = status(); const remove = button('Remove', 'small danger');
     const save = () => guard(date, note, () => api(`/assessments/${a.id}`, { method: 'PUT', ...json({
@@ -417,10 +419,11 @@ function draftEditor(api, programme, calendars, draft) {
     const w = input('number', a.weight_pct ?? '', { min: 0, max: 100, step: 0.5 }); const d = input('date', a.due_date || '');
     const los = input('text', (a.outcome_codes || []).join(', '), { placeholder: 'LO1, LO2' });
     const must = input('checkbox'); must.checked = !!a.must_pass; const mustLabel = el('label', '', 'toolbar'); mustLabel.append(must, el('span', 'Must pass'));
+    const f = select(FORMATS, a.question_format || '');
     const x = button('Remove', 'small'); x.onclick = () => row.remove();
-    row.append(field('Assessment', t), field('Kind', k), field('Weight %', w), field('Date', d), field('Outcomes', los), mustLabel, x);
+    row.append(field('Assessment', t), field('Kind', k), field('Weight %', w), field('Date', d), field('Outcomes', los), field('Questions', f), mustLabel, x);
     row.read = () => ({ title: t.value.trim(), kind: k.value, weight_pct: w.value === '' ? null : Number(w.value), due_date: d.value || null,
-      outcome_codes: los.value.split(/[,\s]+/).filter(Boolean), must_pass: must.checked });
+      outcome_codes: los.value.split(/[,\s]+/).filter(Boolean), must_pass: must.checked, question_format: f.value });
     return row;
   };
   for (const a of draft.assessments || []) assessments.append(assessmentRow(a));

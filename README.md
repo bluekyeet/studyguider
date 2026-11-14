@@ -23,6 +23,9 @@ unverified, and AI-written practice is kept separate from real past papers.
 - **Review:** questions made from completed lessons and wrong exam answers come back on an FSRS-6 schedule driven by how
   well each was recalled, pulled in before an assessment and kept at a maintenance level after it. A daily limit from your
   study time, wrong answers asked again in the same session, and a predicted recall per topic.
+- **Past exams for university papers:** upload a past exam or test (with or without a marking guide); AI reads its questions,
+  marks, multiple-choice options and figures, pairs the guide or writes one (labelled AI-written), and the paper can be sat
+  and marked like an NCEA paper. Multiple-choice answers are marked against the answer key with no model call.
 - **Exams:** original past-paper questions, mixed practice, or clearly unofficial AI practice. Typed or
   scanned answers, evidence-linked AI marking checked against the schedule, and your own override.
 - **Rapid questions:** pick a topic and flash through exam questions (past-paper and AI-written, prepared ahead), with no
