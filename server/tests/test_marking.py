@@ -70,6 +70,8 @@ class DB:
             return Result()     # no restored maths for this question
         if "INSERT INTO review_questions" in sql:
             return Result()
+        if sql.startswith("SELECT 1 FROM exam_answer_scans") or "q.choice_key, q.answer_forms" in sql or "q.answer_forms, q.parts, q.question_text, q.choice_key" in sql:
+            return Result()     # no scan, no multiple-choice answer key, nothing extra for the marker
         self.queries.append((sql, params))
         if "UPDATE markings SET answer_text" in sql:
             return Result()
@@ -82,7 +84,7 @@ class DB:
             return Result(self.row)
         if "marking_overrides" in sql and "FROM exam_items i JOIN exam_questions q" in sql:
             first = self.markings.get((params[0], 2, None, "first"))
-            return Result([(2, 15, "1(a)", first, None)])
+            return Result([(2, 15, "1(a)", None, first, None)])
         if "SELECT result FROM markings" in sql:
             kind = "second" if "kind = 'second'" in sql else "first"
             found = self.markings.get((params[0], params[1], params[2], kind))
