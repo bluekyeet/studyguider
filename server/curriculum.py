@@ -59,6 +59,72 @@ CALENDARS = {
         {"code": "NCEA-2026", "name": "NCEA 2026 external exams", "start": "2026-01-01", "end": "2026-12-04", "assessment_from": "2026-11-10"},
         {"code": "NCEA-2027", "name": "NCEA 2027 (check the NZQA timetable)", "start": "2027-01-01", "end": "2027-12-03", "assessment_from": "2027-11-08"}]},
 }
+# NZQA's external exam timetable: each subject and level sits one exam session, which covers all of its external standards.
+# Read from https://www2.nzqa.govt.nz/ncea/exam-timetable-and-key-assessment-dates/exam-timetable/ on 2026-11-14. NZQA
+# publishes 2027 only as a PDF so far; a year that is not here gets no suggested dates and is entered by hand.
+NZQA_TIMETABLE = {2026: """
+2026-11-10 am | L1 Mathematics and Statistics; L2 Geography; L2 Latin; L3 Dance
+2026-11-10 pm | L1 Te Ao Haka; L2 Japanese; L3 Digital Technologies; L3 Samoan
+2026-11-11 am | L3 English
+2026-11-11 pm | L1 Korean; L1 Gagana Tokelau; L2 Te Ao Haka; L3 Cook Islands Māori
+2026-11-12 am | L2 English
+2026-11-12 pm | L1 Physics and Earth Space Science; L2 Chinese; L3 Te Ao Haka; L3 Physics
+2026-11-16 am | L1 French; L2 Lea Faka-Tonga; L2 Te Reo Māori; L3 Calculus
+2026-11-16 pm | L1 Te Reo Māori; L2 Chemistry; L3 German; L3 History
+2026-11-17 am | L1 English
+2026-11-17 pm | L1 Geography; L2 Dance; L2 Korean; L3 Biology
+2026-11-18 am | L1 History; L2 Art History; L3 Health; L3 Japanese
+2026-11-18 pm | L2 Physics; L3 Economics
+2026-11-19 am | L2 Mathematics and Statistics; L3 Making Music; L3 Spanish
+2026-11-19 pm | L1 Chemistry and Biology; L2 Accounting
+2026-11-20 am | L2 Biology; L3 Chinese; L3 Drama
+2026-11-20 pm | L1 Religious Studies; L2 Cook Islands Māori; L2 Drama; L3 Chemistry
+2026-11-23 am | L1 Japanese; L2 French; L3 Latin; L3 Psychology; L3 Te Reo Rangatira
+2026-11-23 pm | L1 Spanish; L2 Business Studies; L3 Agricultural and Horticultural Science
+2026-11-24 am | L1 Commerce; L2 Agricultural and Horticultural Science; L3 Statistics
+2026-11-24 pm | L2 History; L3 Geography
+2026-11-25 am | L1 Health Studies; L2 Te Reo Rangatira; L3 Lea Faka-Tonga
+2026-11-25 pm | L1 Science; L2 Classical Studies; L3 Accounting
+2026-11-26 am | L1 Digital Technologies; L2 Media Studies; L3 Te Reo Māori
+2026-11-26 pm | L1 Vagahau Niue; L2 Health; L3 Media Studies
+2026-11-27 am | L1 Te Reo Māori Kūki 'Āirani; L2 Economics; L3 Music Studies
+2026-11-27 pm | L2 Digital Technologies; L3 Art History
+2026-12-01 am | L1 Social Studies; L2 Earth and Space Science; L3 Classical Studies
+2026-12-01 pm | L1 Lea Faka-Tonga; L2 Music; L3 Home Economics
+2026-12-02 am | L1 Agricultural and Horticultural Science; L2 German; L2 Social Studies; L3 French
+2026-12-02 pm | L1 Gagana Sāmoa; L3 Earth and Space Science
+2026-12-03 am | L1 German; L2 Home Economics; L3 Korean
+2026-12-03 pm | L1 Chinese; L2 Education for Sustainability; L2 Samoan; L3 Business Studies
+2026-12-04 am | L2 Spanish; L3 Social Studies
+"""}
+NZQA_TIMETABLE_SOURCE = "https://www2.nzqa.govt.nz/ncea/exam-timetable-and-key-assessment-dates/exam-timetable/"
+_WORDS = lambda text: {w for w in re.findall(r"[a-zāēīōū']+", text.lower()) if w not in ("and", "of", "the", "ncea", "level", "studies")}
+
+
+def exam_session(subject, level, year):
+    """The NZQA exam session for an NCEA subject at a level in a year: {"date", "session", "subject"}, or None when the
+    timetable for that year is not known or no timetabled subject matches the name."""
+    table = NZQA_TIMETABLE.get(year)
+    if not table or level not in (1, 2, 3):
+        return None
+    wanted = _WORDS(subject)
+    best = None
+    for line in table.strip().splitlines():
+        when, names = line.split(" | ")
+        day, session = when.split()
+        for name in names.split("; "):
+            if not name.startswith(f"L{level} "):
+                continue
+            words = _WORDS(name[3:])
+            # The subject's name and the timetable's agree when one's words contain the other's ("Mathematics" and
+            # "Mathematics and Statistics", "Physics" and "Physics"). A tighter match wins.
+            if words and wanted and (words <= wanted or wanted <= words):
+                score = len(words & wanted) / len(words | wanted)
+                if not best or score > best[0]:
+                    best = (score, {"date": day, "session": "9:30 am" if session == "am" else "2:00 pm", "subject": name})
+    return best[1] if best else None
+
+
 CALENDAR_NOTE = "Dates from the institutions' published calendars (read November 2026). Check them against your own timetable."
 
 
@@ -845,11 +911,44 @@ def curriculum_router(connect, authorised, model_reply=None, paper_grade=None, r
             touched(db, topic[0])
         return {"topic_id": topic_id, "outcome_ids": body.outcome_ids}
 
+    @router.get("/subjects/{subject_id}/ncea-exam")
+    def ncea_exam(subject_id: int, year: int | None = None):
+        """The NZQA timetable's exam session for this NCEA subject, and its external standards that have no date yet."""
+        with connect() as db:
+            row = db.execute("""SELECT s.name, s.level, COALESCE(d.grade_scale, 'ncea') FROM subjects s
+                LEFT JOIN subject_details d ON d.subject_id = s.id WHERE s.id = %s""", (subject_id,)).fetchone()
+            if not row:
+                raise HTTPException(404, "Subject not found")
+            year = year or clock.today().year
+            found = exam_session(row[0], row[1], year) if row[2] == "ncea" else None
+            undated = [{"id": a["id"], "title": a["title"]} for a in assessments_for(db, subject_id) if a["kind"] == "external_exam" and not a["due_date"]]
+        return {"year": year, "exam": found, "undated_external": undated, "source": NZQA_TIMETABLE_SOURCE,
+                "note": None if found else "No date found in the NZQA timetable for this subject and year; enter it by hand."}
+
+    @router.post("/subjects/{subject_id}/ncea-exam")
+    def use_ncea_exam(subject_id: int, year: int | None = None):
+        """Give every external standard of this NCEA subject that has no date the subject's NZQA exam date."""
+        found = ncea_exam(subject_id, year)
+        if not found["exam"]:
+            raise HTTPException(404, found["note"])
+        with connect() as db:
+            for item in found["undated_external"]:
+                db.execute("UPDATE assessments SET due_date = %s WHERE id = %s AND due_date IS NULL", (found["exam"]["date"], item["id"]))
+            touched(db, subject_id)
+        return {"updated": len(found["undated_external"]), **found["exam"]}
+
     @router.post("/subjects/{subject_id}/assessments", status_code=201)
     def add_assessment(subject_id: int, body: Assessment):
         with connect() as db:
             require_subject(db, subject_id)
             position = db.execute("SELECT COALESCE(max(position), 0) + 1 FROM assessments WHERE subject_id = %s", (subject_id,)).fetchone()[0]
+            if body.kind == "external_exam" and body.due_date is None:
+                # An NCEA external exam is on its subject's day in the NZQA timetable, when that is known.
+                row = db.execute("""SELECT s.name, s.level, COALESCE(d.grade_scale, 'ncea') FROM subjects s
+                    LEFT JOIN subject_details d ON d.subject_id = s.id WHERE s.id = %s""", (subject_id,)).fetchone()
+                found = exam_session(row[0], row[1], clock.today().year) if row and row[2] == "ncea" else None
+                if found:
+                    body = body.model_copy(update={"due_date": date.fromisoformat(found["date"])})
             assessment_id = _clean_assessment(db, subject_id, body, position)
             touched(db, subject_id)
         return {"id": assessment_id}

@@ -47,6 +47,24 @@ def create_answer_media_tables(db):
     )""")
 
 
+# Every stored answer text that can refer to a drawing. A drawing that none of them names is left over from editing (each edit
+# stores a new picture) or from a draft that was never saved.
+ANSWER_TEXTS = (("review_answers", "answer"), ("exam_items", "answer"), ("lesson_answers", "answer"), ("markings", "answer_text"),
+                ("exam_answer_scans", "transcription"))
+KEEP_DAYS = 7       # a drawing in an unsaved draft (kept in the browser) is safe for this long
+
+
+def remove_unused(db, keep_days=KEEP_DAYS):
+    """Delete drawings no saved answer refers to and that are older than keep_days. Returns how many were deleted."""
+    present = [(t, c) for t, c in ANSWER_TEXTS if db.execute("""SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = %s AND column_name = %s""", (t, c)).fetchone()]
+    used = " UNION ".join(f"SELECT (regexp_matches({c}, '/answer-images/([0-9]{{1,18}})', 'g'))[1]::bigint FROM {t} WHERE {c} LIKE '%%/answer-images/%%'"
+                          for t, c in present)
+    rows = db.execute(f"""DELETE FROM answer_images WHERE created_at < now() - make_interval(days => %s)
+        {f"AND id NOT IN ({used})" if used else ""} RETURNING id""", (keep_days,)).fetchall()
+    return len(rows)
+
+
 def refs(text):
     """(caption, image id) for each drawing referenced in an answer, in order."""
     return [(m.group(1) or "Drawing", int(m.group(2))) for m in IMAGE_REF.finditer(text or "")]

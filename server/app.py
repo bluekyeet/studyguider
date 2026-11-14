@@ -1535,6 +1535,8 @@ def replan_daily():
         map_ncea_standards(db)
         review_plan.replan(db, clock.today())
         review_plan.refresh_topics(db)
+        import answer_media
+        answer_media.remove_unused(db)      # drawings left behind by edits (each edit stores a new picture)
         db.execute("""INSERT INTO settings (key, value) VALUES ('replanned_on', %s)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""", (today,))
 

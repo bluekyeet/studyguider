@@ -312,8 +312,21 @@ function addStandard(api, subject) {
       due_date: date.value || null, credits: credits.value === '' ? null : Number(credits.value), standard_number: Number(number.value), outcome_codes: [code] }) });
     refresh();
   }); };
-  const wrap = el('details'); wrap.append(el('summary', 'Add a standard and its assessment date'), form, note,
-    el('p', 'NCEA 2026 external exams run 10 November to 4 December; check your own timetable for each exam’s date.', 'muted'));
+  const timetable = el('p', 'External exams with no date get this subject’s date from the NZQA timetable when it is known.', 'muted');
+  const wrap = el('details'); wrap.append(el('summary', 'Add a standard and its assessment date'), form, note, timetable);
+  // The subject's exam day in NZQA's published timetable, and a button to give it to the external standards still without a date.
+  api(`/subjects/${subject.subject_id}/ncea-exam`).then(found => {
+    if (!found.exam) { timetable.textContent = `${found.note} NCEA ${found.year} external exams run from mid November to early December.`; return; }
+    const day = new Date(`${found.exam.date}T12:00:00`).toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    timetable.replaceChildren(`NZQA timetable: ${found.exam.subject} is on ${day}, ${found.exam.session}. `);
+    const source = el('a', 'Source'); source.href = found.source; source.target = '_blank'; source.rel = 'noopener'; timetable.append(source, '. ');
+    if (found.undated_external.length) {
+      const use = el('button', `Use this date for ${found.undated_external.length} external standard${found.undated_external.length === 1 ? '' : 's'} without one`, 'small');
+      use.type = 'button';
+      use.onclick = () => guard(use, note, async () => { await api(`/subjects/${subject.subject_id}/ncea-exam`, { method: 'POST' }); refresh(); });
+      timetable.append(use);
+    }
+  }).catch(() => {});
   return wrap;
 }
 
