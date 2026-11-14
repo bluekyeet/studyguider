@@ -103,6 +103,68 @@ export function readable(text) {
     .replace(/[ \t]+([.,;:!?])/g, '$1').replace(/[ \t]{2,}/g, ' ');
 }
 
+// A multiple-choice question written into lesson text (docs/api/multiple-choice.md, "Lessons"):
+//   ```choice
+//   Question stem
+//   A. option
+//   B. option *        <- the correct one (several for select all that apply)
+//   ---
+//   B: why it is right
+//   A: why it is wrong
+//   ```
+// It is practice, not marked: the choice is checked on the device and each option's reason shown.
+export function parseChoiceBlock(lines) {
+  const options = [], reasons = {}, stem = [];
+  let after = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^-{3,}$/.test(line)) { after = true; continue; }
+    const reason = after && /^\(?([A-J])\)?\s*[:.)-]\s*(.+)$/i.exec(line);
+    if (reason) { reasons[reason[1].toUpperCase()] = reason[2]; continue; }
+    const option = !after && /^\(?([A-J])\)?[.)]\s+(.+?)(\s+\*)?$/i.exec(line);
+    if (option) { options.push({ key: option[1].toUpperCase(), text: option[2], correct: Boolean(option[3]) }); continue; }
+    if (!after && !options.length) stem.push(line);
+  }
+  if (options.length < 2 || !options.some(o => o.correct)) return null;
+  return { stem: stem.join('\n'), options, reasons, multiple: options.filter(o => o.correct).length > 1 };
+}
+
+let lessonChoices = 0;
+function choiceQuestion(block) {
+  const box = el('div', undefined, 'lesson-choice');
+  if (block.stem) box.append(mathText(block.stem));
+  const name = `lesson-choice-${++lessonChoices}`;
+  const list = el('div', undefined, 'choice-options');
+  list.setAttribute('role', block.multiple ? 'group' : 'radiogroup');
+  const inputs = [];
+  for (const option of block.options) {
+    const row = el('label', undefined, 'choice-option');
+    const input = el('input'); input.type = block.multiple ? 'checkbox' : 'radio'; input.name = name; input.value = option.key;
+    input.onchange = () => { for (const other of inputs) other.closest('.choice-option').classList.toggle('chosen', other.checked); };
+    const body = el('div', undefined, 'choice-body'); body.append(mathText(option.text));
+    row.append(input, el('span', option.key, 'choice-letter'), body);
+    inputs.push(input); list.append(row);
+  }
+  const check = el('button', 'Check', 'small primary'); check.type = 'button';
+  const verdict = el('p', undefined, 'muted'); verdict.setAttribute('role', 'status');
+  check.onclick = () => {
+    const picked = inputs.filter(input => input.checked).map(input => input.value);
+    if (!picked.length) { verdict.textContent = block.multiple ? 'Select every option you think is right first.' : 'Choose an option first.'; return; }
+    const right = block.options.filter(o => o.correct).map(o => o.key);
+    const exact = picked.length === right.length && picked.every(key => right.includes(key));
+    verdict.textContent = exact ? 'Correct.' : `Not quite: the answer is ${right.join(' and ')}.`;
+    inputs.forEach((input, index) => {
+      const option = block.options[index], row = input.closest('.choice-option'), body = row.querySelector('.choice-body');
+      row.classList.toggle('right', option.correct); row.classList.toggle('wrong', input.checked && !option.correct);
+      body.querySelector('.choice-why')?.remove();
+      if (block.reasons[option.key] && (option.correct || input.checked)) { const why = mathText(block.reasons[option.key]); why.classList.add('choice-why'); body.append(why); }
+    });
+  };
+  box.append(list, check, verdict);
+  return box;
+}
+
 export function mathText(target, content) {
   const text = content === undefined ? target : content;
   const root = el('div', undefined, 'math-content');
@@ -118,7 +180,8 @@ export function mathText(target, content) {
       i++;
       while (i < lines.length && !lines[i].trim().startsWith(fence[1])) code.push(lines[i++]);
       i++;
-      root.append(el('pre', code.join('\n')));
+      const question = /^\s*(?:```|~~~)\s*choice\s*$/i.test(line) ? parseChoiceBlock(code) : null;
+      root.append(question ? choiceQuestion(question) : el('pre', code.join('\n')));
       continue;
     }
 

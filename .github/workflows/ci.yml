@@ -35,6 +35,8 @@ jobs:
         run: node -e "const fs=require('fs'); new Function(fs.readFileSync('server/manage.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1])"
       - name: Check manager image cookie authentication
         run: node tests/image-auth-check.cjs
+      - name: Check multiple-choice blocks in lesson text
+        run: node tests/lesson-choice-check.cjs
   integration:
     runs-on: ubuntu-latest
     env:
