@@ -20,7 +20,9 @@ from pydantic import BaseModel, Field
 
 import answer_forms
 
-IMAGE_REF = re.compile(r"!\[([^\]\n]{0,80})\]\(/answer-images/(\d{1,18})\)")
+# The slashes may be escaped: an exam answer with parts is a JSON document, and the Android app's JSON writer (org.json)
+# writes "/" as "\/", so a drawing in part (a) is stored as ![Drawing 1](\/answer-images\/42).
+IMAGE_REF = re.compile(r"!\[([^\]\n]{0,80})\]\(\\?/answer-images\\?/(\d{1,18})\)")
 MAX_IMAGE_BYTES = 3 * 1024 * 1024
 MAX_DRAWING_BYTES = 512 * 1024
 MAX_IMAGES = 8          # per answer sent to the marker
@@ -58,7 +60,8 @@ def remove_unused(db, keep_days=KEEP_DAYS):
     """Delete drawings no saved answer refers to and that are older than keep_days. Returns how many were deleted."""
     present = [(t, c) for t, c in ANSWER_TEXTS if db.execute("""SELECT 1 FROM information_schema.columns
         WHERE table_schema = current_schema() AND table_name = %s AND column_name = %s""", (t, c)).fetchone()]
-    used = " UNION ".join(f"SELECT (regexp_matches({c}, '/answer-images/([0-9]{{1,18}})', 'g'))[1]::bigint FROM {t} WHERE {c} LIKE '%%/answer-images/%%'"
+    # As IMAGE_REF: the slashes may be written "\/" inside a JSON parts document.
+    used = " UNION ".join(f"SELECT (regexp_matches({c}, 'answer-images\\\\?/([0-9]{{1,18}})', 'g'))[1]::bigint FROM {t} WHERE {c} LIKE '%%answer-images%%'"
                           for t, c in present)
     rows = db.execute(f"""DELETE FROM answer_images WHERE created_at < now() - make_interval(days => %s)
         {f"AND id NOT IN ({used})" if used else ""} RETURNING id""", (keep_days,)).fetchall()
