@@ -685,3 +685,7 @@ button.danger:disabled{opacity:.45}
 .lesson-choice{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:10px;margin:.8em 0}
 .import-status{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px}
 .import-status ul{margin:0;padding-left:18px;color:var(--warn);font-size:13px}
+.calibration td{vertical-align:middle}
+.calibration-meter{position:relative;height:8px;border-radius:999px;background:var(--surface-3);margin-top:4px;min-width:120px}
+.calibration-meter span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--accent))}
+.calibration-meter i{position:absolute;top:-3px;width:2px;height:14px;background:var(--text);opacity:.6}

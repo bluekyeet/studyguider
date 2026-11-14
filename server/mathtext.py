@@ -15,6 +15,7 @@ import threading
 import time
 
 import userspace
+from usage import model_workers
 from splitting import _words, grounded
 
 log = logging.getLogger("uvicorn.error")
@@ -174,7 +175,7 @@ def process(connect, vision_reply, topic_id=None, workers=2, ids=None):
                 time.sleep(4 * (tries + 1))   # the gateway answers 503 when it is busy; wait and try again
         return None, error
 
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="maths") as pool:
+    with ThreadPoolExecutor(max_workers=model_workers(workers), thread_name_prefix="maths") as pool:
         contexts = [contextvars.copy_context() for _ in rows]
         for row, (display, error) in zip(rows, pool.map(lambda pair: pair[1].run(attempt, pair[0]), zip(rows, contexts))):
             with connect() as db:

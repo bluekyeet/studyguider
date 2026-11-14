@@ -89,6 +89,9 @@ def test_a_spare_grid_at_the_back_is_not_another_question(tmp_path):
 def test_table_cells_join_subscripts_and_states_onto_their_formula():
     from paper_parser import _cell_text, _symbols
     assert _cell_text("Ammonia, NH\n3\n(ℓ)") == "Ammonia, NH3(ℓ)"
-    assert _cell_text("Methanamine,\nCH NH (l)") == "Methanamine, CH NH (l)"
+    assert _cell_text("Ammonia, NH (l)\n3") == "Ammonia, NH3(l)"
+    assert _cell_text("Ethane, C H (l)\n2 6") == "Ethane, C2H6(l)"
+    assert _cell_text("Methanamine,\nCH NH (l)\n3 2") == "Methanamine, CH3NH2(l)"
+    assert _cell_text("Year\n2019") == "Year 2019"
     assert _cell_text("Fe\n3+") == "Fe3+"
     assert _symbols("F S F") and _symbols("H") and not _symbols("3") and not _symbols("Boiling point")

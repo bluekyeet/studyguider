@@ -136,6 +136,55 @@ def with_forms(db, questions):
     return questions
 
 
+def calibration(db, days=None, topic_id=None):
+    """How often the learner was right at each confidence rating, overall and per topic, and their recent confident misses.
+    Only answers that were marked (by the AI marker or an answer key) count: a confidence-scheduled answer says nothing about
+    whether the confidence was right (research A.11, D.2 item 12)."""
+    window = "AND a.answered_at > now() - make_interval(days => %s)" if days else "AND %s::int IS NULL"
+    rows = db.execute(f"""SELECT a.confidence, count(*), count(*) FILTER (WHERE a.correct)
+        FROM review_answers a JOIN review_questions q ON q.id = a.question_id
+        WHERE a.correct IS NOT NULL AND a.outcome IN ('correct', 'incorrect') {window}
+          AND (%s::bigint IS NULL OR q.topic_id = %s)
+        GROUP BY a.confidence ORDER BY a.confidence""", (days, topic_id, topic_id)).fetchall()
+    levels = {r[0]: (r[1], r[2]) for r in rows}
+    out = [{"confidence": c, "answers": levels.get(c, (0, 0))[0], "correct": levels.get(c, (0, 0))[1],
+            "correct_rate": round(levels[c][1] / levels[c][0], 3) if levels.get(c, (0, 0))[0] else None} for c in range(1, 6)]
+    topics = db.execute(f"""SELECT t.id, s.name, t.name, count(*), count(*) FILTER (WHERE a.correct),
+            count(*) FILTER (WHERE a.confidence >= 4), count(*) FILTER (WHERE a.confidence >= 4 AND a.correct),
+            avg(a.confidence)
+        FROM review_answers a JOIN review_questions q ON q.id = a.question_id JOIN topics t ON t.id = q.topic_id
+        JOIN subjects s ON s.id = t.subject_id
+        WHERE a.correct IS NOT NULL AND a.outcome IN ('correct', 'incorrect') {window}
+        GROUP BY t.id, s.name, t.name HAVING count(*) >= 3 ORDER BY s.name, t.name""", (days,)).fetchall()
+    misses = db.execute(f"""SELECT q.id, q.question, a.confidence, a.answered_at, t.name, q.concept
+        FROM review_answers a JOIN review_questions q ON q.id = a.question_id JOIN topics t ON t.id = q.topic_id
+        WHERE a.correct IS FALSE AND a.outcome = 'incorrect' AND a.confidence >= 4 {window}
+          AND (%s::bigint IS NULL OR q.topic_id = %s)
+        ORDER BY a.answered_at DESC LIMIT 10""", (days, topic_id, topic_id)).fetchall()
+    marked = sum(level["answers"] for level in out)
+    sure = [level for level in out if level["confidence"] >= 4 and level["answers"]]
+    sure_rate = sum(l["correct"] for l in sure) / sum(l["answers"] for l in sure) if sure else None
+    unsure = [level for level in out if level["confidence"] <= 2 and level["answers"]]
+    unsure_rate = sum(l["correct"] for l in unsure) / sum(l["answers"] for l in unsure) if unsure else None
+    if marked < 10:
+        summary = "Answer a few more review questions to see how well your confidence matches your results."
+    elif sure_rate is not None and sure_rate < 0.75:
+        summary = (f"When you felt confident (4 or 5) you were right {round(sure_rate * 100)}% of the time. Check answers you feel sure "
+                   "about against the worked answer: confident mistakes are the easiest to fix once you see them.")
+    elif unsure_rate is not None and unsure_rate > 0.75:
+        summary = (f"When you felt unsure (1 or 2) you were still right {round(unsure_rate * 100)}% of the time: you know more than "
+                   "you think.")
+    else:
+        summary = "Your confidence matches your results well: you tend to be right when you feel sure and less so when you do not."
+    return {"levels": out, "marked_answers": marked, "summary": summary,
+            "topics": [{"topic_id": r[0], "subject": r[1], "topic": r[2], "answers": r[3], "correct_rate": round(r[4] / r[3], 3),
+                        "confident_answers": r[5], "confident_correct_rate": round(r[6] / r[5], 3) if r[5] else None,
+                        "average_confidence": round(float(r[7]), 2)} for r in topics],
+            "confident_misses": [{"question_id": r[0], "question": r[1][:500], "confidence": r[2], "answered_at": r[3], "topic": r[4],
+                                  "concept": r[5]} for r in misses if not is_admin_question(r[1], r[5])],
+            "note": "Counts only answers that were marked (by the AI marker or an answer key). AI marks are advisory."}
+
+
 def review_router(connect, authorised, model_reply, model_reply_vision=None):
     router = APIRouter(dependencies=[Depends(authorised)])
 
@@ -206,6 +255,12 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
             items = with_forms(db, [_due_item(row) for row in rows])
         return {"today": as_of, "items": items, **info, "assessments": ready,
                 "note": "Predicted recall comes from the FSRS memory model on your review answers; it is an estimate, not a mark."}
+
+    @router.get("/review-calibration")
+    def review_calibration(days: int | None = Query(default=None, ge=1, le=3650), topic_id: int | None = None):
+        """Confidence against correctness: "when you rated 5 you were right 60% of the time"."""
+        with connect() as db:
+            return calibration(db, days, topic_id)
 
     @router.get("/study-summary")
     def study_summary():

@@ -71,6 +71,15 @@ def _cell_text(cell):
     for line in (part.strip() for part in cell.split("\n")):
         if not line:
             continue
+        # Subscripts the PDF set below the line ("C H (l)" then "2 6"): each gap in the formula is where one goes, so
+        # "C H (l)" with "2 6" is C2H6(l) and "CH NH (l)" with "3 2" is CH3NH2(l).
+        digits = line.split()
+        formula = re.search(r"((?:[A-Z][a-z]?)+(?:\s+(?:[A-Z][a-z]?)+)*)\s*(\((?:s|l|ℓ|g|aq)\))?$", text) if text else None
+        if formula and all(re.fullmatch(r"\d{1,2}", d) for d in digits):
+            chunks = formula.group(1).split()
+            if len(chunks) == len(digits) and all(ELEMENT.fullmatch(c) or re.fullmatch(r"(?:[A-Z][a-z]?)+", c) for c in chunks):
+                text = text[:formula.start()] + "".join(c + d for c, d in zip(chunks, digits)) + (formula.group(2) or "")
+                continue
         glue = bool(text) and (_SUBSCRIPT.fullmatch(line) or (text[-1].isdigit() and line[0] == "(" and len(line) <= 4))
         text += line if glue or not text else " " + line
     return " ".join(text.split())
