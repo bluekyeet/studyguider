@@ -137,3 +137,27 @@ Each step ends with a build, a commit and a push to `t3/android-app-parity-with-
 - A local server built from this branch's `server/` against a throwaway Postgres in Docker, with throwaway accounts; never
   the real database or the deployed site. The model gateway is used only for marking and lesson checks, one call at a time.
 - The Pixel 7a emulator on this machine: every new screen driven and screenshotted, light and dark.
+
+## 5. Status (14 November 2026)
+
+Every step in section 3 is built. All screens below were driven on an emulator (Pixel 7a profile, Android 17 image) against
+local throwaway servers; screenshots are in `docs/design/android-screens/`.
+
+| Step | State | Seen running |
+|---|---|---|
+| 1. Foundations | `Api.kt`, `AnswerText.kt` (answer format, graph description, symbol insertion) with JVM checks run by `testDebugUnitTest` | yes |
+| 2. Answer box | `AnswerBox.kt`, `AnswerForms.kt`, `Sketch.kt`: symbol bar, chemistry equation line, preview, tables, drawing and graph editor (full screen, tools at the bottom), uploads, saved drawings reopened for editing and shown in answers; instrumented tests in `AnswerBoxTest.kt` | yes, drawings uploaded and reloaded across a restart |
+| 3. Review | planner list, cap and left out, one question at a time, result with feedback and next date, relearning, earlier answers with drawings, all questions with filters | yes |
+| 4. Plan | setup, today, coming assessments with predicted recall, programmes, subjects and papers, assessments sheet, NCEA standards, AUT import, outline paste, editable draft, outcome links | yes (AUT COMP500 fetched live; outline read by the model) |
+| 5. Lessons | answer box per Your Turn with forms from `/answer-forms`, `/lessons/{id}/check`, pre-questions, free recall, tables drawn as tables, multiple-choice blocks | yes (one model check) |
+| 6. Home | plan invitation, coming up, grade estimates, honest recall | yes |
+| 7. Settings | Study page: topics, tone / reading level / pace, notes, reminder, AI usage; papers grouped in Resources | yes |
+| 8. Exams and practice | per-part answer box with forms and figure, results with drawings; rapid and revision packs on the same box | exams and rapid yes; revision packs not driven (they need generating by the model) |
+| 9. Rewards and design | stage backdrop in both themes, large character, bust crops, leaderboards; full-screen editors edge to edge | yes, light and dark |
+| 10. Multiple choice | single and select-all, letters by shown position, keys sent, per-option results, negative marking note, lesson choice blocks | yes, against the real server from the multiple-choice branch |
+
+Also fixed on the way: the exam screen crashed on questions without an NCEA standard (possible since #15); the selected tab
+was lost on rotation.
+
+Left for later: revision packs were not driven on a device; the app keeps no offline queue for answers (as before); the
+teacher-slide analysis of the old free-text teaching style was removed from Android, as on the web.
