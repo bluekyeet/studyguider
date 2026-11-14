@@ -178,6 +178,7 @@ def normalise(value, subject="", text=""):
 def with_choice(value, key_value, subject="", text="", source="ai"):
     """Forms and answer key for a generated question that may be multiple choice: (forms, key, question text). A choice form
     without a usable key cannot be marked, so its options are written into the question and it becomes a written question."""
+    text = choice.plain_code(text or "")
     raw = next((f for f in (value if isinstance(value, list) else [value] if isinstance(value, dict) else [])
                 if isinstance(f, dict) and f.get("kind") == "choice"), None)
     form = choice.normalise_form(raw) if raw else None

@@ -25,8 +25,15 @@ _BARE = re.compile(r"^\s*\(?\s*([a-j])\s*\)?\s*[.)]?\s*$", re.I)
 _TRUE_FALSE = {"true", "false"}
 
 
+def plain_code(text):
+    """Models write code, URLs and search terms as \texttt{...} outside maths, which shows as a raw command; outside $...$ it
+    becomes Markdown code instead. Inside maths it is left alone (KaTeX draws it)."""
+    pieces = re.split(r"(\$[^$]*\$)", text)
+    return "".join(p if p.startswith("$") else re.sub(r"\\texttt\{([^{}]*)\}", lambda m: "`" + m.group(1) + "`", p) for p in pieces)
+
+
 def _text(value, limit):
-    return value.strip()[:limit] if isinstance(value, str) else ""
+    return plain_code(value.strip())[:limit] if isinstance(value, str) else ""
 
 
 def _key_list(value, keys):

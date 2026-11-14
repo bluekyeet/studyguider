@@ -175,3 +175,8 @@ def test_a_key_can_name_the_option_by_its_words():
     assert choice.normalise_key({"correct": "RAM"}, found)["correct"] == ["A"]
     assert choice.normalise_key({"correct": ["ssd"]}, found)["correct"] == ["C"]
     assert choice.normalise_key({"correct": "B and C"}, form(multiple=True))["correct"] == ["B", "C"]
+
+
+def test_code_written_as_texttt_outside_maths_becomes_markdown_code():
+    assert choice.plain_code(r'Search \texttt{"timetable" site:auckland.ac.nz}') == 'Search `"timetable" site:auckland.ac.nz`'
+    assert choice.plain_code(r"Keep $\texttt{x}$ in maths") == r"Keep $\texttt{x}$ in maths"
