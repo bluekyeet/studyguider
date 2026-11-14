@@ -168,3 +168,10 @@ def test_fractional_printed_marks_are_kept_in_net_marks():
     db.row = (db.row[0], {"": [choice.public(form())]}, *db.row[2:])
     result = marking.key_marking(db, 9, "Choice: B")
     assert result["net_marks"] == 2.5 and result["net_marks_available"] == 2.5 and result["marks_awarded"] == 3
+
+
+def test_a_key_can_name_the_option_by_its_words():
+    found = form(("RAM", "HDD", "SSD"))
+    assert choice.normalise_key({"correct": "RAM"}, found)["correct"] == ["A"]
+    assert choice.normalise_key({"correct": ["ssd"]}, found)["correct"] == ["C"]
+    assert choice.normalise_key({"correct": "B and C"}, form(multiple=True))["correct"] == ["B", "C"]

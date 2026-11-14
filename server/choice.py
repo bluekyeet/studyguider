@@ -95,10 +95,13 @@ def normalise_key(value, form, source="ai"):
     keys = [o["key"] for o in form["options"]]
     named = value.get("correct", value.get("answer", value.get("correct_keys")))
     if isinstance(named, str):
-        named = re.findall(r"\b[A-Ja-j1-9]\b", named)
+        named = re.findall(r"\b[A-Ja-j1-9]\b", named) if re.fullmatch(r"[\sA-Ja-j1-9,;/&()and.]*", named) else [named]
     if not isinstance(named, (list, tuple)):
         named = [named] if isinstance(named, (int, str)) else []
-    correct = sorted({mapping.get(str(v).strip().strip("().").upper(), "") for v in named} - {""})
+    # A key may name an option by its wording instead of its letter ("RAM", "True").
+    by_text = {re.sub(r"\W+", " ", o["text"]).strip().lower(): o["key"] for o in form["options"] if o["text"]}
+    correct = sorted({mapping.get(str(v).strip().strip("().").upper()) or by_text.get(re.sub(r"\W+", " ", str(v)).strip().lower(), "")
+                      for v in named} - {""})
     correct = [k for k in correct if k in keys]
     if not correct or (not form["multiple"] and len(correct) != 1):
         return None

@@ -460,7 +460,14 @@ def attach_figures(path, filename, questions):
             y = None
             for candidate in (number, number + 1, number - 1):
                 if 1 <= candidate <= len(document) and document[candidate - 1].get_text().strip():
-                    y = _anchor(document[candidate - 1], question["stem"] or question["text"] or (question["parts"][0]["text"] if question["parts"] else ""))
+                    # The question's own words first, since questions that share a stem would otherwise all start at it; but the
+                    # first question of a group starts where the shared stem does, so the stem's figure goes with the group.
+                    page = document[candidate - 1]
+                    first_of_group = question["group"] and not any(q["group"] == question["group"] for q in questions[:index])
+                    texts = (question["text"], question["parts"][0]["text"] if question["parts"] else "", question["stem"])
+                    if first_of_group:
+                        texts = (question["stem"],) + texts
+                    y = next((found for found in (_anchor(page, text) for text in texts if text) if found is not None), None)
                     if y is not None:
                         number = candidate
                         break
@@ -483,6 +490,15 @@ def attach_figures(path, filename, questions):
                     continue
                 owner.setdefault("figures", []).append({"page": number, "bbox": [round(v, 1) for v in box],
                                                         "association": "geometric reading order; labels need checking"})
+        # Questions that share a stem ("the following four questions refer to the spreadsheet below") share its figures.
+        groups = {}
+        for question in questions:
+            if question["group"]:
+                groups.setdefault(question["group"], []).append(question)
+        for members in groups.values():
+            shared = [f for q in members for f in q.get("figures") or [] if not any(o.get("_figure") for _, _, form in units_of(q) if form for o in form["options"])]
+            for question in members:
+                question["figures"] = (question.get("figures") or []) + [f for f in shared if f not in (question.get("figures") or [])]
         for question in questions:
             for _, _, form in units_of(question):
                 if not form or not any(o.get("_figure") for o in form["options"]):
@@ -512,9 +528,19 @@ def write_guides(model_reply, questions, official, counter, progress=lambda text
             # Written with no guide, or multiple choice with no key or no explanations: the model writes the rest.
             if (form and (not key or not key["explanations"])) or (not form and not entry["guide"]):
                 todo.append((question, label, wording, form, entry))
-    for start in range(0, len(todo), GUIDE_BATCH):
-        batch = todo[start:start + GUIDE_BATCH]
-        progress(f"Writing marking guides ({min(start + GUIDE_BATCH, len(todo))} of {len(todo)})")
+    unfinished = lambda item: (not item[4]["key"] and not item[4]["guide"]) if item[3] else not item[4]["guide"]
+    # Each batch once; then whatever came back unusable (a dropped item, a key naming no option) is asked for once more.
+    batches = [todo[start:start + GUIDE_BATCH] for start in range(0, len(todo), GUIDE_BATCH)]
+    retried = False
+    while batches or not retried:
+        if not batches:
+            retried = True
+            again = [item for item in todo if unfinished(item)]
+            batches = [again[start:start + GUIDE_BATCH] for start in range(0, len(again), GUIDE_BATCH)]
+            if not batches:
+                break
+        batch = batches.pop(0)
+        progress(f"Writing marking guides ({sum(1 for item in todo if not unfinished(item))} of {len(todo)} done)")
         items = []
         for index, (question, label, wording, form, entry) in enumerate(batch):
             part = next((p for p in question["parts"] if p["label"] == label), None)
@@ -621,6 +647,7 @@ def build_rows(questions, guides, rubric, subject=""):
         figures = question.get("figures") or []
         intro = "\n\n".join(t for t in (question["stem"], question["text"]) if t)
         parts, forms, keys, guide_lines, sources, children = [], {}, {}, [], set(), []
+        sources_all = {guides[(question["number"], label)]["source"] for label, _, _ in units}
         parts.append({"label": "context", "text": intro, "diagrams": figures})
         for (label, wording, form), marks in zip(units, per_unit):
             entry = guides[(question["number"], label)]
@@ -635,15 +662,20 @@ def build_rows(questions, guides, rubric, subject=""):
             if key:
                 keys[label] = key
             text = entry["guide"] or (choice.key_text(choice.public(form), key) if form and key else "")
+            if text:
+                # The whole question's guide says once that it is the AI's; a part says so only when the others are not.
+                tag = "[AI-written] " if entry["source"] == "ai" and len(sources_all) > 1 else ""
+                guide_lines.append((f"({label}) " if label else "") + tag + text)
             if entry["source"] == "ai" and text:
                 text = AI_GUIDE_NOTE + "\n" + text
-            if text:
-                guide_lines.append((f"({label}) " if label else "") + text)
             if label:
                 parts.append({"label": label, "text": wording, "marks": marks, "diagrams": []})
             children.append({"label": label, "text": "\n\n".join(t for t in (intro, wording) if t) if label else intro, "marks": marks,
                              "forms": unit_forms, "key": key, "guide": text, "source": entry["source"]})
         text = intro + "".join(f"\n({p['label']}) {p['text']}" for p in question["parts"])
+        if "ai" in sources and guide_lines:
+            guide_lines.insert(0, AI_GUIDE_NOTE if sources == {"ai"} else
+                               "Parts marked [AI-written] have an AI-written marking guide: the uploaded guide did not cover them.")
         exact = total if total is not None else 0
         rows.append({"number": question["number"], "page": question["page"], "marks": int(math.ceil(exact)) if exact else 0,
                      "marks_exact": exact if exact and exact != int(exact) else None, "parts": parts, "text": text,
