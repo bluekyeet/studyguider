@@ -70,17 +70,24 @@ def acceptable(new, old):
     return numbers_kept and (not plain_new or added / len(plain_new) <= 0.1) and (not plain_old or kept / len(plain_old) >= 0.85)
 
 
-def acceptable_ocr(new, old):
+def acceptable_ocr(new, old, context=""):
     """A corrected OCR reading may fix words and numbers, but it must still be the same passage: most of its words are the
     OCR's, and it is not much longer or shorter."""
     if not isinstance(new, str) or not new.strip() or new.count("$") % 2:
         return False
+    # What the model is told to leave out does not count as dropped wording: photo credits and links, and the paper's
+    # notes inside figures ("If you need to redraw your response, use the diagram on page 8").
+    old = re.sub(r"\S*(?:https?://|www\.|\.org|\.com|\.nz|\.jpg|\.png|File:)\S*", " ", old, flags=re.I)
+    old = re.sub(r"(?i)if\s*you\s*need\s*to\s*redraw[^.]*\.?", " ", old)
     plain_new = [w for w in _words(stripped(new)) if w.isalpha() and len(w) > 3]
     plain_old = [w for w in _words(old) if w.isalpha() and len(w) > 3]
     in_old, in_new = set(_words(old)), set(_words(new))
     joined = re.sub(r"[^a-z]", "", old.lower())        # "ofthe" holds "the": a word the OCR ran together is still there
-    added = sum(1 for w in plain_new if w not in in_old and w not in joined)
-    kept = sum(1 for w in plain_old if w in in_new)
+    # A part's reading may take in a sentence the OCR put elsewhere in the question (inside a figure's box, say).
+    in_context = set(_words(context)) | set(re.findall(r"[a-z]+", re.sub(r"[^a-z ]", "", context.lower())))
+    added = sum(1 for w in plain_new if w not in in_old and w not in joined and w not in in_context)
+    joined_new = re.sub(r"[^a-z]", "", stripped(new).lower())      # "ofdidgeridoo" is kept as "of didgeridoo"
+    kept = sum(1 for w in plain_old if w in in_new or w in joined_new)
     return ((not plain_new or added / len(plain_new) <= 0.15) and (not plain_old or kept / len(plain_old) >= 0.7)
             and 0.6 <= (len(stripped(new)) + 1) / (len(old) + 1) <= 1.4)
 
@@ -139,7 +146,8 @@ def restore_one(vision_reply, row):
     texts = {m.group(1): m.group(2).strip() for m in BLOCK.finditer(reply if isinstance(reply, str) else "")}
     if not texts:
         raise ValueError("the reply was not in the requested form")
-    accepted = {key: normalise_maths(texts[key]) for key in units if (acceptable_ocr if ocr else acceptable)(texts.get(key), units[key])}
+    check = (lambda new, old: acceptable_ocr(new, old, question_text or "")) if ocr else acceptable
+    accepted = {key: normalise_maths(texts[key]) for key in units if check(texts.get(key), units[key])}
     if not accepted:
         raise ValueError("no rewritten text kept the original wording")
     count = len(parts) if isinstance(parts, list) else 0

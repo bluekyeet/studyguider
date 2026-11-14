@@ -428,6 +428,7 @@ def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
         numbers = [q['question_number'] for q in questions]
         if not 3 <= len(questions) <= 5 or numbers != [str(n) for n in range(1, len(questions) + 1)]:
             warnings.append(f"Missing or inconsistent whole question groups; found {numbers}")
+        scanned_pages = {number + 1 for number, page in enumerate(paper) if ocr and not page.get_text().strip()}
         for q in questions:
             section = schedules.get(q["question_number"])
             q["schedule_text"] = "\n".join(line["text"] for line in section["lines"]) if section else ""
@@ -455,6 +456,9 @@ def parse_pair(paper_path, schedule_path, ocr=False, filenames=None):
                     box = fitz.Rect(line['bbox'])
                     inside = any(line['page'] == d['page'] and (box & fitz.Rect(d['bbox'])).get_area() >= box.get_area() * .8
                                  for d in q['diagram_regions'])
+                    # A figure found in a scanned page's image is a rough box; a sentence it overlaps is still wording.
+                    if inside and line['page'] in scanned_pages and len(line['text'].split()) >= 4:
+                        inside = False
                     if not inside:
                         prose.append(line['text'])
                 part['text'] = '\n'.join(prose)

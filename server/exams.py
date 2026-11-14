@@ -374,13 +374,15 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
     @router.get("/exams/{exam_id}/details")
     def exam_details(exam_id: int):
         with connect() as db:
-            rows = db.execute("""SELECT e.answer_mode, s.name, s.level, t.name FROM exams e
+            rows = db.execute("""SELECT e.answer_mode, s.name, s.level, t.name, COALESCE(d.grade_scale, 'ncea') FROM exams e
                 JOIN exam_items i ON i.exam_id=e.id JOIN exam_questions q ON q.id=i.question_id
-                JOIN topics t ON t.id=q.topic_id JOIN subjects s ON s.id=t.subject_id
-                WHERE e.id=%s GROUP BY e.answer_mode,s.name,s.level,t.name""", (exam_id,)).fetchall()
+                JOIN topics t ON t.id=q.topic_id JOIN subjects s ON s.id=t.subject_id LEFT JOIN subject_details d ON d.subject_id = s.id
+                WHERE e.id=%s GROUP BY e.answer_mode,s.name,s.level,t.name,d.grade_scale""", (exam_id,)).fetchall()
         if not rows:
             raise HTTPException(404, "Exam not found")
-        return {"answer_mode": rows[0][0], "title": " / ".join(dict.fromkeys(f"{r[1]} · Level {r[2]} · {r[3]}" for r in rows))}
+        # An NCEA subject is named with its level; a university paper's name already carries its code.
+        return {"answer_mode": rows[0][0], "title": " / ".join(dict.fromkeys(
+            f"{r[1]} · {r[3]}" if r[4] != "ncea" else f"{r[1]} · Level {r[2]} · {r[3]}" for r in rows))}
 
     @router.put("/exams/{exam_id}/answer-mode")
     def change_answer_mode(exam_id: int, body: AnswerMode):

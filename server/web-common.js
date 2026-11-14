@@ -259,7 +259,9 @@ export function mathText(target, content) {
     }
 
     const paragraph = [];
-    while (i < lines.length && lines[i].trim() && !/^\s*(#{1,6}\s|```|~~~|>|\$\$)/.test(lines[i]) && !(paragraph.length && (LIST.test(lines[i]) || /^\s*([-*_])(\s*\1){2,}\s*$/.test(lines[i])))) paragraph.push(lines[i++]);
+    // A table straight after a line of text (no blank line between, as paper text has it) starts its own block.
+    const tableStarts = at => isTableRow(lines[at]) && at + 1 < lines.length && isTableRule(lines[at + 1]);
+    while (i < lines.length && lines[i].trim() && !/^\s*(#{1,6}\s|```|~~~|>|\$\$)/.test(lines[i]) && !(paragraph.length && (LIST.test(lines[i]) || tableStarts(i) || /^\s*([-*_])(\s*\1){2,}\s*$/.test(lines[i])))) paragraph.push(lines[i++]);
     root.append(withInline(el('p'), paragraph.join('\n')));
   }
   if (content !== undefined) { target.replaceChildren(root); return target; }
