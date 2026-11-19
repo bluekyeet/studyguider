@@ -35,6 +35,7 @@ from revision import create_revision_tables, revision_router
 from exams import create_exam_tables, exam_router
 from parsing import create_parsing_tables, parsing_router
 from usage import create_usage_tables, usage_router, log_run
+import usage
 from diagrams import create_diagram_tables, diagram_router
 from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
 import worker
@@ -172,6 +173,7 @@ async def lifespan(app):
         create_account_tables(db)
         migrate_legacy(db, hasher)
         create_public_game_tables(db)       # after the migration, which moves every other table in `public` into the first account
+        usage.create_server_settings(db)    # server-wide settings an administrator changes (the background model-call limit)
     try:
         move_legacy_files(userspace.upload_base())
     except OSError:
@@ -1544,6 +1546,45 @@ def replan_daily():
         answer_media.remove_unused(db)      # drawings left behind by edits (each edit stores a new picture)
         db.execute("""INSERT INTO settings (key, value) VALUES ('replanned_on', %s)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""", (today,))
+
+
+def _server_settings():
+    with connect_account() as db:
+        return dict(db.execute("SELECT key, value FROM server_settings").fetchall())
+
+
+usage.set_settings_reader(lambda: _server_settings())
+
+
+class ServerSettings(BaseModel):
+    model_workers: int | None = Field(default=None, ge=1, le=usage.MAX_MODEL_WORKERS)   # None goes back to the starting value
+
+
+def _server_settings_view():
+    limit, source = usage.model_workers_setting()
+    return {"model_workers": limit, "source": source, "environment_value": usage.environment_workers(),
+            "default": usage.DEFAULT_MODEL_WORKERS, "max": usage.MAX_MODEL_WORKERS,
+            "note": "Applies from the next background model call; no restart is needed. It limits how many calls restoring maths "
+                    "from page images and splitting questions for rapid practice make at once, across all accounts. Past-exam "
+                    "imports and fresh review questions always make one call at a time."}
+
+
+@app.get("/admin/server-settings", dependencies=[Depends(admin_only)])
+def get_server_settings():
+    usage.forget_cached_settings()
+    return _server_settings_view()
+
+
+@app.put("/admin/server-settings", dependencies=[Depends(admin_only)])
+def put_server_settings(body: ServerSettings):
+    with connect_account() as db:
+        if body.model_workers is None:
+            db.execute("DELETE FROM server_settings WHERE key = 'model_workers'")
+        else:
+            db.execute("""INSERT INTO server_settings (key, value) VALUES ('model_workers', %s)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""", (str(body.model_workers),))
+    usage.forget_cached_settings()
+    return _server_settings_view()
 
 
 class DevClock(BaseModel):

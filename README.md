@@ -54,6 +54,9 @@ Open http://localhost:8000. `/health` only checks that the API process is up.
 The AI features need an OpenAI-compatible gateway: set `ROUTER_BASE_URL` and `ROUTER_API_KEY` in `.env`.
 The server calls the model aliases `education` and `education-reviewer`; your uploaded material is sent
 to those providers when you generate or review anything.
+Background work (restoring maths from page images, splitting questions for rapid practice) makes at most 2 model calls at
+once by default. `STUDYGUIDER_MODEL_WORKERS` in `.env` sets a different starting value, and an administrator can change it at
+any time in Settings > Background AI calls, without a restart.
 
 The API is bound to `127.0.0.1` on purpose. Do not expose it to the internet without TLS, a streaming
 request-body limit at the proxy, per-client login throttling and a security review. Back up the database

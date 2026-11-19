@@ -15,7 +15,7 @@ import re
 import threading
 
 import userspace
-from usage import model_workers
+from usage import MAX_MODEL_WORKERS, model_slot
 
 log = logging.getLogger("uvicorn.error")
 
@@ -169,7 +169,8 @@ def _units_for(model_reply, row):
     error = None
     for _ in range(2):
         try:
-            return split_one(model_reply, number, parts, text, schedule, bool(figures)), None
+            with model_slot():              # the shared limit on background model calls (usage.py)
+                return split_one(model_reply, number, parts, text, schedule, bool(figures)), None
         except Exception as caught:     # network, bad JSON, or a split that failed the wording check
             error = caught
     return None, error
@@ -207,7 +208,7 @@ def split_pending(connect, model_reply, topic_id=None, limit=500, workers=4):
         rows = pending(db, topic_id, limit)
     done = failed = single = retry = 0
     reasons = []
-    with ThreadPoolExecutor(max_workers=model_workers(workers), thread_name_prefix="split") as pool:
+    with ThreadPoolExecutor(max_workers=max(1, min(len(rows), MAX_MODEL_WORKERS)), thread_name_prefix="split") as pool:
         # each call keeps the caller's account, so the model-usage log lands in the right schema
         contexts = [contextvars.copy_context() for _ in rows]
         for row, (units, error) in zip(rows, pool.map(lambda pair: pair[1].run(_units_for, model_reply, pair[0]), zip(rows, contexts))):

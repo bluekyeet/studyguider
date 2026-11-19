@@ -15,7 +15,7 @@ import threading
 import time
 
 import userspace
-from usage import model_workers
+from usage import MAX_MODEL_WORKERS, model_slot
 from splitting import _words, grounded
 
 log = logging.getLogger("uvicorn.error")
@@ -175,7 +175,8 @@ def process(connect, vision_reply, topic_id=None, workers=2, ids=None):
         error = None
         for tries in range(3):
             try:
-                return restore_one(vision_reply, row), None
+                with model_slot():          # the shared limit on background model calls (usage.py)
+                    return restore_one(vision_reply, row), None
             except Exception as caught:     # noqa: BLE001 - network, unreadable PDF, or a rewrite that failed the wording check
                 error = caught
                 if isinstance(caught, ValueError) and tries:
@@ -183,7 +184,8 @@ def process(connect, vision_reply, topic_id=None, workers=2, ids=None):
                 time.sleep(4 * (tries + 1))   # the gateway answers 503 when it is busy; wait and try again
         return None, error
 
-    with ThreadPoolExecutor(max_workers=model_workers(workers), thread_name_prefix="maths") as pool:
+    # The pool may be as large as the limit can be; model_slot() holds it to the limit in force at each call.
+    with ThreadPoolExecutor(max_workers=max(1, min(len(rows), MAX_MODEL_WORKERS)), thread_name_prefix="maths") as pool:
         contexts = [contextvars.copy_context() for _ in rows]
         for row, (display, error) in zip(rows, pool.map(lambda pair: pair[1].run(attempt, pair[0]), zip(rows, contexts))):
             with connect() as db:
