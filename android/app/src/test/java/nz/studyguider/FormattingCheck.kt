@@ -19,6 +19,9 @@ fun main() {
     val hostile = KaTeX.toHtml("${'$'}x\" onmouseover=\"alert(1)${'$'}")
     check("onmouseover=\"" !in hostile && hostile.count { it == '"' } == 4) { hostile }
     check("&quot;" in hostile)
+    // Money is an escaped dollar, not maths: the sentence stays text and only $x$ becomes a formula.
+    val money = KaTeX.toHtml("A bus for \\${'$'}560 for a day; \\${'$'}1.50 each and ${'$'}x${'$'} students.")
+    check(money.startsWith("A bus for ${'$'}560 for a day; ${'$'}1.50 each and <span data-tex=\"x\"") && money.count { it == '$' } == 2) { money }
     check(withoutSourceMarkers("review [5d374a3f-74f2-412a-8f6a-b582963eb2e0, learner_answers].") == "review.")
     check(withoutSourceMarkers("review [S1, learner_answers].") == "review.")
     check(withoutSourceMarkers("carbon (, p. 1). series (, p. 1;, p. 2).") == "carbon. series.")

@@ -103,15 +103,22 @@ object KaTeX {
     }
 
     private fun appendMath(builder: StringBuilder, text: String, escape: (String) -> String) {
+        // An escaped dollar is money, not maths: "\$560" shows as $560 and neither opens nor closes a formula.
+        fun words(value: String) = escape(value.replace("\\$", "$"))
+        fun unescaped(token: String, from: Int): Int {
+            var at = text.indexOf(token, from)
+            while (at > 0 && text[at - 1] == '\\') at = text.indexOf(token, at + 1)
+            return at
+        }
         var index = 0
         while (index < text.length) {
-            val dollar = text.indexOf('$', index)
-            if (dollar < 0) { builder.append(escape(text.substring(index))); break }
-            builder.append(escape(text.substring(index, dollar)))
+            val dollar = unescaped("$", index)
+            if (dollar < 0) { builder.append(words(text.substring(index))); break }
+            builder.append(words(text.substring(index, dollar)))
             val display = dollar + 1 < text.length && text[dollar + 1] == '$'
             val start = if (display) dollar + 2 else dollar + 1
-            val closing = text.indexOf(if (display) "$$" else "$", start)
-            if (closing < 0) { builder.append(escape(text.substring(dollar))); break }
+            val closing = unescaped(if (display) "$$" else "$", start)
+            if (closing < 0) { builder.append(words(text.substring(dollar))); break }
             val formula = normaliseFormulaEscapes(text.substring(start, closing))
             // Emit the formula as plain text; the script reads it back and never runs it as JavaScript.
             builder.append("<span data-tex=\"").append(escape(formula)).append("\" data-display=\"").append(if (display) "1" else "0").append("\"></span>")

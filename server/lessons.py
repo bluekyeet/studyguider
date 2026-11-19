@@ -187,6 +187,11 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
     def result(row):
         return {**dict(zip(keys, row)), "status": "draft", "warning": WARNING}
 
+    def cleaned(row):
+        """A saved lesson row with whole lines of coding-harness notes left out; lessons saved before a pattern was known kept them."""
+        from lesson_quality import strip_contamination
+        return (*row[:3], strip_contamination(row[3] or ""), *row[4:])
+
     @router.get("/courses")
     def list_courses():
         """The topics the learner chose to study, newest first, with lesson counts."""
@@ -507,6 +512,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
                 review_focus, reviewer_verdict, version, created_at, course_id, stage
                 FROM lessons WHERE topic_id = %s ORDER BY id DESC LIMIT %s OFFSET %s""", (topic_id, limit, offset)).fetchall()
         from lesson_quality import contamination_issues
+        rows = [cleaned(row) for row in rows]
         return [dict(result(row[:12]), course_id=row[12], stage=row[13]) for row in rows if not contamination_issues(row[3])]
 
     @router.get("/lessons/{lesson_id}")
@@ -518,6 +524,7 @@ def lesson_router(connect, authorised, model_reply, search_resources, topic_stan
         if not row:
             raise HTTPException(404, "Lesson not found")
         from lesson_quality import contamination_issues
+        row = cleaned(row)
         if contamination_issues(row[3]):
             raise HTTPException(409, "This lesson contains invalid provider output and has been withheld. Your saved answers are retained; generate a replacement lesson.")
         return dict(result(row[:12]), course_id=row[12], stage=row[13])

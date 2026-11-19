@@ -31,7 +31,8 @@ MATHS_SYSTEM = (
     "2. Write every mathematical expression, equation, chemical formula, number with units and exponent in LaTeX between "
     "single dollar signs, for example $3x^4 + px^3 - 4x + 5$, $\\text{CH}_3\\text{CH}_2\\text{OH}$, $-1370\\text{ kJ mol}^{-1}$. "
     "Use the page image to recover what the text lost, such as an equation shown only as symbols or spaces.\n"
-    "3. Do not put ordinary sentences inside dollar signs. Use \\text{...} only for units and chemical symbols.\n"
+    "3. Do not put ordinary sentences inside dollar signs. Use \\text{...} only for units and chemical symbols. Write an amount "
+    "of money with an escaped dollar sign outside the maths, for example \\$560 or $x$ costs \\$1.50.\n"
     "4. Keep the original line breaks. When equations are stacked on the page, for example a pair of simultaneous equations, "
     "put each equation on its own line, each in its own dollar signs.\n"
     "5. If you cannot read an expression on the page, leave that stretch of text as it was; do not guess."
@@ -51,12 +52,17 @@ MAX_UNITS = 25
 
 
 def stripped(text):
-    return re.sub(r"\$[^$]*\$", " ", text)
+    return re.sub(r"\$[^$]*\$", " ", text.replace("\\$", " "))
+
+
+def odd_dollars(text):
+    """True when the maths delimiters do not pair up. An escaped dollar (money, "\\$560") is not a delimiter."""
+    return text.replace("\\$", "").count("$") % 2 == 1
 
 
 def acceptable(new, old):
     """A LaTeX rewrite must keep the original's ordinary words and add none of its own."""
-    if not isinstance(new, str) or not new.strip() or new.count("$") % 2:
+    if not isinstance(new, str) or not new.strip() or odd_dollars(new):
         return False
     plain_new = [w for w in _words(stripped(new)) if w.isalpha() and len(w) > 2]
     plain_old = [w for w in _words(old) if w.isalpha() and len(w) > 3]
@@ -73,7 +79,7 @@ def acceptable(new, old):
 def acceptable_ocr(new, old, context=""):
     """A corrected OCR reading may fix words and numbers, but it must still be the same passage: most of its words are the
     OCR's, and it is not much longer or shorter."""
-    if not isinstance(new, str) or not new.strip() or new.count("$") % 2:
+    if not isinstance(new, str) or not new.strip() or odd_dollars(new):
         return False
     # What the model is told to leave out does not count as dropped wording: photo credits and links, and the paper's
     # notes inside figures ("If you need to redraw your response, use the diagram on page 8").
@@ -155,9 +161,14 @@ def restore_one(vision_reply, row):
 
 
 def pending(db, topic_id=None, limit=300, ids=None):
-    return db.execute("""SELECT id, paper_resource_id, paper_page, figure_pages, question_text, parts FROM exam_questions
-        WHERE source <> 'ai' AND math_state = '' AND paper_resource_id IS NOT NULL AND length(trim(question_text)) > 0
-          AND (%s::bigint IS NULL OR topic_id = %s) AND (%s::bigint[] IS NULL OR id = ANY(%s)) ORDER BY id LIMIT %s""",
+    # A part split off for rapid practice keeps figure pages only when it needs a figure, and its paper_page is where the whole
+    # question starts, though part (d) may be pages later. Its maths is read from the whole question's pages.
+    return db.execute("""SELECT q.id, q.paper_resource_id, q.paper_page,
+            CASE WHEN p.id IS NOT NULL AND jsonb_array_length(COALESCE(q.figure_pages, '[]'::jsonb)) = 0 THEN p.figure_pages ELSE q.figure_pages END,
+            q.question_text, q.parts
+        FROM exam_questions q LEFT JOIN exam_questions p ON p.id = q.parent_id
+        WHERE q.source <> 'ai' AND q.math_state = '' AND q.paper_resource_id IS NOT NULL AND length(trim(q.question_text)) > 0
+          AND (%s::bigint IS NULL OR q.topic_id = %s) AND (%s::bigint[] IS NULL OR q.id = ANY(%s)) ORDER BY q.id LIMIT %s""",
                       (topic_id, topic_id, ids, ids, limit)).fetchall()
 
 

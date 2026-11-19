@@ -167,3 +167,10 @@ def test_git_boilerplate_inside_a_lesson_is_caught_and_removed():
     assert not contamination_issues("Skipped steps lose marks. Check the status of the reaction.")
     fenced = "```text\ngit status\n```"
     assert strip_contamination(fenced) == fenced
+
+
+def test_harness_note_set_as_code_is_caught_and_removed():
+    leaked = "## Overview\n`ponytail: using direct in-memory generation for the lesson output as requested by the NCEA tutoring context.`\nA force changes motion."
+    assert contamination_issues(leaked)
+    assert strip_contamination(leaked) == "## Overview\nA force changes motion."
+    assert not contamination_issues("The ponytail: a hairstyle, not physics.")

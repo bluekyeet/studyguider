@@ -9,8 +9,9 @@ import mathcheck
 
 # Coding-harness notes the model gateway sometimes writes into a lesson: "`git status` → skipped: [no repo context provided]".
 _CONTAMINATION = (
-    r"(?im)^\s*ponytail\s*:",
-    r"(?im)^\s*skipped\s*:",
+    # Also when set as code or emphasis: "`ponytail: using direct in-memory generation for the lesson output`".
+    r"(?im)^[\s`*_>]*ponytail\s*:",
+    r"(?im)^[\s`*_>]*skipped\s*:",
     r"(?i)(?:→|->|—|-|:)\s*skipped\s*:",
     r"(?i)\bskipped\s*:\s*\[",
     r"(?i)\bno repo(?:sitory)? context\b",

@@ -30,15 +30,18 @@ function renderMath(source, display) {
 const INLINE = /(\*\*|__)(?=\S)([\s\S]+?)(?<=\S)\1|\*(?=\S)([^*]+?)(?<=\S)\*|(?<![A-Za-z0-9])_(?=\S)([^_]+?)(?<=\S)_(?![A-Za-z0-9])|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
 const HOLD = /(\d+)/g;
 
+// An escaped dollar is money, not maths: "\$560" shows as $560.
+const words = text => document.createTextNode(text.replace(/\\\$/g, '$'));
+
 // Plain text with any held formulae put back as drawn maths.
 function plain(text, parent, maths) {
   let index = 0;
   for (const match of text.matchAll(HOLD)) {
-    if (match.index > index) parent.append(document.createTextNode(text.slice(index, match.index)));
+    if (match.index > index) parent.append(words(text.slice(index, match.index)));
     parent.append(renderMath(...maths[Number(match[1])]));
     index = match.index + match[0].length;
   }
-  if (index < text.length) parent.append(document.createTextNode(text.slice(index)));
+  if (index < text.length) parent.append(words(text.slice(index)));
 }
 
 function markdown(text, parent, maths) {
@@ -58,8 +61,8 @@ function markdown(text, parent, maths) {
 
 function withInline(parent, text) {
   const maths = [];
-  // \( ... \) and \[ ... \] are the same maths as $ ... $ and $$ ... $$.
-  const held = String(text).replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^$\n]+)\$|\\\(([\s\S]+?)\\\)/g, (_, dollars, bracket, dollar, paren) => {
+  // \( ... \) and \[ ... \] are the same maths as $ ... $ and $$ ... $$. An escaped dollar ("\$560") neither opens nor closes maths.
+  const held = String(text).replace(/(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$|\\\[([\s\S]+?)\\\]|(?<!\\)\$((?:\\\$|[^$\n])+?)(?<!\\)\$|\\\(([\s\S]+?)\\\)/g, (_, dollars, bracket, dollar, paren) => {
     const block = dollars ?? bracket;
     maths.push([(block ?? dollar ?? paren).trim(), block !== undefined]);
     return `${maths.length - 1}`;
