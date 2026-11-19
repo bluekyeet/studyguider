@@ -11,4 +11,5 @@ class ChecksTest {
 
     @Test fun answerText() = run("AnswerTextCheckKt")
     @Test fun examParts() = run("ExamPartsCheckKt")
+    @Test fun formatting() = run("FormattingCheckKt")
 }

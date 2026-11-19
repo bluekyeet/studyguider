@@ -84,7 +84,7 @@ try:
             check("migration: only accounts, sessions, the leaderboard snapshot and server settings are left in the shared schema", public_tables == {"users", "sessions", "game_profiles", "server_settings"}, public_tables)
             moved = db.execute("SELECT (SELECT count(*) FROM u1.subjects), (SELECT count(*) FROM u1.notes), (SELECT count(*) FROM u1.settings WHERE key <> 'x')").fetchone()
             check("migration: the old data moved into the account's schema intact", moved[:2] == (1, 1), moved)
-            check("migration: the old login lock and password rows were not carried over", db.execute("SELECT count(*) FROM u1.settings").fetchone()[0] == 0)
+            check("migration: the old login lock and password rows were not carried over", db.execute("SELECT count(*) FROM u1.settings WHERE key IN ('password_hash', 'login_failures', 'locked_until')").fetchone()[0] == 0)
         check("migration: uploaded files moved into the account's folder", Path(UPLOADS, "u1", LEGACY_FILE).read_bytes() == b"hello" and not Path(UPLOADS, LEGACY_FILE).exists())
         admin = login("admin", OLD_PASSWORD)
         check("the old password still works for the migrated admin", True)

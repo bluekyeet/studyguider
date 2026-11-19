@@ -106,3 +106,11 @@ def test_latex_commands_in_model_json_keep_their_backslash():
     assert data["q"] == r"Units: $\text{mol L}^{-1}$, $\frac{n}{V}$, $\beta$, $\rightarrow$, $a \neq b$, $\theta$"
     assert data["a"] == "line one\nnot two\tok"          # real JSON escapes before ordinary words are left alone
     assert mathtext.latex_json(r'"$\\text{x}$"') == r'"$\\text{x}$"'      # an already doubled backslash is untouched
+
+
+def test_money_is_an_escaped_dollar_not_maths():
+    old = "A teacher has hired a school bus for 560 for a day trip with students. The cost per student was 1.50."
+    new = r"A teacher has hired a school bus for \$560 for a day trip with students. The cost per student was \$1.50."
+    assert mathtext.acceptable(new, old)
+    assert mathtext.acceptable(new.replace("students.", "$n$ students."), old)
+    assert not mathtext.acceptable(new.replace("students.", "$n students."), old)       # an unclosed formula

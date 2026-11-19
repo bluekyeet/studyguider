@@ -37,6 +37,8 @@ jobs:
         run: node tests/image-auth-check.cjs
       - name: Check multiple-choice blocks in lesson text
         run: node tests/lesson-choice-check.cjs
+      - name: Check escaped dollars in text with maths
+        run: node tests/money-dollar-check.mjs
   integration:
     runs-on: ubuntu-latest
     env:

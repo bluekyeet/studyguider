@@ -450,3 +450,9 @@ def test_a_drawing_in_one_part_reaches_both_markers_however_the_parts_are_encode
     for _, prompt, image in seen:
         assert "[Drawing 1: see image panel 1]" in prompt and "answer-images" not in prompt
         assert Image.open(io.BytesIO(image)).format == "PNG"
+
+
+def test_latex_in_feedback_keeps_its_backslash():
+    # A model writes "\frac" with one backslash; read as JSON that would be a form feed followed by "rac".
+    reply = marking_json().replace("Feedback linked to the schedule.", r"The answer is $\frac{3}{2(x - 3)}$.")
+    assert r"$\frac{3}{2(x - 3)}$" in _validate(reply, ROW[12], 15).feedback
