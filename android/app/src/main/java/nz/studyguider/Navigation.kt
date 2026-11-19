@@ -37,7 +37,7 @@ enum class Destination(val label: String, val tab: Int) {
     Review("Review", 2),
     Exam("Exam", 3),
     Resources("Resources", 0),
-    Learning("Learning", 4),
+    Plan("Plan", 4),
 }
 
 /**
@@ -121,9 +121,13 @@ fun DestinationIcon(destination: Destination, tint: Color, modifier: Modifier = 
                 drawLine(tint, Offset(w * 0.44f, h * 0.6f), Offset(w * 0.62f, h * 0.6f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.62f, h * 0.6f), Offset(w * 0.62f, h * 0.88f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
             }
-            Destination.Learning -> {
-                drawCircle(tint, radius = w * 0.14f, center = Offset(w * 0.5f, h * 0.25f), style = stroke)
-                drawArc(tint, 180f, 180f, false, Offset(w * 0.18f, h * 0.5f), Size(w * 0.64f, h * 0.55f), style = stroke)
+            Destination.Plan -> {
+                // Calendar: a page with two rings and a marked day.
+                drawRoundRect(tint, topLeft = Offset(w * 0.12f, h * 0.2f), size = Size(w * 0.76f, h * 0.7f), cornerRadius = CornerRadius(w * 0.12f), style = stroke)
+                drawLine(tint, Offset(w * 0.12f, h * 0.42f), Offset(w * 0.88f, h * 0.42f), strokeWidth = w * 0.09f)
+                drawLine(tint, Offset(w * 0.32f, h * 0.1f), Offset(w * 0.32f, h * 0.28f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.68f, h * 0.1f), Offset(w * 0.68f, h * 0.28f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
+                drawCircle(tint, radius = w * 0.07f, center = Offset(w * 0.62f, h * 0.68f))
             }
             Destination.Lesson -> {
                 // Open book: two pages meeting at a spine.

@@ -70,6 +70,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
     val scanRevisions = rememberSaveable(base, token, examId, saver = answerMapSaver) { mutableStateMapOf<Long, String>() }
     val feedback = remember(base, token, examId) { mutableStateMapOf<Long, JSONObject>() }
     val scope = rememberCoroutineScope()
+    val api = remember(base, token) { Api(base, token) }
     val context = LocalContext.current
     val printPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) scope.launch {
@@ -258,7 +259,7 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                     StudyCard(tone = CardTone.Container, modifier = Modifier.sectionTransition(page)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("${question.getInt("position")}. QUESTION ${question.getString("question_number")}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                            StudyChip("AS ${question.getInt("standard_number")} · ${question.getInt("year")}", MaterialTheme.colorScheme.onSurfaceVariant, colours.containerHigh)
+                            StudyChip(listOfNotNull(question.optInt("standard_number").takeIf { it > 0 }?.let { "AS $it" }, question.optInt("year").takeIf { it > 0 }?.toString()).joinToString(" · ").ifBlank { "Question" }, MaterialTheme.colorScheme.onSurfaceVariant, colours.containerHigh)
                         }
                         val text = question.optString("question_text")
                         val paperId = question.optString("paper_resource_id").takeUnless { it.isBlank() || it == "null" }
@@ -286,7 +287,8 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                         if (text.isNotBlank()) parts.forEachIndexed { partIndex, (label, wording) ->
                             if (wording.isNotBlank() && !wording.trim().matches(Regex("QUESTION\\s+(ONE|TWO|THREE|[0-9]+)", RegexOption.IGNORE_CASE))) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 if (label.isNotEmpty()) Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.widthIn(min = 36.dp))
-                                MathText(reflow(wording), modifier = Modifier.weight(1f))
+                                val rawLabel = structuredParts.getOrNull(partIndex)?.optString("label").orEmpty()
+                                QuestionWording(wording, Modifier.weight(1f), hideTables = answerMode == "digital" && hasTableToComplete(partForms(question, rawLabel) ?: partForms(question, label)), tidy = ::reflow)
                             }
                             structuredParts.getOrNull(partIndex)?.optJSONArray("diagrams")?.let { diagrams ->
                                 if (paperId != null) for (d in 0 until diagrams.length()) {
@@ -297,16 +299,19 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                                 }
                             }
                             val parentOnly = label.isNotEmpty() && parts.any { it.first.startsWith(label + "(") }
-                            if (label.isNotEmpty() && !parentOnly && answerMode == "digital") TableAnswer(wording, partAnswers[label].orEmpty(), { value ->
-                                partAnswers[label] = value
-                                answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
-                                feedback.remove(id)
-                            }, enabled = !busy)
-                            if (label.isNotEmpty() && !parentOnly && answerMode == "digital") MathField(partAnswers[label].orEmpty(), { value ->
-                                partAnswers[label] = value
-                                answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
-                                feedback.remove(id)
-                            }, label = "Answer $label", enabled = !busy, minLines = 2, maxLines = 10)
+                            // Each part gets the inputs its wording asks for; a drawing can be made over the part's first figure.
+                            if (label.isNotEmpty() && !parentOnly && answerMode == "digital") {
+                                val rawLabel = structuredParts.getOrNull(partIndex)?.optString("label").orEmpty()
+                                val figure = structuredParts.getOrNull(partIndex)?.optJSONArray("diagrams")?.optJSONObject(0)?.takeIf { paperId != null }?.let { diagram ->
+                                    val bbox = diagram.getJSONArray("bbox")
+                                    "/resources/$paperId/pages/${diagram.getInt("page")}/diagram-image?" + listOf("x0", "y0", "x1", "y1").mapIndexed { n, name -> "$name=${bbox.getDouble(n)}" }.joinToString("&")
+                                }
+                                AnswerField(api, "$examId:$id:$label", partForms(question, rawLabel) ?: partForms(question, label), partAnswers[label].orEmpty(), { value ->
+                                    partAnswers[label] = value
+                                    answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
+                                    feedback.remove(id)
+                                }, label = "Answer $label", enabled = !busy, minLines = 2, figurePath = figure)
+                            }
                         }
                         if (paperId != null) {
                             if (structuredParts.isEmpty()) InlineExamDiagrams(base, token, paperId, question.getInt("paper_page"))
@@ -330,8 +335,8 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                                 val current = answers[id].orEmpty()
                                 val answerParts = if (current.startsWith("{\"parts\":")) runCatching { JSONObject(current).getJSONObject("parts") }.getOrNull() else null
                                 if (answerParts != null) {
-                                    answerParts.keys().forEach { label -> MathText("$label: ${answerParts.getString(label)}") }
-                                } else MathText(current.ifBlank { "No answer entered yet." })
+                                    answerParts.keys().forEach { label -> Text(label, style = MaterialTheme.typography.labelLarge); AnswerContent(api, answerParts.getString(label)) }
+                                } else AnswerContent(api, current.ifBlank { "No answer entered yet." })
                                 Text(if (question.isNull("schedule_resource_id")) "Unofficial AI practice rubric" else "Registered schedule excerpt", style = MaterialTheme.typography.titleSmall)
                                 Text(if (question.isNull("schedule_resource_id")) "AI-generated, not an official NZQA schedule." else "Extracted text may be incomplete. Check the original schedule page before changing your judgement.", style = MaterialTheme.typography.bodySmall)
                                 MathText(scheduleText)
@@ -350,15 +355,18 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                             partAnswers["diagram"] = value; answers[id] = JSONObject().put("parts", JSONObject(partAnswers.toMap())).toString()
                             feedback.remove(id)
                         }, label = "Check diagram recognition", enabled = !busy, minLines = 2)
-                        if (answerMode == "digital" && parts.none { it.first.isNotEmpty() }) TableAnswer(text, answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, enabled = !busy)
-                        if (answerMode == "handwritten" || parts.none { it.first.isNotEmpty() } || (answers[id].orEmpty().isNotBlank() && !answers[id].orEmpty().startsWith("{\"parts\":"))) MathField(answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, label = if (answerMode == "handwritten") "Check recognised answer" else "Your answer", enabled = !busy, minLines = 4, maxLines = 14, supportingText = "Maximum 100,000 characters")
+                        val wholeDigital = answerMode == "digital" && parts.none { it.first.isNotEmpty() }
+                        if (wholeDigital) AnswerField(api, "$examId:$id", partForms(question, ""), answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) },
+                            enabled = !busy, minLines = 4)
+                        else if (answerMode == "handwritten" || (answers[id].orEmpty().isNotBlank() && !answers[id].orEmpty().startsWith("{\"parts\":"))) MathField(answers[id].orEmpty(), { answers[id] = it; feedback.remove(id); currentOnDirtyChange(answers.any { (key, value) -> value != saved[key] }) }, label = if (answerMode == "handwritten") "Check recognised answer" else "Your answer", enabled = !busy, minLines = 4, maxLines = 14, supportingText = "Maximum 100,000 characters")
                         if (answers[id] != saved[id]) Text("Unsaved changes", style = MaterialTheme.typography.labelSmall, color = colours.amber)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(shape = RoundedCornerShape(50), enabled = !busy && answers[id].orEmpty().length <= 100000, onClick = {
-                                val answer = answers[id].orEmpty()
                                 scope.launch {
                                     busy = true; error = ""
                                     try {
+                                        flushAnswerBoxes()      // a drawing still uploading is part of the answer
+                                        val answer = answers[id].orEmpty()
                                         val result = JSONObject(examRequest(base, token, "/exams/$examId/answers/$id", answer, revision = revisionStrings[id]?.toIntOrNull() ?: 0, scanRevision = scanRevisions[id]?.toIntOrNull() ?: 0))
                                         revisionStrings[id] = result.getInt("revision").toString()
                                         saved[id] = answer
@@ -368,10 +376,11 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                                 }
                             }) { Text("Save") }
                             Button(shape = RoundedCornerShape(50), enabled = !busy && answers[id].orEmpty().isNotBlank() && answers[id].orEmpty().length <= 100000, onClick = {
-                                val answer = answers[id].orEmpty()
                                 scope.launch {
                                     busy = true; error = ""; feedback.remove(id)
                                     try {
+                                        flushAnswerBoxes()
+                                        val answer = answers[id].orEmpty()
                                         val result = JSONObject(examRequest(base, token, "/exams/$examId/answers/$id", answer, revision = revisionStrings[id]?.toIntOrNull() ?: 0, scanRevision = scanRevisions[id]?.toIntOrNull() ?: 0))
                                         revisionStrings[id] = result.getInt("revision").toString()
                                         saved[id] = answer
@@ -388,6 +397,17 @@ fun ExamScreen(base: String, token: String, examId: Long, onOpenSource: (String,
                     }
                     feedback[id]?.let { result ->
                         FeedbackCard(result)
+                        // Multiple-choice parts: each option with whether it was right and why, keyed by part like the answer forms.
+                        result.optJSONObject("choice_results")?.let { byPart ->
+                            byPart.keys().asSequence().toList().sorted().forEach { part ->
+                                byPart.optJSONObject(part)?.let { choice ->
+                                    if (part.isNotBlank()) Text("Part $part", style = MaterialTheme.typography.titleSmall)
+                                    ChoiceResultView(api, choice)
+                                }
+                            }
+                        }
+                        if (result.has("net_marks") && !result.isNull("net_marks") && result.optDouble("net_marks") != result.optDouble("marks_awarded"))
+                            Text("After negative marking: ${trimNumber(result.optDouble("net_marks"))} marks.", style = MaterialTheme.typography.bodySmall, color = colours.amber)
                         ExamOverride(base, token, examId, id, result.optJSONObject("override"))
                     }
                     if (feedback[id] == null) {
