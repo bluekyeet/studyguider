@@ -1,5 +1,5 @@
 import { mathText, stash, aiBox, hintButton, inlineMath } from './web-common.js';
-import { answerBox } from './web-answer.js';
+import { answerBox, choiceResultView } from './web-answer.js';
 import { scanForm } from './web-exam-shared.js';
 
 const element = (tag, text, className) => {
@@ -63,7 +63,7 @@ export async function renderReviews(container, api) {
       const stat = element('div', undefined, 'stat'); stat.append(element('b', String(value)), element('span', name)); stats.append(stat);
     }
     tabs.replaceChildren();
-    for (const [key, label] of [['due', `Due now (${due})`], ['all', `All questions (${all.length})`]]) {
+    for (const [key, label] of [['due', `Due now (${due})`], ['all', `All questions (${all.length})`], ['calibration', 'How sure vs how right']]) {
       const tab = element('a', label); tab.href = '#reviews'; tab.setAttribute('role', 'button');
       if ((mode === 'practice' ? returnTo : mode) === key) tab.setAttribute('aria-current', 'page');
       tab.onclick = event => { event.preventDefault(); if (submitting) return; mode = key; show(); };
@@ -76,7 +76,62 @@ export async function renderReviews(container, api) {
     drawChrome();
     if (mode === 'due') { queue = dueQuestions(); return practice(queue, focus, 'due'); }
     if (mode === 'practice') return practice(queue, focus, returnTo);
+    if (mode === 'calibration') return calibration();
     return browse();
+  }
+
+  // ---- confidence against correctness ------------------------------------
+  async function calibration() {
+    const card = element('section', undefined, 'card stack');
+    card.append(element('h2', 'How sure you were, and how often you were right'), element('p', 'Loading…', 'muted'));
+    content.append(card);
+    let data;
+    try { data = await api('/review-calibration'); } catch (error) { card.lastChild.textContent = error.message || 'Could not load.'; return; }
+    if (mode !== 'calibration') return;
+    card.lastChild.remove();
+    card.append(element('p', data.summary));
+    const table = element('table', undefined, 'table calibration');
+    const head = element('tr'); for (const name of ['Your confidence', 'Marked answers', 'Right']) head.append(element('th', name));
+    const thead = element('thead'); thead.append(head);
+    const body = element('tbody');
+    for (const level of data.levels) {
+      const row = element('tr');
+      row.append(element('td', `${level.confidence} · ${CONFIDENCE[level.confidence - 1]}`), element('td', String(level.answers)));
+      const cell = element('td');
+      if (level.correct_rate === null) cell.append(element('span', '–', 'muted'));
+      else {
+        // The bar is how often you were right; the mark is where a well-judged rating would sit (1 = 10%, 5 = 90%).
+        const meter = element('div', undefined, 'calibration-meter');
+        const fill = element('span'); fill.style.width = `${Math.round(level.correct_rate * 100)}%`;
+        const target = element('i'); target.style.left = `${(level.confidence - 1) * 20 + 10}%`; target.title = 'Where this rating would sit if it matched your results';
+        meter.append(fill, target);
+        cell.append(element('strong', `${Math.round(level.correct_rate * 100)}%`), meter);
+      }
+      row.append(cell); body.append(row);
+    }
+    table.append(thead, body);
+    const scroll = element('div', undefined, 'table-scroll'); scroll.append(table);
+    card.append(scroll, element('p', 'The bar is how often you were right at that rating; the tick shows where it would be if your confidence matched your results.', 'muted'));
+    if (data.topics.length) {
+      const topics = element('details'); topics.append(element('summary', 'By topic'));
+      const list = element('div', undefined, 'stack');
+      for (const t of data.topics) {
+        list.append(element('p', `${t.subject} · ${t.topic}: right ${Math.round(t.correct_rate * 100)}% of ${t.answers} marked answers` +
+          (t.confident_correct_rate === null ? '' : `; ${Math.round(t.confident_correct_rate * 100)}% when you were confident`) + ` (average confidence ${t.average_confidence}).`));
+      }
+      topics.append(list); card.append(topics);
+    }
+    if (data.confident_misses.length) {
+      card.append(element('h3', 'Confident misses'), element('p', 'Questions you rated 4 or 5 and got wrong. They are worth a second look.', 'muted'));
+      for (const miss of data.confident_misses) {
+        const row = element('div', undefined, 'toolbar');
+        row.append(element('span', `${miss.confidence}`, 'chip bad'), inlineMath(miss.question.length > 160 ? `${miss.question.slice(0, 160)}…` : miss.question), element('span', miss.topic, 'muted'));
+        const question = all.find(q => q.id === miss.question_id);
+        if (question) { const again = button('Try it again', 'small'); again.onclick = () => { queue = [question]; returnTo = 'calibration'; mode = 'practice'; show(true); }; row.append(again); }
+        card.append(row);
+      }
+    }
+    card.append(element('p', data.note, 'muted'));
   }
 
   // ---- all questions ---------------------------------------------------
@@ -142,6 +197,7 @@ export async function renderReviews(container, api) {
     if (question.relearning) meta.append(element('span', 'Again: you missed this earlier', 'chip warn'));
     card.append(meta);
     if (question.concept) card.append(inlineMath(question.concept, 'h2'));     // titles can carry maths, such as $K_c$
+    if (question.variant) card.append(element('p', 'A new version of this question, with new numbers, so you practise the method rather than remember the answer. Written by AI.', 'muted'));
     const prompt = element('div'); mathText(prompt, question.question); card.append(prompt);
 
     const form = element('form', undefined, 'stack');
@@ -243,10 +299,13 @@ export async function renderReviews(container, api) {
         dueList = dueList.filter(q => q.id !== question.id);
         if (result.relearn && back === 'due') dueList.splice(Math.min(3, dueList.length), 0, { ...question, relearning: true });
         const outcome = result.outcome === 'correct' ? ['Correct', 'ok'] : result.outcome === 'incorrect' ? ['Not quite', 'bad'] : ['Not independently marked', 'warn'];
-        const verdict = element('p'); verdict.append(element('span', outcome[0], `chip ${outcome[1]}`), element('span', ' AI judgement, advisory only.', 'muted'));
+        const verdict = element('p'); verdict.append(element('span', outcome[0], `chip ${outcome[1]}`),
+          element('span', result.choice_result ? ' Marked against the answer key.' : ' AI judgement, advisory only.', 'muted'));
         feedback.append(verdict);
         if (result.outcome === 'confidence-based') feedback.append(element('p', 'Scheduled using your confidence.', 'muted'));
-        if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(aiBox(explanation)); }
+        // Multiple choice: every option with why it is right or wrong, instead of a paragraph of AI feedback.
+        if (result.choice_result) feedback.append(choiceResultView(result.choice_result));
+        else if (result.feedback) { const explanation = element('div'); mathText(explanation, result.feedback); feedback.append(aiBox(explanation)); }
         if (result.relearn && back === 'due') feedback.append(element('p', 'You will get this one again in a few questions, after the answer above has had a moment to settle.', 'muted'));
         if (result.confident_miss) feedback.append(element('p', 'You were confident about this one. Misses like this are worth a careful look at the answer: they are often the easiest to fix.', 'muted'));
         feedback.append(element('p', `Next review ${result.next_due || 'not provided'}, planned from how well you recalled it${result.relearn ? '' : ' and when your assessments are'}.`, 'muted'));

@@ -130,3 +130,9 @@ def test_a_lesson_answer_with_a_graph_is_checked_with_its_image():
 def test_answer_forms_for_lesson_wording():
     forms = client(Images()).post("/answer-forms", json={"question": "Sketch the graph of y = x^2 on the axes."}).json()["answer_forms"]
     assert [f["kind"] for f in forms] == ["graph", "text"]
+
+
+def test_drawing_references_are_found_when_a_json_writer_escapes_the_slashes():
+    escaped = '{"parts":{"(a)":"![Drawing 1](\/answer-images\/42)","(b)":"![Graph 1](\/answer-images\/43)"}}'
+    assert answer_media.refs(escaped) == [("Drawing 1", 42), ("Graph 1", 43)]
+    assert "answer-images" not in answer_media.for_marker(escaped)

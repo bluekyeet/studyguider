@@ -15,6 +15,7 @@ from styles import style_for_topic
 from reviews import SWITCHED_OFF, is_admin_question
 import clock
 import review_plan
+import curriculum
 
 
 WARNING = "AI review is advisory, not verification; check the original sources."
@@ -47,6 +48,7 @@ def lesson_brief(db, topic_id, phase=None):
     phase = phase or found_phase
     outcomes = [{"code": r[0], "title": r[1][:500]} for r in db.execute("""SELECT o.code, o.title FROM topic_outcomes x
         JOIN outcomes o ON o.id = x.outcome_id WHERE x.topic_id = %s ORDER BY o.position, o.id""", (topic_id,)).fetchall()]
+    asked = curriculum.question_format(db, subject_id) if subject_id else "written"
     others = [r[0] for r in db.execute("""SELECT t.name FROM topics t JOIN courses c ON c.topic_id = t.id AND c.active
         WHERE t.subject_id = %s AND t.id <> %s ORDER BY t.position, t.id LIMIT 8""", (subject_id, topic_id)).fetchall()] if subject_id else []
     assessment = None
@@ -62,6 +64,17 @@ def lesson_brief(db, topic_id, phase=None):
         level_instruction = ("Write Your Turn questions at the level the paper's learning outcomes and its assessment type demand "
                              "(an exam or test question, a lab or practical task, or a step towards an assignment, report or presentation, "
                              "with its marking criteria as a checklist). Name the learning outcome each question practises.")
+        if asked in ("multiple_choice", "mixed"):
+            # Recall builds memory better than recognition (research A.2), so Your Turn stays free recall; the multiple-choice
+            # questions come after it, as practice in the form the assessment uses.
+            level_instruction += (
+                " This paper is assessed " + ("by" if asked == "multiple_choice" else "partly by") + " multiple choice. Keep every "
+                "Your Turn question a written, free-recall question. After the last Your Turn and before the summary, add a section "
+                "'Exam-style check' with two multiple-choice questions in the paper's style, each as a fenced block that starts "
+                "with ```choice on its own line: the stem, then one option per line as 'A. text', with ' *' after the correct "
+                "option, then a line '---', then one line per option 'A: why it is right or wrong', naming the mistake each "
+                "wrong option reflects, then ``` to close. Make the wrong options plausible, similar in length to the right one, "
+                "and never 'all of the above'.")
     else:
         level_instruction = ("Write Your Turn questions the way NZQA assesses: multi-part, building from Achieved evidence (one correct "
                              "statement, step or value) to Merit (linked cause and effect, one error at most in a correct method) to "

@@ -70,6 +70,8 @@ class DB:
             return Result()     # no restored maths for this question
         if "INSERT INTO review_questions" in sql:
             return Result()
+        if sql.startswith("SELECT 1 FROM exam_answer_scans") or "q.choice_key, q.answer_forms" in sql or "q.answer_forms, q.parts, q.question_text, q.choice_key" in sql:
+            return Result()     # no scan, no multiple-choice answer key, nothing extra for the marker
         self.queries.append((sql, params))
         if "UPDATE markings SET answer_text" in sql:
             return Result()
@@ -82,7 +84,7 @@ class DB:
             return Result(self.row)
         if "marking_overrides" in sql and "FROM exam_items i JOIN exam_questions q" in sql:
             first = self.markings.get((params[0], 2, None, "first"))
-            return Result([(2, 15, "1(a)", first, None)])
+            return Result([(2, 15, "1(a)", None, first, None)])
         if "SELECT result FROM markings" in sql:
             kind = "second" if "kind = 'second'" in sql else "first"
             found = self.markings.get((params[0], params[1], params[2], kind))
@@ -414,3 +416,37 @@ def test_an_answer_with_a_drawing_is_marked_with_the_image_and_drawing_guidance(
     assert "[Drawing 1: see image panel 1]" in prompt and "/answer-images/" not in prompt
     assert "Judge a drawing from the image" in prompt
     assert Image.open(io.BytesIO(seen[0][3])).format == "PNG"
+
+
+@pytest.mark.parametrize("answer", [
+    '{"parts": {"(a)": "![Drawing 1](/answer-images/5)", "(b)": "Weight acts down."}}',
+    # The Android app's JSON writer (org.json) escapes every "/" in the parts document.
+    '{"parts":{"(a)":"![Drawing 1](\/answer-images\/5)","(b)":"Weight acts down."}}',
+])
+def test_a_drawing_in_one_part_reaches_both_markers_however_the_parts_are_encoded(answer):
+    import io
+    from PIL import Image
+    picture = io.BytesIO(); Image.new("RGB", (60, 40), "white").save(picture, format="PNG")
+
+    class DrawingDB(DB):
+        def execute(self, sql, params=()):
+            if "FROM answer_images WHERE id = ANY" in sql:
+                assert params[0] == [5]
+                return Result([(5, picture.getvalue())])
+            return super().execute(sql, params)
+
+    db = DrawingDB((answer,) + ROW[1:])
+    seen = []
+
+    def vision(model, prompt, image, task):
+        seen.append((task, prompt, image))
+        return marking_json()
+
+    app = FastAPI()
+    app.include_router(marking_router(lambda: db, lambda: None, lambda *a, **k: pytest.fail("a drawing must not be marked as text only"), vision))
+    response = TestClient(app).post("/exams/1/answers/2/feedback", json={})
+    assert response.status_code == 200, response.text
+    assert [task for task, _, _ in seen] == ["exam-mark", "exam-second-mark"]
+    for _, prompt, image in seen:
+        assert "[Drawing 1: see image panel 1]" in prompt and "answer-images" not in prompt
+        assert Image.open(io.BytesIO(image)).format == "PNG"

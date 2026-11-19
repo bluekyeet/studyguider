@@ -2,6 +2,9 @@
 import base64
 import logging
 import os
+import threading
+import time
+from contextlib import contextmanager
 
 import psycopg
 import userspace
@@ -15,6 +18,82 @@ class DebugRequest(BaseModel):
     model: str = Field(pattern=r"^(education|education-reviewer)$")
     prompt: str = Field(min_length=1, max_length=20000)
     image_base64: str | None = Field(default=None, max_length=14_000_000)
+
+
+# ---- how many background model calls may run at once --------------------------------------------------------------------
+# Background work that calls the model in parallel (restoring maths and OCR text from page images, splitting questions for
+# rapid practice) shares one limit. An administrator sets it in Settings (stored in public.server_settings); until then
+# STUDYGUIDER_MODEL_WORKERS gives the starting value, and without either it is DEFAULT_MODEL_WORKERS. The limit is read again
+# before every call, so a change applies to the next call, with no restart. Past-exam imports and fresh review versions are
+# always one call at a time and do not use it.
+DEFAULT_MODEL_WORKERS = 2
+MAX_MODEL_WORKERS = 8
+_settings_reader = None          # set by app.py: returns {key: value} from public.server_settings
+_cached = (0.0, None)
+_slots = threading.Condition()
+_busy = 0
+
+
+def create_server_settings(db):
+    db.execute("CREATE TABLE IF NOT EXISTS server_settings (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())")
+
+
+def set_settings_reader(reader):
+    global _settings_reader, _cached
+    _settings_reader, _cached = reader, (0.0, None)
+
+
+def forget_cached_settings():
+    global _cached
+    _cached = (0.0, None)
+
+
+def environment_workers():
+    try:
+        value = int(os.environ.get("STUDYGUIDER_MODEL_WORKERS", "0"))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def model_workers_setting():
+    """(limit, where it came from: 'administrator', 'environment' or 'default')."""
+    global _cached
+    stamp, stored = _cached
+    if _settings_reader is not None and (stamp == 0.0 or time.monotonic() - stamp > 15):
+        try:
+            stored = _settings_reader().get("model_workers")
+        except Exception:       # noqa: BLE001 - the settings table being unreachable must never stop background work
+            stored = None
+        _cached = (time.monotonic(), stored)
+    if stored is not None and str(stored).isdigit() and 1 <= int(stored) <= MAX_MODEL_WORKERS:
+        return int(stored), "administrator"
+    environment = environment_workers()
+    if environment:
+        return min(environment, MAX_MODEL_WORKERS), "environment"
+    return DEFAULT_MODEL_WORKERS, "default"
+
+
+def model_workers(default=None):
+    """The current limit, never more than a caller's own maximum."""
+    limit = model_workers_setting()[0]
+    return max(1, min(default, limit)) if default else limit
+
+
+@contextmanager
+def model_slot():
+    """Hold one of the shared background slots for the length of one model call; waits while the limit is reached."""
+    global _busy
+    with _slots:
+        while _busy >= model_workers():
+            _slots.wait(timeout=1)       # wakes on a free slot, or after a second to pick up a changed limit
+        _busy += 1
+    try:
+        yield
+    finally:
+        with _slots:
+            _busy -= 1
+            _slots.notify_all()
 
 
 def create_usage_tables(db):

@@ -42,3 +42,15 @@ class Packs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_a_pack_question_that_asks_for_a_drawing_gets_one_whatever_the_model_said():
+    import json
+    from revision import parse_pack
+    reply = json.dumps({"sections": [{"concept": "Lewis structures", "why": "Left blank.", "teaching": "Count the valence electrons first. " * 5,
+        "questions": [{"question": "State the total number of valence electrons in SF4.", "expected_answer": "34 valence electrons.", "answer_forms": [{"kind": "text"}]},
+                      {"question": "Draw the Lewis structure, name the shape, and determine the polarity of $\text{SF}_4$.",
+                       "expected_answer": "Four S-F bonds and one lone pair on S: see-saw, polar.", "answer_forms": [{"kind": "text"}]}]}]})
+    questions = parse_pack(reply)[0]["questions"]
+    assert [f["kind"] for f in questions[0]["answer_forms"]] == ["text"]
+    assert [f["kind"] for f in questions[1]["answer_forms"]] == ["drawing", "text"]

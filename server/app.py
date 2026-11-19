@@ -29,11 +29,13 @@ from reviews import create_review_tables, review_router
 from lessons import create_lesson_tables, lesson_router
 from marking import create_marking_tables, marking_router
 from answer_media import create_answer_media_tables, media_router
+from exam_import import create_exam_import_tables, exam_import_router
 from rapid import create_rapid_tables, rapid_router
 from revision import create_revision_tables, revision_router
 from exams import create_exam_tables, exam_router
 from parsing import create_parsing_tables, parsing_router
 from usage import create_usage_tables, usage_router, log_run
+import usage
 from diagrams import create_diagram_tables, diagram_router
 from scheduler import create_scheduler_tables, start_scheduler, scheduler_router
 import worker
@@ -137,6 +139,7 @@ def init_schema(db):
     create_game_tables(db)
     create_hint_tables(db)
     create_answer_media_tables(db)
+    create_exam_import_tables(db)
     # The global library (library_global.py): rows an account holds as read-only copies carry the library's id.
     for table in ("subjects", "topics", "exam_questions"):
         db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
@@ -170,6 +173,7 @@ async def lifespan(app):
         create_account_tables(db)
         migrate_legacy(db, hasher)
         create_public_game_tables(db)       # after the migration, which moves every other table in `public` into the first account
+        usage.create_server_settings(db)    # server-wide settings an administrator changes (the background model-call limit)
     try:
         move_legacy_files(userspace.upload_base())
     except OSError:
@@ -423,6 +427,8 @@ app.include_router(game_router(connect, accounts_db, authorised))
 app.include_router(hint_router(connect, authorised, model_reply))
 app.include_router(diagram_router(connect, authorised, model_reply, model_reply_vision))
 app.include_router(media_router(connect, authorised, model_reply, model_reply_vision))
+app.include_router(exam_import_router(connect, authorised, lambda *args, **kwargs: model_reply_reliable(*args, **kwargs),
+                                      lambda *args: _store_resource(*args)))
 
 
 @app.get("/health")
@@ -1518,6 +1524,11 @@ def prepare_daily_reviews():
     route = next(route for route in app.routes if route.path == "/review-questions/due" and "GET" in route.methods)
     route.endpoint(clock.today())
     replan_daily()
+    try:
+        import variants
+        variants.write_versions(connect, model_reply_reliable)     # new numbers for procedure questions coming back soon
+    except Exception:
+        log.exception("Could not write fresh versions of review questions")
 
 
 def replan_daily():
@@ -1531,8 +1542,49 @@ def replan_daily():
         map_ncea_standards(db)
         review_plan.replan(db, clock.today())
         review_plan.refresh_topics(db)
+        import answer_media
+        answer_media.remove_unused(db)      # drawings left behind by edits (each edit stores a new picture)
         db.execute("""INSERT INTO settings (key, value) VALUES ('replanned_on', %s)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""", (today,))
+
+
+def _server_settings():
+    with connect_account() as db:
+        return dict(db.execute("SELECT key, value FROM server_settings").fetchall())
+
+
+usage.set_settings_reader(lambda: _server_settings())
+
+
+class ServerSettings(BaseModel):
+    model_workers: int | None = Field(default=None, ge=1, le=usage.MAX_MODEL_WORKERS)   # None goes back to the starting value
+
+
+def _server_settings_view():
+    limit, source = usage.model_workers_setting()
+    return {"model_workers": limit, "source": source, "environment_value": usage.environment_workers(),
+            "default": usage.DEFAULT_MODEL_WORKERS, "max": usage.MAX_MODEL_WORKERS,
+            "note": "Applies from the next background model call; no restart is needed. It limits how many calls restoring maths "
+                    "from page images and splitting questions for rapid practice make at once, across all accounts. Past-exam "
+                    "imports and fresh review questions always make one call at a time."}
+
+
+@app.get("/admin/server-settings", dependencies=[Depends(admin_only)])
+def get_server_settings():
+    usage.forget_cached_settings()
+    return _server_settings_view()
+
+
+@app.put("/admin/server-settings", dependencies=[Depends(admin_only)])
+def put_server_settings(body: ServerSettings):
+    with connect_account() as db:
+        if body.model_workers is None:
+            db.execute("DELETE FROM server_settings WHERE key = 'model_workers'")
+        else:
+            db.execute("""INSERT INTO server_settings (key, value) VALUES ('model_workers', %s)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""", (str(body.model_workers),))
+    usage.forget_cached_settings()
+    return _server_settings_view()
 
 
 class DevClock(BaseModel):

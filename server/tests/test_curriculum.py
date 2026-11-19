@@ -142,3 +142,20 @@ def test_assessment_kinds_and_validation():
     assert curriculum.Assessment(title="Quiz", kind="weird").kind == "other"
     with pytest.raises(ValueError):
         curriculum.Assessment(title="Quiz", result_pct=120)
+
+
+def test_ncea_exam_dates_come_from_the_nzqa_timetable_by_subject_and_level():
+    from curriculum import exam_session
+    assert exam_session("Chemistry", 3, 2026) == {"date": "2026-11-20", "session": "2:00 pm", "subject": "L3 Chemistry"}
+    assert exam_session("Mathematics", 2, 2026)["subject"] == "L2 Mathematics and Statistics"
+    assert exam_session("Physics", 1, 2026)["subject"] == "L1 Physics and Earth Space Science"
+    assert exam_session("Woodwork", 2, 2026) is None          # not timetabled: entered by hand
+    assert exam_session("Chemistry", 3, 2031) is None         # a year whose timetable is not known
+    assert exam_session("Chemistry", 7, 2026) is None
+
+
+def test_an_assessment_says_when_it_is_multiple_choice():
+    from curriculum import guess_format
+    assert guess_format("Mid-semester test (multiple choice)") == "multiple_choice"
+    assert guess_format("Final exam: MCQ and short answer") == "mixed"
+    assert guess_format("Assignment 1") == ""

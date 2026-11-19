@@ -15,7 +15,7 @@ export async function renderSettings(root, api) {
   left.append(el('h1', 'Settings'), el('p', 'Choose what you study and how it is taught.'));
   head.append(left); root.append(head);
   // Cards are placed in order up front, then each loads on its own so one failure does not hide the others.
-  await Promise.all([appearance, studyTopics, teaching, ...(session.user?.is_admin ? [usage, advanced] : [])].map(async build => {
+  await Promise.all([appearance, studyTopics, teaching, ...(session.user?.is_admin ? [usage, backgroundCalls, advanced] : [])].map(async build => {
     const card = el('section', '', 'card stack'); root.append(card);
     try { await build(card, api); } catch (error) { card.append(el('p', error.message, 'error')); }
   }));
@@ -213,6 +213,35 @@ async function usage(card, api) {
   }
   days.onchange = () => load().catch(error => out.replaceChildren(el('p', error.message, 'error')));
   await load();
+}
+
+// How many background model calls may run at once (restoring maths from page images, splitting questions for rapid practice).
+async function backgroundCalls(card, api) {
+  card.append(el('h2', 'Background AI calls'));
+  const view = await api('/admin/server-settings');
+  const number = el('input'); number.type = 'number'; number.min = '1'; number.max = String(view.max); number.value = String(view.model_workers);
+  number.setAttribute('aria-label', 'Background AI calls at once');
+  const label = el('label', 'At most this many at once', 'stack'); label.append(number);
+  const save = el('button', 'Save', 'primary'); save.type = 'button';
+  const reset = el('button', 'Use the starting value'); reset.type = 'button';
+  const where = el('p', '', 'muted'); const note = el('p', '', 'state'); note.setAttribute('role', 'status');
+  const show = v => {
+    number.value = String(v.model_workers);
+    where.textContent = v.source === 'administrator' ? `Set here. The starting value is ${v.environment_value ?? v.default} (${v.environment_value ? 'from STUDYGUIDER_MODEL_WORKERS' : 'the built-in default'}).`
+      : v.source === 'environment' ? 'From STUDYGUIDER_MODEL_WORKERS on the server, until you set it here.' : `The built-in default (${v.default}), until you set it here.`;
+    reset.hidden = v.source !== 'administrator';
+  };
+  const send = async value => {
+    save.disabled = reset.disabled = true;
+    try { show(await api('/admin/server-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_workers: value }) })); note.textContent = 'Saved. It applies from the next background call; no restart needed.'; }
+    catch (error) { note.textContent = error.message || 'Could not save.'; }
+    finally { save.disabled = reset.disabled = false; }
+  };
+  save.onclick = () => { const value = Number(number.value); if (Number.isInteger(value) && value >= 1 && value <= view.max) send(value); else note.textContent = `Choose a whole number from 1 to ${view.max}.`; };
+  reset.onclick = () => send(null);
+  const row = el('div', '', 'toolbar'); row.append(label, save, reset);
+  card.append(el('p', view.note, 'muted'), row, where, note);
+  show(view);
 }
 
 async function advanced(card) {

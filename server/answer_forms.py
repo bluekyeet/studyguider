@@ -10,10 +10,13 @@ A form is a small dict:
   {"kind": "table", "columns": [...], "rows": [[...], ...]}     blank cells are the ones to fill; no columns = build your own
   {"kind": "drawing", "background": "blank" | "grid" | "figure", "purpose": "lewis" | "structure" | "diagram" | "label" | ""}
   {"kind": "graph", "x_label": "...", "y_label": "...", "x_range": [lo, hi] | None, "y_range": [lo, hi] | None}
+  {"kind": "choice", "options": [{"key": "A", "text": "..."}, ...], "multiple": bool, ...}     multiple choice (choice.py)
 """
 import re
 
-KINDS = ("text", "table", "drawing", "graph")
+import choice
+
+KINDS = ("text", "table", "drawing", "graph", "choice")
 PALETTES = ("chemistry", "maths", "physics", "general")
 BACKGROUNDS = ("blank", "grid", "figure")
 PURPOSES = ("lewis", "structure", "diagram", "label", "")
@@ -155,6 +158,10 @@ def normalise(value, subject="", text=""):
             rows = [[_text(c, 200) if isinstance(c, str) else "" for c in row][:len(columns)] for row in item.get("rows") or []
                     if isinstance(row, list)][:30] if columns else []
             forms.append({"kind": "table", "columns": columns, "rows": [(row + [""] * len(columns))[:len(columns)] for row in rows]})
+        elif kind == "choice":
+            form = choice.normalise_form(item)
+            if form:
+                forms.append(choice.public(form))
         elif kind == "drawing":
             forms.append({"kind": "drawing", "background": item.get("background") if item.get("background") in BACKGROUNDS else "blank",
                           "purpose": item.get("purpose") if item.get("purpose") in PURPOSES else ""})
@@ -166,6 +173,42 @@ def normalise(value, subject="", text=""):
     if not any(f["kind"] == "text" for f in forms):
         forms.append({"kind": "text", "palette": palette_for(subject, text)})
     return forms
+
+
+def resolve(value, subject="", text="", has_figure=False):
+    """The forms a question gets: those the model or importer stated, plus every form the wording itself asks for ("Draw the
+    Lewis structure", "Sketch", "Complete the table", "Plot", "Label the diagram") that they left out. A stated form can add to
+    what the wording asks for but never takes away from it. A multiple-choice question is answered by its pick, so it keeps
+    exactly its stated forms."""
+    stated = normalise(value, subject, text)
+    required = infer(text, subject, has_figure)
+    if not stated:
+        return required
+    if any(f["kind"] == "choice" for f in stated):
+        return stated
+    forms = [f for f in stated if f["kind"] != "text"]
+    for form in required:
+        if form["kind"] != "text" and not any(f["kind"] == form["kind"] for f in forms):
+            forms.append(form)
+    return forms[:3] + [next(f for f in stated if f["kind"] == "text")]
+
+
+def with_choice(value, key_value, subject="", text="", source="ai"):
+    """Forms and answer key for a generated question that may be multiple choice: (forms, key, question text). A choice form
+    without a usable key cannot be marked, so its options are written into the question and it becomes a written question."""
+    text = choice.plain_code(text or "")
+    raw = next((f for f in (value if isinstance(value, list) else [value] if isinstance(value, dict) else [])
+                if isinstance(f, dict) and f.get("kind") == "choice"), None)
+    form = choice.normalise_form(raw) if raw else None
+    key = choice.normalise_key(key_value, form, source) if form else None
+    rest = [f for f in value if f is not raw] if isinstance(value, list) else None
+    forms = resolve(rest, subject, text)
+    forms = [f for f in forms if f["kind"] != "choice"]
+    if form and key:
+        return [choice.public(form)] + [f for f in forms if f["kind"] == "text"], key, text
+    if form:
+        text = text.rstrip() + "\n\n" + "\n".join(f"{o['key']}. {o['text']}" for o in form["options"] if o["text"])
+    return forms, None, text
 
 
 def answerable(parts):
@@ -191,11 +234,10 @@ def _segment(question_text, label):
 
 def for_question(question_text, subject="", parts=None, stored=None):
     """Forms for a whole question: {"": forms} for the question itself plus {label: forms} for each answerable part.
-    Stored forms (recorded when the question was made) win; anything missing is inferred."""
+    Stored forms (recorded when the question was made) are kept, with any form the wording requires added (resolve)."""
     stored = stored if isinstance(stored, dict) else {"": stored} if isinstance(stored, list) else {}
     parts = [p for p in (parts or []) if isinstance(p, dict)]
-    result = {"": normalise(stored.get(""), subject, question_text)
-              or infer(question_text, subject, any(p.get("diagrams") for p in parts))}
+    result = {"": resolve(stored.get(""), subject, question_text, any(p.get("diagrams") for p in parts))}
     by_label = {str(p.get("label") or ""): p for p in parts}
     for label in answerable(parts):
         part = by_label[label]
@@ -203,7 +245,7 @@ def for_question(question_text, subject="", parts=None, stored=None):
         segment = _segment(question_text, label)
         if len(segment) > len(wording):
             wording = segment
-        result[label] = normalise(stored.get(label), subject, wording) or infer(wording, subject, bool(part.get("diagrams")))
+        result[label] = resolve(stored.get(label), subject, wording, bool(part.get("diagrams")))
     return result
 
 
@@ -214,6 +256,8 @@ def merged(by_label):
         for form in label_forms or []:
             if form["kind"] != "text" and not any(f["kind"] == form["kind"] for f in forms):
                 forms.append(form)
+    if any(f["kind"] == "choice" for f in forms):      # a choice is answered on its own; drawing beside it makes no sense
+        forms = [f for f in forms if f["kind"] == "choice"]
     text = next((f for fs in by_label.values() for f in fs or [] if f["kind"] == "text"), {"kind": "text", "palette": "general"})
     return forms[:3] + [text]
 

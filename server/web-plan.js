@@ -27,6 +27,8 @@ const INSTITUTIONS = [['nzqa', 'NCEA (school)'], ['aut', 'AUT'], ['uoa', 'Univer
 const KINDS = [['exam', 'Exam'], ['test', 'Test'], ['assignment', 'Assignment'], ['lab', 'Lab'], ['project', 'Project'], ['presentation', 'Presentation'],
   ['portfolio', 'Portfolio'], ['practical', 'Practical'], ['quiz', 'Quiz'], ['internal', 'NCEA internal'], ['external_exam', 'NCEA external exam'], ['other', 'Other']];
 const GOALS = [['long_term', 'Keep it long term'], ['foundation', 'Later papers build on it'], ['assessment', 'Only for its assessments']];
+// How a test or exam is answered; practice questions follow it (multiple choice only where the assessment uses it).
+const FORMATS = [['', 'Not known'], ['written', 'Written answers'], ['multiple_choice', 'Multiple choice'], ['mixed', 'Multiple choice and written']];
 const SCALES = [['ncea', 'NCEA (N/A/M/E)'], ['aut9', 'AUT (A+ to D)'], ['uoa9', 'University of Auckland (A+ to D-)'], ['percent', 'Percentage']];
 
 export async function renderPlan(root, api) {
@@ -249,7 +251,7 @@ function assessmentTable(api, subject) {
     const weight = input('number', a.weight_pct ?? '', { min: 0, max: 100, step: 0.5 }); weight.setAttribute('aria-label', `Weight of ${a.title}`);
     const mark = input('number', a.result_pct ?? '', { min: 0, max: 100, step: 0.5, placeholder: 'Not back yet' }); mark.setAttribute('aria-label', `Your mark for ${a.title}`);
     const name = el('div'); name.append(el('strong', a.title));
-    const tags = [KINDS.find(k => k[0] === a.kind)?.[1], a.must_pass ? 'Must pass' : '', a.outcome_codes.length ? a.outcome_codes.join(', ') : '', a.credits ? `${a.credits} credits` : ''].filter(Boolean);
+    const tags = [KINDS.find(k => k[0] === a.kind)?.[1], a.question_format && a.question_format !== 'written' ? FORMATS.find(f => f[0] === a.question_format)?.[1] : '', a.must_pass ? 'Must pass' : '', a.outcome_codes.length ? a.outcome_codes.join(', ') : '', a.credits ? `${a.credits} credits` : ''].filter(Boolean);
     name.append(el('div', tags.join(' · '), 'muted'));
     const note = status(); const remove = button('Remove', 'small danger');
     const save = () => guard(date, note, () => api(`/assessments/${a.id}`, { method: 'PUT', ...json({
@@ -312,8 +314,21 @@ function addStandard(api, subject) {
       due_date: date.value || null, credits: credits.value === '' ? null : Number(credits.value), standard_number: Number(number.value), outcome_codes: [code] }) });
     refresh();
   }); };
-  const wrap = el('details'); wrap.append(el('summary', 'Add a standard and its assessment date'), form, note,
-    el('p', 'NCEA 2026 external exams run 10 November to 4 December; check your own timetable for each exam’s date.', 'muted'));
+  const timetable = el('p', 'External exams with no date get this subject’s date from the NZQA timetable when it is known.', 'muted');
+  const wrap = el('details'); wrap.append(el('summary', 'Add a standard and its assessment date'), form, note, timetable);
+  // The subject's exam day in NZQA's published timetable, and a button to give it to the external standards still without a date.
+  api(`/subjects/${subject.subject_id}/ncea-exam`).then(found => {
+    if (!found.exam) { timetable.textContent = `${found.note} NCEA ${found.year} external exams run from mid November to early December.`; return; }
+    const day = new Date(`${found.exam.date}T12:00:00`).toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    timetable.replaceChildren(`NZQA timetable: ${found.exam.subject} is on ${day}, ${found.exam.session}. `);
+    const source = el('a', 'Source'); source.href = found.source; source.target = '_blank'; source.rel = 'noopener'; timetable.append(source, '. ');
+    if (found.undated_external.length) {
+      const use = el('button', `Use this date for ${found.undated_external.length} external standard${found.undated_external.length === 1 ? '' : 's'} without one`, 'small');
+      use.type = 'button';
+      use.onclick = () => guard(use, note, async () => { await api(`/subjects/${subject.subject_id}/ncea-exam`, { method: 'POST' }); refresh(); });
+      timetable.append(use);
+    }
+  }).catch(() => {});
   return wrap;
 }
 
@@ -404,10 +419,11 @@ function draftEditor(api, programme, calendars, draft) {
     const w = input('number', a.weight_pct ?? '', { min: 0, max: 100, step: 0.5 }); const d = input('date', a.due_date || '');
     const los = input('text', (a.outcome_codes || []).join(', '), { placeholder: 'LO1, LO2' });
     const must = input('checkbox'); must.checked = !!a.must_pass; const mustLabel = el('label', '', 'toolbar'); mustLabel.append(must, el('span', 'Must pass'));
+    const f = select(FORMATS, a.question_format || '');
     const x = button('Remove', 'small'); x.onclick = () => row.remove();
-    row.append(field('Assessment', t), field('Kind', k), field('Weight %', w), field('Date', d), field('Outcomes', los), mustLabel, x);
+    row.append(field('Assessment', t), field('Kind', k), field('Weight %', w), field('Date', d), field('Outcomes', los), field('Questions', f), mustLabel, x);
     row.read = () => ({ title: t.value.trim(), kind: k.value, weight_pct: w.value === '' ? null : Number(w.value), due_date: d.value || null,
-      outcome_codes: los.value.split(/[,\s]+/).filter(Boolean), must_pass: must.checked });
+      outcome_codes: los.value.split(/[,\s]+/).filter(Boolean), must_pass: must.checked, question_format: f.value });
     return row;
   };
   for (const a of draft.assessments || []) assessments.append(assessmentRow(a));

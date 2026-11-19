@@ -2,7 +2,7 @@
 // A pack is a short re-teach plus questions for each weak concept. Answers are marked straight away (the daily review marking),
 // and a wrong answer comes back through spaced repetition. Everything in a pack is AI-written and unofficial.
 import { mathText, aiBox, countUp, hintButton } from './web-common.js';
-import { answerBox } from './web-answer.js';
+import { answerBox, choiceResultView } from './web-answer.js';
 import { el, json, field, option } from './web-exam-shared.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -40,14 +40,17 @@ export async function renderRevision(container, api, params) {
     topics.sort((a, b) => b.mistakes - a.mistakes || a.level - b.level || a.subject.localeCompare(b.subject) || a.topic.localeCompare(b.topic));
     // Level, then subject, narrow the list; each row hides itself rather than being rebuilt.
     const rows = [];
-    const applyFilter = () => { for (const [t, row] of rows) row.hidden = (levelSel.value !== '' && String(t.level) !== levelSel.value) || (subjectSel.value !== '' && t.subject !== subjectSel.value); };
+    // University papers (kind 'paper') share one "Papers" choice instead of an NCEA level, as in the other pickers.
+    const shelf = t => t.kind === 'paper' ? 'papers' : String(t.level);
+    const applyFilter = () => { for (const [t, row] of rows) row.hidden = (levelSel.value !== '' && shelf(t) !== levelSel.value) || (subjectSel.value !== '' && t.subject !== subjectSel.value); };
     const fillSubjects = () => {
       subjectSel.replaceChildren(); option(subjectSel, '', 'All subjects');
-      [...new Set(topics.filter(t => levelSel.value === '' || String(t.level) === levelSel.value).map(t => t.subject))].sort().forEach(name => option(subjectSel, name, name));
+      [...new Set(topics.filter(t => levelSel.value === '' || shelf(t) === levelSel.value).map(t => t.subject))].sort().forEach(name => option(subjectSel, name, name));
       applyFilter();
     };
-    option(levelSel, '', 'All levels');
-    [...new Set(topics.map(t => t.level))].sort((a, b) => a - b).forEach(n => option(levelSel, n, `NCEA Level ${n}`));
+    option(levelSel, '', 'All levels and papers');
+    [...new Set(topics.map(shelf))].sort((a, b) => (a === 'papers') - (b === 'papers') || a - b)
+      .forEach(n => option(levelSel, n, n === 'papers' ? 'Papers' : `NCEA Level ${n}`));
     levelSel.addEventListener('change', fillSubjects); subjectSel.addEventListener('change', applyFilter);
     fillSubjects();
     for (const t of topics) {
@@ -68,7 +71,7 @@ export async function renderRevision(container, api, params) {
         catch (err) { report(err); build.disabled = false; }
       };
       action.append(build);
-      const name = el('td'); name.append(el('strong', t.topic), ' ', el('span', `Level ${t.level} · ${t.subject}`, 'muted'));
+      const name = el('td'); name.append(el('strong', t.topic), ' ', el('span', t.kind === 'paper' ? `Paper · ${t.subject}` : `Level ${t.level} · ${t.subject}`, 'muted'));
       row.append(name, count, status, action);
       body.append(row);
     }
@@ -127,6 +130,7 @@ export async function renderRevision(container, api, params) {
           const full = await api(`/revision/packs/${id}`);
           const fresh = full.sections.flatMap(s => s.questions).find(x => x.id === q.id);
           show(fresh?.result || { correct: reply.correct, feedback: reply.feedback });
+          if (reply.choice_result) { out.querySelector('.ai-box')?.remove(); out.append(choiceResultView(reply.choice_result)); }
           progress.textContent = `${full.answered} of ${full.total} answered · ${full.correct} correct`;
           check.textContent = 'Try again';
         } catch (err) { report(err); }
