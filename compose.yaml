@@ -5,7 +5,7 @@ services:
       additional_contexts:
         katex_assets: ./android/app/src/main/assets/katex
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       DATABASE_URL: postgresql://studyguider:${POSTGRES_PASSWORD_URLENCODED:?Set POSTGRES_PASSWORD_URLENCODED in .env}@db:5432/studyguider
       UPLOAD_DIR: /data/uploads
