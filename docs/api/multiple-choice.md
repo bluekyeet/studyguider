@@ -121,6 +121,8 @@ is given the answer key for the choice parts.
 
 - `correct` is `true` only when exactly the right set was chosen. A review answer never gets part credit.
 - `explanation` says why that option is right or wrong; it can be empty for an option the paper's guide does not explain.
+- `key_note` (optional, additive) is a warning to show with the result: the two AI models disagreed on an AI-written key, or
+  the AI-written explanation's arithmetic is wrong and could not be corrected.
 - `key_source` is `"official"` (from the paper's own answer key or marking guide), `"ai"` (written by the AI, check it) or
   `"none"` (no key; then the answer is marked by the AI marker as before and `choice_result` is absent).
 

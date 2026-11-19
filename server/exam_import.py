@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 import answer_forms
 import choice
+import mathcheck
 import userspace
 from splitting import grounded
 
@@ -583,6 +584,7 @@ def write_guides(model_reply, questions, official, counter, progress=lambda text
             elif isinstance(reply.get("guide"), str) and len(reply["guide"].strip()) >= 20:
                 entry["guide"] = reply["guide"].strip()[:20000]
                 entry["source"] = "ai"
+    _correct_arithmetic(model_reply, todo, counter, progress)
     # A second model answers the questions whose key the first model wrote; a disagreement is flagged, never hidden.
     check = [(q, label, wording, form, entry) for q, label, wording, form, entry in todo if form and entry["key"] and entry["key"]["source"] == "ai"]
     for start in range(0, len(check), 10):
@@ -619,6 +621,63 @@ def write_guides(model_reply, questions, official, counter, progress=lambda text
             if index not in seen:
                 entry["key"]["checked"] = False
     return results
+
+
+def _written_by_ai(entry):
+    """The parts of a guide entry the model wrote: the guide when it is the AI's, and explanations of a key it wrote or explained."""
+    texts = [entry["guide"]] if entry["source"] == "ai" and entry["guide"] else []
+    key = entry.get("key")
+    if key and (key.get("source") == "ai" or key.get("explanations_by") == "ai"):
+        texts += list(key.get("explanations", {}).values())
+    return "\n".join(texts)
+
+
+def _correct_arithmetic(model_reply, todo, counter, progress=lambda text: None):
+    """Check the arithmetic of every AI-written guide and explanation in code (mathcheck.py). Wrong ones are sent back once in
+    one call; what is still wrong after that keeps a visible warning and a note on the import."""
+    wrong = [(item, mathcheck.arithmetic_problems(_written_by_ai(item[4]))) for item in todo]
+    wrong = [(item, found) for item, found in wrong if found]
+    if not wrong:
+        return
+    progress(f"Correcting arithmetic in {len(wrong)} AI-written answer{'s' if len(wrong) != 1 else ''}")
+    items = []
+    for index, ((question, label, wording, form, entry), found) in enumerate(wrong):
+        item = {"id": index, "question": "\n".join(t for t in (question["stem"], question["text"], f"({label}) {wording}" if label else "") if t)[:6000],
+                "marks": entry["marks"], "kind": "choice" if form else "written", "arithmetic_errors": mathcheck.describe(found),
+                "previous": {"guide": entry["guide"], **({"correct": entry["key"]["correct"], "explanations": entry["key"]["explanations"]} if entry.get("key") else {})}}
+        if form:
+            item["options"] = [{"key": o["key"], "text": o["text"][:600]} for o in form["options"]]
+            item["multiple"] = form["multiple"]
+            if entry.get("key"):
+                item["correct"] = entry["key"]["correct"]
+        items.append(item)
+    try:
+        data = _ask(model_reply, "education", WRITE_SYSTEM + " Each item lists arithmetic_errors found in your previous answer "
+                    "(previous): correct them and everything that depends on them, keeping what was right.", {"items": items},
+                    "exam-import-correct-arithmetic", counter)
+        replies = data.get("guides") if isinstance(data.get("guides"), list) else []
+    except (ValueError, HTTPException) as error:
+        log.warning("Exam import: correcting arithmetic failed: %s", getattr(error, "detail", error))
+        replies = []
+    for reply in replies:
+        if not isinstance(reply, dict) or not isinstance(reply.get("id"), int) or not 0 <= reply["id"] < len(wrong):
+            continue
+        (question, label, wording, form, entry), _ = wrong[reply["id"]]
+        if form and entry.get("key") and isinstance(reply.get("explanations"), dict):
+            fixed = choice.normalise_key({"correct": entry["key"]["correct"], "explanations": reply["explanations"]}, choice.public(form), entry["key"]["source"])
+            if fixed and not mathcheck.arithmetic_problems("\n".join(fixed["explanations"].values())):
+                entry["key"]["explanations"] = fixed["explanations"]
+        elif not form and entry["source"] == "ai" and isinstance(reply.get("guide"), str) and not mathcheck.arithmetic_problems(reply["guide"]):
+            entry["guide"] = reply["guide"].strip()[:20000]
+    for (question, label, wording, form, entry), _ in wrong:
+        still = mathcheck.arithmetic_problems(_written_by_ai(entry))
+        if still:
+            if entry["guide"]:
+                entry["guide"] = mathcheck.warning(still) + "\n" + entry["guide"]
+            elif entry.get("key"):
+                entry["key"]["note"] = (entry["key"].get("note", "") + " " + mathcheck.warning(still)).strip()
+            entry["note"] = (f"Question {question['number']}{' ' + label if label else ''}: the AI-written working has an arithmetic error "
+                             "that could not be corrected; it is marked on the guide.")
 
 
 def _marks_of(question, guides, rubric):

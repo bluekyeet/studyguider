@@ -9,6 +9,7 @@ import json
 import answer_forms
 import choice
 import curriculum
+import mathcheck
 import logging
 import userspace
 import re
@@ -237,6 +238,12 @@ def revision_router(connect, authorised, model_reply, search_resources):
             except Exception:
                 raise ValueError("The independent check of the questions could not run. Try again.") from None
             sections = drop_failed(sections, verdict)
+            for section in sections:
+                section["questions"] = [q for q in section["questions"] if not mathcheck.arithmetic_problems(q["expected_answer"])]
+                found = mathcheck.arithmetic_problems(section["teaching"])
+                if found:
+                    section["teaching"] = section["teaching"] + chr(10) + chr(10) + "> " + mathcheck.warning(found)
+            sections = [s for s in sections if len(s["questions"]) >= 2]
             if not sections:
                 raise ValueError("The independent check rejected every question. Try again.")
             standard = None

@@ -306,6 +306,7 @@ export function choiceResultView(result, label = '') {
     row.append(mark, body); list.append(row);
   }
   box.append(list);
+  if (result.key_note) box.append(el('p', result.key_note, 'choice-penalty'));     // AI models disagreed, or the working's arithmetic is wrong
   box.append(el('p', result.key_source === 'official' ? 'Marked against the answer key from the paper\u2019s own guide. Explanations may be AI-written.'
     : 'The answer key and explanations were written by AI, not taken from a marking guide. Check them if something looks wrong.', 'muted'));
   return box;

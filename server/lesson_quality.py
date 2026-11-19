@@ -4,6 +4,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import mathcheck
+
 
 # Coding-harness notes the model gateway sometimes writes into a lesson: "`git status` → skipped: [no repo context provided]".
 _CONTAMINATION = (
@@ -141,7 +143,8 @@ def review_and_revise(lesson, evidence, model_reply, progress=None):
             if not isinstance(verdict, dict) or type(verdict.get("pass")) is not bool or not isinstance(verdict.get("issues"), list) or any(not isinstance(i, str) for i in verdict["issues"]):
                 raise ValueError("Invalid reviewer verdict")
             last_review = json.dumps(verdict)
-            issues = contamination_issues(lesson) + formula_issues(lesson) + teaching_structure_issues(lesson)
+            # Arithmetic is checked in code (mathcheck.py), since a reviewing model can pass a wrong sum.
+            issues = contamination_issues(lesson) + formula_issues(lesson) + teaching_structure_issues(lesson) + mathcheck.issues(lesson)
             if issues:
                 verdict["pass"] = False
                 verdict["issues"] = list(dict.fromkeys(verdict["issues"] + issues))

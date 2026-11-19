@@ -198,7 +198,8 @@ def mark(form, key, answer, marks=1):
                         "explanation": key.get("explanations", {}).get(option["key"], "")})
     return {"chosen": picked, "correct_keys": correct, "options": options, "exact": exact,
             "marks_awarded": awarded, "marks_available": marks, "penalty_applied": penalty,
-            "net_marks": round(awarded - penalty, 2), "marked_by": "answer-key", "key_source": key.get("source", "ai")}
+            "net_marks": round(awarded - penalty, 2), "marked_by": "answer-key", "key_source": key.get("source", "ai"),
+            **({"key_note": key["note"]} if key.get("note") else {})}
 
 
 def _option_name(option):
@@ -229,6 +230,8 @@ def feedback(result):
         lines.append("You also needed: " + "; ".join(_option_name(o) for o in missed) + ".")
     if result["penalty_applied"]:
         lines.append(f"This paper takes {result['penalty_applied']:g} marks off for a wrong answer.")
+    if result.get("key_note"):
+        lines.append(result["key_note"])       # a disagreement between AI models, or working whose arithmetic is wrong
     if result.get("key_source") == "ai":
         lines.append("The answer key was written by AI, not taken from the paper's marking guide; check it if it looks wrong.")
     return "\n\n".join(lines)

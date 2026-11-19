@@ -19,6 +19,7 @@ from datetime import timedelta
 
 import answer_forms
 import clock
+import mathcheck
 import mathtext
 
 log = logging.getLogger("uvicorn.error")
@@ -85,7 +86,7 @@ def acceptable(original, new):
     old, fresh = _numbers(original), _numbers(question)
     if old and sorted(old) == sorted(fresh):
         return False        # nothing changed: the learner could answer from memory
-    return 0.4 <= len(question) / max(len(original), 1) <= 2.5
+    return 0.4 <= len(question) / max(len(original), 1) <= 2.5 and not mathcheck.arithmetic_problems(expected)
 
 
 def pending(db, limit=PER_TICK):

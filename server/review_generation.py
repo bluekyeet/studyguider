@@ -2,6 +2,7 @@
 import json
 
 import answer_forms
+import mathcheck
 import mathtext
 from reviews import is_admin_question
 
@@ -56,7 +57,7 @@ def review_generation_router(authorised, model_reply, search_resources, connect=
                 question = str(item.get("question", "")).strip()
                 if not question or len(question) > 5000:
                     raise ValueError
-                if is_admin_question(question, str(item.get("concept", ""))):
+                if is_admin_question(question, str(item.get("concept", ""))) or mathcheck.arithmetic_problems(str(item.get("expected_answer", ""))):
                     continue
                 questions.append({
                     "question": question,

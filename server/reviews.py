@@ -20,6 +20,7 @@ import review_plan
 import answer_forms
 import answer_media
 import choice
+import mathcheck
 import variants
 
 
@@ -236,7 +237,8 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                 except (ValueError, TypeError, AttributeError):
                     raise HTTPException(502, "Could not generate valid lesson reviews; please retry") from None
                 # Questions about credits or grading are dropped; if that is all there was, the lesson simply gets none.
-                for item in (i for i in items if not is_admin_question(i["question"], i["concept"])):
+                for item in (i for i in items if not is_admin_question(i["question"], i["concept"])
+                             and not mathcheck.arithmetic_problems(i["expected_answer"])):
                     db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, source, concept, material, answer_forms)
                         VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb)""",
                         (topic_id, mathtext.normalise_maths(item["question"]), clock.today(), mathtext.normalise_maths(item["expected_answer"]),

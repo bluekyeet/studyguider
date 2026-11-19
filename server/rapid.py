@@ -22,6 +22,7 @@ from exams import PRACTICE_SYSTEM, UNIVERSITY_PRACTICE_SYSTEM, parse_practice_pa
 import curriculum
 import answer_forms
 import choice
+import mathcheck
 from marking import insert_review
 
 log = logging.getLogger("uvicorn.error")
@@ -293,6 +294,8 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                 verdict = _clean_json(verdict)
             except Exception:
                 continue
+            if mathcheck.arithmetic_problems(item["rubric"]):
+                continue    # wrong arithmetic in the worked answer (checked in code): never served
             if not isinstance(verdict, dict) or verdict.get("pass") is not True:
                 continue    # a failed check drops the question; it is never served
             with connect() as db:

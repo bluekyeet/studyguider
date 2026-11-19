@@ -11,6 +11,7 @@ import answer_forms
 import choice
 import curriculum
 import json
+import mathcheck
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -333,6 +334,22 @@ def exam_router(connect, authorised, model_reply=None, search_resources=None, ad
                     import logging
                     logging.getLogger("uvicorn.error").warning("Practice paper rejected (%s); reply began: %r", problem, reply[:1500])
                     raise HTTPException(502, f"Practice generator returned an incomplete paper ({problem}); no exam saved. Try again.") from None
+            wrong = {i: mathcheck.arithmetic_problems(q["rubric"]) for i, q in enumerate(generated, 1)}
+            if any(wrong.values()):
+                # The worked answers are checked in code; wrong arithmetic goes back once for correction.
+                messages += [{"role": "assistant", "content": reply[:20000]},
+                             {"role": "user", "content": "Correct these arithmetic errors in the rubrics and return the whole JSON array again: "
+                              + " ".join(f"Question {i}: " + " ".join(mathcheck.describe(found)) for i, found in wrong.items() if found)}]
+                try:
+                    fixed = parse_practice_paper(model_reply("education", messages, task="exam-practice-correct"), body.question_count)
+                    if sum(map(len, (mathcheck.arithmetic_problems(q["rubric"]) for q in fixed))) < sum(map(len, wrong.values())):
+                        generated = fixed
+                except (ValueError, HTTPException):
+                    pass
+                for q in generated:
+                    still = mathcheck.arithmetic_problems(q["rubric"])
+                    if still:
+                        q["rubric"] = mathcheck.warning(still) + chr(10) + chr(10) + q["rubric"]
             with connect() as db:
                 ids = []
                 for i, q in enumerate(generated, 1):
