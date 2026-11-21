@@ -8,7 +8,7 @@ android {
     namespace = "nz.studyguider"
     compileSdk = 36
     defaultConfig {
-        applicationId = "nz.studyguider"; minSdk = 26; targetSdk = 36; versionCode = 111; versionName = "1.1.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        applicationId = "nz.studyguider"; minSdk = 26; targetSdk = 36; versionCode = 120; versionName = "1.2.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "TEST_SYSTEM", "false")
         buildConfigField("String", "TEST_SERVER", "\"\"")
         manifestPlaceholders["appLabel"] = "StudyGuider"
