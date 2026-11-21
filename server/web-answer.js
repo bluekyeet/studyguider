@@ -124,8 +124,6 @@ function richText(textarea, { palette = 'general', collapsed = false }) {
   add.onclick = addLine;
   line.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addLine(); } });
   equation.append(line, add, shown);
-  equation.hidden = current !== 'chemistry';
-  tabs.addEventListener('click', () => { equation.hidden = current !== 'chemistry'; });
 
   const preview = el('div', undefined, 'math-preview'); preview.hidden = true;
   let timer = null;
@@ -138,17 +136,23 @@ function richText(textarea, { palette = 'general', collapsed = false }) {
     }, 250);
   };
   textarea.addEventListener('input', render);
-  const hint = el('p', 'Maths goes between dollar signs, for example $v = f\\lambda$; the buttons add symbols for you.', 'muted');
-  if (collapsed) {
-    const toggle = btn('Σ Symbols', 'small quiet'); toggle.setAttribute('aria-expanded', 'false');
-    tools.hidden = hint.hidden = equation.hidden = true;
-    toggle.onclick = () => {
-      const open = toggle.getAttribute('aria-expanded') !== 'true';
-      toggle.setAttribute('aria-expanded', String(open));
-      tools.hidden = hint.hidden = !open; equation.hidden = !open || current !== 'chemistry';
-    };
-    wrap.append(textarea, toggle, tools, equation, hint, preview);
-  } else wrap.append(tools, equation, textarea, preview, hint);
+  const hint = el('p', 'Maths goes between dollar signs, like $v = f\\lambda$. The buttons add it for you.', 'muted');
+  // The symbols stay folded away until asked for; whether they were left open is remembered on this device.
+  let remembered = null; try { remembered = localStorage.getItem('sg:symbols'); } catch { /* not remembered */ }
+  const toggle = btn('Σ Symbols', 'small quiet'); toggle.setAttribute('aria-expanded', 'false');
+  const show = open => {
+    toggle.setAttribute('aria-expanded', String(open));
+    tools.hidden = hint.hidden = !open; equation.hidden = !open || current !== 'chemistry';
+  };
+  toggle.onclick = () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    show(open);
+    try { localStorage.setItem('sg:symbols', open ? 'open' : 'closed'); } catch { /* not remembered */ }
+  };
+  show(!collapsed && remembered === 'open');
+  tabs.addEventListener('click', () => show(toggle.getAttribute('aria-expanded') === 'true'));
+  wrap.append(textarea, preview, tools, equation, hint);
+  wrap.toggle = toggle;
   render();
   return wrap;
 }
@@ -688,6 +692,7 @@ export function answerBox({ api, forms = null, value = '', figure = null, collap
   const rebuild = (wanted, saved) => {
     palette = (wanted || []).find(f => f.kind === 'text')?.palette || palette;
     rich = richText(textarea, { palette, collapsed });
+    symbolsSlot.replaceChildren(rich.toggle);
     textBlock.node = el('div', undefined, 'answer-block text-block'); textBlock.node.append(rich);
     items = [textBlock]; blocks.replaceChildren(textBlock.node);
     const parsed = splitAnswer(saved);
@@ -711,10 +716,12 @@ export function answerBox({ api, forms = null, value = '', figure = null, collap
   };
 
   // "Add" lets the learner use any form the question did not ask for.
-  const adders = el('div', undefined, 'toolbar answer-add');
-  adders.append(el('span', 'Add to your answer:', 'muted'));
+  // One row of tools under the text: symbols, then a table, drawing or graph; callers add their own (photos, a hint).
+  const adders = el('div', undefined, 'answer-tools');
+  const symbolsSlot = el('span', undefined, 'answer-tool-slot');
+  adders.append(symbolsSlot);
   for (const [kind, text] of [['table', '+ Table'], ['drawing', '+ Drawing'], ['graph', '+ Graph']]) {
-    const add = btn(text, 'small');
+    const add = btn(text, 'small quiet answer-adder');
     add.onclick = () => {
       const item = makeAny(kind === 'drawing' ? { kind, background: figure ? 'figure' : 'blank' } : { kind }, null);
       place(item); emit();
@@ -747,6 +754,7 @@ export function answerBox({ api, forms = null, value = '', figure = null, collap
     },
     disabled: { set: on => { textarea.disabled = on; for (const item of items) if (item !== textBlock) item.disabled = on; for (const b of adders.querySelectorAll('button')) b.disabled = on; } },
     textarea: { get: () => textarea },
+    tools: { get: () => adders },
   });
   // Replace only the typed text, keeping tables and drawings (used when handwriting is read from a photo).
   box.setText = text => { textarea.value = text; textarea.dispatchEvent(new Event('input', { bubbles: true })); };

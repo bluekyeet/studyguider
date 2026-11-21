@@ -208,14 +208,14 @@ export async function renderReviews(container, api) {
     const answer = answerBox({ api, forms: question.answer_forms, value: draft.answer, maxLength: 50000 });
     answer.addEventListener('input', () => { container.dataset.dirty = String(!!answer.value.trim()); });
     answerLabel.append(element('span', 'Your answer', 'field-label'), answer);
-    const hint = element('div', undefined, 'toolbar'); hint.append(hintButton(api, { kind: 'review', ref: question.id, answer: () => answer.value }));
+    const hint = hintButton(api, { kind: 'review', ref: question.id, answer: () => answer.value });
     // Working done on paper: a photo (taken now, or from the gallery) is read into the box above, to be checked before it is submitted.
-    const photo = element('div', undefined, 'toolbar');
+    const photo = answer.tools;
     const scanned = (label, capture) => {
       const input = element('input'); input.type = 'file'; input.hidden = true; input.multiple = !capture;
       input.accept = capture ? 'image/*' : 'image/png,image/jpeg,application/pdf';
       if (capture) input.setAttribute('capture', 'environment');
-      const open = button(label, 'small'); open.onclick = () => input.click();
+      const open = button(label, 'small quiet'); open.onclick = () => input.click();
       input.addEventListener('change', async () => {
         const files = [...input.files]; input.value = '';
         if (!files.length || submitting || scanning) return;
@@ -232,7 +232,8 @@ export async function renderReviews(container, api) {
       });
       photo.append(open, input);
     };
-    scanned('Take a photo', true); scanned('Upload photos', false);
+    scanned('Photo', true); scanned('Upload', false);
+    photo.append(hint);
     const scale = element('fieldset', undefined, 'scale');
     scale.append(element('legend', 'How confident are you?'));
     const row = element('div', undefined, 'segmented');
@@ -241,6 +242,7 @@ export async function renderReviews(container, api) {
       const input = element('input'); input.type = 'radio'; input.name = 'confidence'; input.value = String(value); input.required = true;
       input.checked = draft.confidence === input.value;
       label.append(input, element('span', `${value} · ${CONFIDENCE[value - 1]}`));
+      label.title = CONFIDENCE[value - 1];
       row.append(label);
     }
     scale.append(row);
@@ -267,10 +269,10 @@ export async function renderReviews(container, api) {
       }).catch(() => {});
     }
     const submit = button('Submit answer', 'primary'); submit.type = 'submit';
-    const toolbar = element('div', undefined, 'toolbar'); toolbar.append(submit);
+    const toolbar = element('div', undefined, 'toolbar submit-row'); toolbar.append(scale, submit);
     if (back === 'all') { const cancel = button('Back to list'); cancel.onclick = () => { mode = 'all'; show(); }; toolbar.append(cancel); }
     const feedback = element('div', undefined, 'stack'); feedback.setAttribute('role', 'status');
-    form.append(earlier, answerLabel, photo, hint, scale, toolbar);
+    form.append(earlier, answerLabel, toolbar);
     card.append(form, feedback);
     content.append(card);
     if (focus) answer.focus();

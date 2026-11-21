@@ -92,22 +92,14 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
             Button(onClick = { onGoTo(4) }, shape = androidx.compose.foundation.shape.RoundedCornerShape(50)) { Text("Set up my plan") }
         }
 
-        // Headline numbers
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Nothing answered yet is no recall figure at all, not 0%.
-                val anyAnswered = topics.any { it.optInt("reviewed_questions") > 0 }
-                Stat((data.optDouble("overall_predicted_recall") * 100).toFloat(), { if (anyAnswered) "${Math.round(it)}%" else "—" }, "Predicted recall", Modifier.weight(1f).fillMaxHeight().staggeredEnter(0, data))
-                Stat((todayCount - todo.size).toFloat(), { "${Math.round(it)} / $todayCount" }, "Lessons done today", Modifier.weight(1f).fillMaxHeight().staggeredEnter(1, data))
+        // Today: what to do now, in one card.
+        val exams = data.getJSONArray("exams").objects()
+        val unfinished = exams.firstOrNull { it.optBoolean("unfinished") && it.optInt("answered") > 0 }
+        StudyCard(tone = CardTone.Container, modifier = Modifier.staggeredEnter(0, data)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Today", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (todayCount > 0) Text("${todayCount - todo.size} of $todayCount lessons done", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Stat(due.toFloat(), { "${Math.round(it)}" }, "Reviews due", Modifier.weight(1f).fillMaxHeight().staggeredEnter(2, data))
-                Stat(graded.size.toFloat(), { "${Math.round(it)} / ${home.estimates.size}" }, "Subjects with a grade estimate", Modifier.weight(1f).fillMaxHeight().staggeredEnter(3, data))
-            }
-        }
-
-        // Lessons to do: a plain list, not cards
-        Section("Lessons to do", Modifier.staggeredEnter(3, data)) {
             if (todo.isEmpty()) Text(if (todayCount > 0) "All of today’s lessons are done. Well done." else "No lessons were prepared today. A new one is made overnight for each topic you are learning.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             todo.forEachIndexed { index, (lesson, started) ->
                 if (index > 0) HorizontalDivider()
@@ -126,17 +118,27 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
                 }
             }
             if (due > 0) FilledTonalButton(onClick = { onGoTo(2) }, modifier = Modifier.padding(top = 4.dp)) { Text("Start $due review${if (due == 1) "" else "s"}") }
+            else Text("No reviews due.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (reviews.optInt("left_out") > 0) Text("${reviews.optInt("left_out")} more due, kept for another day (daily limit ${reviews.optInt("cap")}).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (unfinished != null) OutlinedButton(onClick = { onGoTo(3) }) { Text("Resume exam (${unfinished.optInt("answered")} of ${unfinished.optInt("questions")} answered)") }
         }
 
-        // Coming assessments, with predicted recall on the day
-        if (home.coming.isNotEmpty()) Section("Coming up", Modifier.staggeredEnter(4, data)) {
-            home.coming.take(5).forEachIndexed { index, a ->
-                if (index > 0) HorizontalDivider()
-                AssessmentReadiness(a.optString("subject"), a, a, a.optInt("days"))
+        // The next assessment only; the rest are in Plan.
+        home.coming.firstOrNull()?.let { next ->
+            StudyCard(tone = CardTone.Low, modifier = Modifier.staggeredEnter(1, data)) {
+                Text("Next exam", style = MaterialTheme.typography.titleMedium)
+                AssessmentReadiness(next.optString("subject"), next, next, next.optInt("days"))
+                val more = home.coming.size - 1
+                TextButton(onClick = { onGoTo(4) }, contentPadding = PaddingValues(0.dp)) { Text(if (more > 0) "$more more in Plan" else "Open my plan") }
             }
-            TextButton(onClick = { onGoTo(4) }, contentPadding = PaddingValues(0.dp)) { Text("Open my plan") }
         }
+
+        // Everything else is progress to look at now and then, folded away.
+        var more by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        TextButton(onClick = { more = !more }, contentPadding = PaddingValues(horizontal = 0.dp)) {
+            Text(if (more) "Hide progress" else "Show progress: grades, topics and exams")
+        }
+        if (!more) return@Column
 
         if (graded.isNotEmpty()) Section("Grade estimates", Modifier.staggeredEnter(4, data)) {
             graded.forEachIndexed { index, e ->
@@ -185,18 +187,7 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
             weak.forEach { Text("• ${it.optString("concept")} (${it.optString("topic")})", style = MaterialTheme.typography.bodyMedium) }
         }
 
-        // Reviews
-        Section("Reviews", Modifier.staggeredEnter(6, data)) {
-            val answers = reviews.optJSONObject("answers_last_30_days") ?: JSONObject()
-            val correct = answers.optInt("correct"); val incorrect = answers.optInt("incorrect")
-            var total = 0; answers.keys().forEach { total += answers.optInt(it) }
-            val other = total - correct - incorrect
-            Text(if (total == 0) "No review answers yet." else "Last 30 days: $correct correct, $incorrect incorrect" + (if (other > 0) ", $other not independently marked." else "."))
-            Text("$due due now, ${reviews.optInt("upcoming")} coming up, ${reviews.optInt("total")} in total.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-
         // Recent exams, with the unfinished one first as a way back in
-        val exams = data.getJSONArray("exams").objects()
         Section("Recent exams", Modifier.staggeredEnter(7, data)) {
             Text("Marks are AI-marked practice, unofficial, and not an NZQA grade.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (exams.isEmpty()) Text("No exams yet.")
@@ -212,23 +203,9 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
                     Text(result, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            val unfinished = exams.firstOrNull { it.optBoolean("unfinished") && it.optInt("answered") > 0 }
-            if (unfinished != null) FilledTonalButton(onClick = { onGoTo(3) }) { Text("Resume exam (${unfinished.optInt("answered")} of ${unfinished.optInt("questions")} answered)") }
         }
 
-        Section("Rewards", Modifier.staggeredEnter(5, data)) {
-            Text("Earn points for correct work, then spend them on collectables for your character.", style = MaterialTheme.typography.bodyMedium)
-            FilledTonalButton(onClick = onOpenRewards) { Text("Open Rewards") }
-        }
-    }
-}
-
-@Composable
-private fun Stat(target: Float, format: (Float) -> String, label: String, modifier: Modifier) {
-    val shown = animatedCount(target)
-    StudyCard(modifier = modifier, tone = CardTone.Low) {
-        Text(format(shown), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = onOpenRewards, contentPadding = PaddingValues(0.dp)) { Text("Open Rewards") }
     }
 }
 

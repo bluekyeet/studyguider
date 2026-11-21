@@ -607,7 +607,8 @@ private fun StudyApp() {
                     },
                     onAddSubject = { run {
                         val level = subjectLevel.toIntOrNull()?.takeIf { it in 1..3 } ?: throw IllegalArgumentException("Enter an NCEA level from 1 to 3. University papers use Add a paper above.")
-                        request(base, "/subjects", token, JSONObject().put("name", subjectName).put("level", level))
+                        val made = JSONObject(request(base, "/subjects", token, JSONObject().put("name", subjectName).put("level", level)))
+                        if (made.has("id")) joinNcea(Api(base, token), made.getLong("id"))
                         subjectName = ""; subjects = JSONArray(request(base, "/subjects", token)); showAddSubject = false
                     } },
                     onAddTopic = { run {
@@ -993,12 +994,8 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageL
                 ListItem(headlineContent = { Text("Lesson manager") }, supportingContent = { Text("Open or delete saved lessons") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Lesson manager" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 ListItem(headlineContent = { Text("Lesson history") }, supportingContent = { Text("Completed lessons used for your reviews") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Lesson history" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
-                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                ListItem(headlineContent = { Text("Topic notes") }, supportingContent = { Text("Read your saved explanations and notes") }, trailingContent = { Text("›") }, modifier = Modifier.clickable { page = "Topic notes" }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
             }
         }
-        } else if (page == "Topic notes") {
-            TopicNotes(base, token)
         } else {
             if (managerDay == null) Text(page, style = MaterialTheme.typography.titleLarge)
             if (loading) LoadingBar(Modifier.fillMaxWidth())
@@ -1112,11 +1109,10 @@ internal fun NightlyStatus(base: String, token: String, topic: JSONObject, onDis
     )
 }
 
+/** The notes saved for one topic, to read, edit or delete; shown under the topic in Plan. */
 @Composable
-internal fun TopicNotes(base: String, token: String) {
-    var topics by remember(base, token) { mutableStateOf<List<PickableTopic>>(emptyList()) }
-    var topic by remember(base, token) { mutableStateOf<Long?>(null) }
-    var notes by remember(base, token) { mutableStateOf<List<JSONObject>>(emptyList()) }
+internal fun TopicNoteList(base: String, token: String, topic: Long) {
+    var notes by remember(base, token, topic) { mutableStateOf<List<JSONObject>>(emptyList()) }
     var busy by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
@@ -1127,27 +1123,9 @@ internal fun TopicNotes(base: String, token: String) {
     var noteEditError by remember { mutableStateOf("") }
     var savingNote by remember { mutableStateOf(false) }
     val noteScope = rememberCoroutineScope()
-    LaunchedEffect(base, token) {
-        busy = true; error = ""
-        try {
-            val subjects = JSONArray(request(base, "/subjects", token))
-            val found = mutableListOf<PickableTopic>()
-            for (i in 0 until subjects.length()) {
-                val subject = subjects.getJSONObject(i)
-                val rows = JSONArray(request(base, "/subjects/${subject.getLong("id")}/topics", token))
-                for (j in 0 until rows.length()) {
-                    val item = rows.getJSONObject(j)
-                    found.add(PickableTopic(item.getLong("id"), subject.optInt("level"), subject.optString("name"), item.optString("name")))
-                }
-            }
-            topics = found
-        } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { error = e.message ?: "Could not load topics" }
-        finally { busy = false }
-    }
     LaunchedEffect(base, token, topic, reload) {
         notes = emptyList()
-        val selected = topic ?: return@LaunchedEffect
+        val selected = topic
         busy = true; error = ""
         try {
             val rows = JSONArray(request(base, "/topics/$selected/notes", token))
@@ -1156,12 +1134,10 @@ internal fun TopicNotes(base: String, token: String) {
         catch (e: Exception) { error = e.message ?: "Could not load notes" }
         finally { busy = false }
     }
-    Text("Topic notes", style = MaterialTheme.typography.titleLarge)
-    TopicPicker(topics, topic, { topic = it }, enabled = !deletingNote)
-    TextButton(enabled = !busy && !deletingNote, onClick = { reload++ }) { Text("Refresh") }
     if (busy) LoadingBar(Modifier.fillMaxWidth())
-    if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-    if (!busy && error.isEmpty() && topic != null && notes.isEmpty()) Text("No notes saved for this topic yet.")
+    if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); TextButton(onClick = { reload++ }) { Text("Try again") } }
+    if (!busy && error.isEmpty() && notes.isEmpty()) Text("No notes saved for this topic yet. Notes you save from a lesson appear here.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     notes.forEach { note ->
         StudyCard {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -1187,7 +1163,7 @@ internal fun TopicNotes(base: String, token: String) {
                 Text("Edits preserve stored source citations unless you remove them. Discard closes without saving.", style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = { TextButton(enabled = !savingNote && noteDraft.isNotBlank() && noteDraft.length <= 50000, onClick = {
-                val topicId = topic ?: return@TextButton
+                val topicId = topic
                 noteScope.launch {
                     savingNote = true; noteEditError = ""
                     try {
@@ -1209,7 +1185,7 @@ internal fun TopicNotes(base: String, token: String) {
             title = { Text("Delete note?") },
             text = { Text("This permanently deletes this saved note. The original lesson and its sources are kept.") },
             confirmButton = { TextButton(enabled = !deletingNote, onClick = {
-                val topicId = topic ?: return@TextButton
+                val topicId = topic
                 noteScope.launch {
                     deletingNote = true; error = ""
                     try {
@@ -1417,7 +1393,6 @@ private fun ResourceHub(
     // The document opens above the file list, so bring the page back to the top when one is opened (otherwise a file chosen
     // far down the list opens out of sight).
     val resourcesScroll = rememberScrollState()
-    LaunchedEffect(topicSourceId) { if (topicSourceId.isNotEmpty()) resourcesScroll.animateScrollTo(0) }
     Column(Modifier.fillMaxSize().verticalScroll(resourcesScroll).padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (selected != 0L) TextButton(enabled = !busy, onClick = onBack) { Text(if (selectedTopic != 0L) "‹ $subjectTitle" else "‹ Subjects") }
         // Going into a subject or a topic arrives from the right; going back arrives from the left.
@@ -1487,10 +1462,8 @@ private fun ResourceHub(
             }
             else -> {
                 Text("$topicTitle · Resources", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-                if (topicSourceId.isNotEmpty()) {
-                    TextButton(onClick = onClosePdf) { Text("‹ Close PDF") }
-                    SourceScreen(base, token, topicSourceId)
-                }
+                if (topicSourceId.isNotEmpty()) DocumentViewer(base, token, topicSourceId,
+                    (0 until resources.length()).map { resources.getJSONObject(it) }.firstOrNull { it.optString("id") == topicSourceId }?.optString("filename") ?: "Document", onClosePdf)
                 if (refreshError.isNotEmpty()) Text(refreshError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 TopicFiles(resources, busy, uploadNotice, onUpload, onRefresh, onExtract, onOpenPdf, onDelete,
                     ownOnly = (0 until topics.length()).map { topics.getJSONObject(it) }.firstOrNull { it.optLong("id") == selectedTopic }?.optBoolean("global") == true)

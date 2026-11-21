@@ -5,6 +5,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -164,7 +166,7 @@ fun rememberAnswerBox(api: Api, key: Any?, forms: List<AnswerForm>?, initial: St
 
 /**
  * The answer box on screen. [onChange] gets the whole answer text whenever it changes. [collapsed] hides the symbol bar behind
- * a button, for screens with several boxes; [figurePath] is the question's figure, which a drawing can be made over.
+ * a button, for screens with several boxes; [tools] go at the end of the tool row under the box; [figurePath] is the question's figure, which a drawing can be made over.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -175,6 +177,7 @@ fun AnswerBox(
     collapsed: Boolean = false,
     minLines: Int = 4,
     figurePath: String? = null,
+    tools: @Composable FlowRowScope.() -> Unit = {},
     onChange: (String) -> Unit = {},
 ) {
     val figure = rememberFigure(state.api, figurePath)
@@ -202,17 +205,37 @@ fun AnswerBox(
         // With options to choose from, written working is optional and stays folded away until asked for.
         var working by rememberSaveable(state) { mutableStateOf(!state.hasChoice || state.text.text.isNotBlank() || state.blocks.any { it !is AnswerBlock.Choice }) }
         if (state.hasChoice && !working) {
-            TextButton(enabled = enabled, onClick = { working = true }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Add working or a reason (optional)") }
+            FlowRow(verticalArrangement = Arrangement.Center) {
+                ToolButton("Add working or a reason (optional)", enabled) { working = true }
+                tools()
+            }
             return@Column
         }
-        RichTextField(state, enabled, if (state.hasChoice) "Working or reason (optional)" else label, collapsed || state.hasChoice, if (state.hasChoice) 2 else minLines)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Add", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            AssistChip(enabled = enabled, onClick = { state.blocks.add(AnswerBlock.Table(null, null)) }, label = { Text("+ Table") })
-            AssistChip(enabled = enabled, onClick = { state.blocks.add(state.newSketch(AnswerForm.Drawing(if (figure != null) "figure" else "blank"))) }, label = { Text("+ Drawing") })
-            AssistChip(enabled = enabled, onClick = { state.blocks.add(state.newSketch(AnswerForm.Graph())) }, label = { Text("+ Graph") })
+        // The symbols stay folded away unless the student last left them open.
+        val prefs = rememberAnswerPrefs()
+        var symbols by rememberSaveable(state) { mutableStateOf(!collapsed && !state.hasChoice && prefs.getBoolean("symbols", false)) }
+        RichTextField(state, enabled, if (state.hasChoice) "Working or reason (optional)" else label, symbols, if (state.hasChoice) 2 else minLines)
+        // One row of tools under the box: symbols, the things that can be added, then whatever the screen adds (photo, hint).
+        FlowRow(verticalArrangement = Arrangement.Center) {
+            ToolButton(if (symbols) "Hide symbols" else "Σ Symbols", true) { symbols = !symbols; prefs.edit().putBoolean("symbols", symbols).apply() }
+            ToolButton("+ Table", enabled) { state.blocks.add(AnswerBlock.Table(null, null)) }
+            ToolButton("+ Drawing", enabled) { state.blocks.add(state.newSketch(AnswerForm.Drawing(if (figure != null) "figure" else "blank"))) }
+            ToolButton("+ Graph", enabled) { state.blocks.add(state.newSketch(AnswerForm.Graph())) }
+            tools()
         }
     }
+}
+
+@Composable
+private fun rememberAnswerPrefs(): android.content.SharedPreferences {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return remember { context.getSharedPreferences("answer_box", android.content.Context.MODE_PRIVATE) }
+}
+
+/** A compact text button for the answer box's tool row. */
+@Composable
+fun ToolButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    TextButton(enabled = enabled, onClick = onClick, contentPadding = PaddingValues(horizontal = 10.dp)) { Text(text) }
 }
 
 private fun sketchNumber(state: AnswerBoxState, block: AnswerBlock): Int =
@@ -240,18 +263,9 @@ private fun PendingSketch(state: AnswerBoxState, block: AnswerBlock.Pending) {
 // ---- text with symbols ------------------------------------------------------------------------------------------------------
 
 @Composable
-private fun RichTextField(state: AnswerBoxState, enabled: Boolean, label: String, collapsed: Boolean, minLines: Int) {
-    var open by rememberSaveable { mutableStateOf(!collapsed) }
+private fun RichTextField(state: AnswerBoxState, enabled: Boolean, label: String, open: Boolean, minLines: Int) {
     var equation by remember { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (open) SymbolBar(state, enabled)
-        if (open && state.palette == "chemistry") Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedTextField(equation, { equation = it }, Modifier.weight(1f), enabled = enabled, singleLine = true, label = { Text("Type an equation") },
-                placeholder = { Text("Fe^3+ + 3OH- -> Fe(OH)3(s)") }, shape = RoundedCornerShape(12.dp),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(autoCorrectEnabled = false, capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None))
-            FilledTonalButton(enabled = enabled && equation.isNotBlank(), onClick = { state.setText(appendEquation(state.text.text, equation)); equation = "" }) { Text("Add") }
-        }
-        if (open && state.palette == "chemistry" && equation.isNotBlank()) FormulaPreview("\\ce{${equation.trim()}}")
         OutlinedTextField(
             value = state.text,
             onValueChange = { state.text = it },
@@ -262,11 +276,16 @@ private fun RichTextField(state: AnswerBoxState, enabled: Boolean, label: String
             maxLines = 16,
             shape = RoundedCornerShape(12.dp),
         )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (collapsed) TextButton(onClick = { open = !open }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text(if (open) "Hide symbols" else "Σ Symbols") }
-            if (open) Text("Maths goes between dollar signs, like \$v = f\\lambda\$; the buttons add it for you.",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        if (open) SymbolBar(state, enabled)
+        if (open && state.palette == "chemistry") Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(equation, { equation = it }, Modifier.weight(1f), enabled = enabled, singleLine = true, label = { Text("Type an equation") },
+                placeholder = { Text("Fe^3+ + 3OH- -> Fe(OH)3(s)") }, shape = RoundedCornerShape(12.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(autoCorrectEnabled = false, capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None))
+            FilledTonalButton(enabled = enabled && equation.isNotBlank(), onClick = { state.setText(appendEquation(state.text.text, equation)); equation = "" }) { Text("Add") }
         }
+        if (open && state.palette == "chemistry" && equation.isNotBlank()) FormulaPreview("\\ce{${equation.trim()}}")
+        if (open) Text("Maths goes between dollar signs, like \$v = f\\lambda\$. The buttons add it for you.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         MathPreview(state.text.text)
     }
 }
@@ -325,30 +344,37 @@ private fun TableBlock(block: AnswerBlock.Table, enabled: Boolean, onRemove: () 
         Text(if (block.template != null) "Complete the table" else "Your table", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
         TextButton(enabled = enabled, onClick = onRemove) { Text("Remove") }
     }
-    Column(Modifier.horizontalScroll(rememberScrollState()).border(1.dp, outline, RoundedCornerShape(8.dp))) {
-        Row {
-            block.columns.forEachIndexed { c, name ->
-                Box(Modifier.width(150.dp).border(0.5.dp, outline).padding(6.dp)) {
-                    if (block.template != null) CellText(name, bold = true)
-                    else OutlinedTextField(name, { block.columns[c] = it }, enabled = enabled, singleLine = true, placeholder = { Text("Heading ${c + 1}") },
-                        textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold))
+    // Cells share the screen width and only scroll sideways once they would be narrower than 96dp.
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val cellWidth = (maxWidth / block.columns.size.coerceAtLeast(1)).coerceAtLeast(96.dp)
+        val cellStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface)
+        val cursor = SolidColor(MaterialTheme.colorScheme.primary)
+        Column(Modifier.horizontalScroll(rememberScrollState()).border(1.dp, outline, RoundedCornerShape(8.dp))) {
+            Row(Modifier.height(IntrinsicSize.Min).background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+                block.columns.forEachIndexed { c, name ->
+                    Box(Modifier.width(cellWidth).fillMaxHeight().border(0.5.dp, outline).padding(8.dp), contentAlignment = Alignment.CenterStart) {
+                        if (block.template != null) CellText(name, bold = true)
+                        else BasicTextField(name, { block.columns[c] = it }, enabled = enabled, singleLine = true, cursorBrush = cursor,
+                            textStyle = cellStyle.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { field -> if (name.isEmpty()) Text("Heading ${c + 1}", style = cellStyle, color = MaterialTheme.colorScheme.onSurfaceVariant); field() })
+                    }
                 }
             }
-        }
-        block.rows.forEachIndexed { r, row ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                row.forEachIndexed { c, cell ->
-                    Box(Modifier.width(150.dp).heightIn(min = 56.dp).border(0.5.dp, outline).padding(4.dp), contentAlignment = Alignment.CenterStart) {
-                        val given = block.given(r, c)
-                        if (given != null) CellText(given)
-                        else OutlinedTextField(cell, { text -> block.rows[r] = block.rows[r].toMutableList().also { it[c] = text } }, enabled = enabled,
-                            textStyle = MaterialTheme.typography.bodySmall, maxLines = 4)
+            block.rows.forEachIndexed { r, row ->
+                Row(Modifier.height(IntrinsicSize.Min)) {
+                    row.forEachIndexed { c, cell ->
+                        Box(Modifier.width(cellWidth).heightIn(min = 44.dp).fillMaxHeight().border(0.5.dp, outline).padding(8.dp), contentAlignment = Alignment.CenterStart) {
+                            val given = block.given(r, c)
+                            if (given != null) CellText(given)
+                            else BasicTextField(cell, { text -> block.rows[r] = block.rows[r].toMutableList().also { it[c] = text } }, enabled = enabled,
+                                textStyle = cellStyle, maxLines = 4, cursorBrush = cursor, modifier = Modifier.fillMaxWidth())
+                        }
                     }
                 }
             }
         }
     }
-    if (block.template == null) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    if (block.template == null) FlowRow {
         TextButton(enabled = enabled, onClick = { block.rows.add(List(block.columns.size) { "" }) }) { Text("+ Row") }
         TextButton(enabled = enabled && block.rows.size > 1, onClick = { block.rows.removeAt(block.rows.lastIndex) }) { Text("− Row") }
         TextButton(enabled = enabled && block.columns.size < 8, onClick = {

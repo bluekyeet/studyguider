@@ -6,6 +6,7 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -22,7 +23,7 @@ import java.net.URL
 
 /** Opens an authenticated PDF resource without sharing its URL or credentials with another app. Page numbers are one-based. */
 @Composable
-fun SourceScreen(base: String, token: String, resourceId: String, initialPage: Int = 1) {
+fun SourceScreen(base: String, token: String, resourceId: String, initialPage: Int = 1, title: String? = "Source document") {
     val cacheDir = LocalContext.current.cacheDir
     var file by remember(base, token, resourceId) { mutableStateOf<File?>(null) }
     var error by remember(base, token, resourceId) { mutableStateOf("") }
@@ -100,16 +101,34 @@ fun SourceScreen(base: String, token: String, resourceId: String, initialPage: I
     }
 
     Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Source document", style = MaterialTheme.typography.headlineMedium)
+        title?.let { Text(it, style = MaterialTheme.typography.headlineMedium) }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
         else if (image == null) LoadingBar(Modifier.fillMaxWidth())
         if (pageCount > 0) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { page-- }, enabled = page > 1) { Text("Previous page") }
-                Text("Page $page of $pageCount", modifier = Modifier.padding(top = 12.dp))
-                Button(onClick = { page++ }, enabled = page < pageCount) { Text("Next page") }
+            if (pageCount > 1) Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                OutlinedButton(onClick = { page-- }, enabled = page > 1) { Text("‹ Previous") }
+                Text("Page $page of $pageCount", textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { page++ }, enabled = page < pageCount) { Text("Next ›") }
             }
         }
         image?.let { ZoomableImage(it, "Source page $page", Modifier.fillMaxWidth()) }
+    }
+}
+
+/** A document opened full screen over the app, like a separate viewer window. Back or ✕ closes it. */
+@Composable
+fun DocumentViewer(base: String, token: String, resourceId: String, name: String, onClose: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onClose) { Text("✕ Close") }
+                }
+                Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp)) {
+                    SourceScreen(base, token, resourceId, title = null)
+                }
+            }
+        }
     }
 }

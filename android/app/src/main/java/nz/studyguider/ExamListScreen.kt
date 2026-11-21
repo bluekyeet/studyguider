@@ -1,12 +1,12 @@
 package nz.studyguider
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -110,23 +110,19 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
     LaunchedEffect(base, token) { load() }
 
     Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Take an exam", style = MaterialTheme.typography.titleLarge)
-        Text("How will you answer?", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = answerMode == "digital", onClick = { answerMode = "digital" }, label = { Text("Digital") })
-            FilterChip(selected = answerMode == "handwritten", onClick = { answerMode = "handwritten" }, label = { Text("Handwritten") })
-        }
+        StudyCard(tone = CardTone.Container) {
+        Text("New exam", style = MaterialTheme.typography.titleLarge)
         TopicPicker(topics, topic, { topic = it }, enabled = !busy)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("original" to "Past paper", "mixed" to "Collated paper", "ai" to "AI-written practice").forEach { (value, label) ->
-                FilterChip(modifier = Modifier.weight(1f).heightIn(min = 56.dp), selected = mode == value, enabled = !busy,
+            listOf("original" to "Past paper", "mixed" to "Mixed", "ai" to "AI practice").forEach { (value, label) ->
+                FilterChip(modifier = Modifier.weight(1f), selected = mode == value, enabled = !busy,
                     onClick = { mode = value; paperMenu = false },
-                    label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) })
+                    label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, maxLines = 1) })
             }
         }
         if (mode == "ai") Text("AI-written practice uses an unofficial rubric.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (mode == "original") {
-            if (topic != null && papers.isEmpty()) Text("No past papers are registered for this topic yet. Upload an NZQA exam paper and its marking schedule in Resources (named like 91577-exm-2023.pdf and 91577-ass-2023.pdf) and they are added automatically. Until then, use AI-written practice, which needs notes or files uploaded for the topic.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (topic != null && papers.isEmpty()) Text("No past papers for this topic yet. Upload an NZQA paper and its schedule in Resources, or use AI practice.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (papers.isNotEmpty()) Box(Modifier.fillMaxWidth()) {
                 OutlinedButton(enabled = !busy, onClick = { paperMenu = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(paper?.let { listOfNotNull(it.optInt("year").toString(), it.optInt("standard_number").takeIf { n -> n > 0 }?.let { n -> "AS $n" }).joinToString(" · ") } ?: "Choose a year", modifier = Modifier.weight(1f))
@@ -143,6 +139,10 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
                     }
                 }
             }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Answer on paper and scan it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Switch(checked = answerMode == "handwritten", enabled = !busy, onCheckedChange = { answerMode = if (it) "handwritten" else "digital" })
         }
         Button(enabled = !busy && topic != null && (mode != "original" || paper != null), modifier = Modifier.fillMaxWidth(), onClick = {
             scope.launch {
@@ -165,26 +165,24 @@ fun ExamListScreen(base: String, token: String, onChooseExam: (Long) -> Unit) {
             },
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         if (busy) LoadingBar(Modifier.fillMaxWidth())
-        OutlinedButton(enabled = !busy, shape = RoundedCornerShape(50), onClick = { scope.launch { load() } }) { Text(if (exams == null && error.isNotEmpty()) "Retry" else "Refresh") }
-        if (exams?.isEmpty() == true) StudyCard(tone = CardTone.Low) {
-            Text("No exams yet", style = MaterialTheme.typography.titleMedium)
-            Text("Assemble a monthly paper from the web manager, then it will appear here.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        if (exams == null && error.isNotEmpty()) OutlinedButton(shape = RoundedCornerShape(50), onClick = { scope.launch { load() } }) { Text("Retry") }
         Text("Saved exams", style = MaterialTheme.typography.titleMedium)
-        exams?.forEach { exam ->
-            key(exam.id) {
-                StudyCard(tone = CardTone.Container) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(if (exam.kind == "monthly") "MONTHLY PAPER" else "PRACTICE PAPER", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
-                        StudyChip("${exam.totalMarks} marks", MaterialTheme.colorScheme.onPrimaryContainer, MaterialTheme.colorScheme.primaryContainer)
-                    }
-                    Text(exam.title, style = MaterialTheme.typography.titleLarge)
-                    Text(exam.kind.replace('-', ' ').replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodySmall)
-                    Text("${exam.questionCount} ${if (exam.questionCount == 1) "question" else "questions"} · created ${exam.createdAt.take(10)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Button(enabled = !deleting, shape = RoundedCornerShape(50), onClick = { onChooseExam(exam.id) }) { Text("Open exam") }
+        if (exams?.isEmpty() == true) Text("Exams you start appear here.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // One short line per exam; tapping opens it, and its marks and questions show there.
+        if (!exams.isNullOrEmpty()) StudyCard(tone = CardTone.Low) {
+            exams!!.forEachIndexed { index, exam ->
+                key(exam.id) {
+                    if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth().clickable(enabled = !deleting) { onChooseExam(exam.id) }.padding(vertical = 6.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(exam.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                            Text(listOf(if (exam.kind == "monthly") "Monthly" else "Practice", "${exam.totalMarks} marks", exam.createdAt.take(10)).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         TextButton(enabled = !deleting, onClick = { deleteTarget = exam }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                     }
                 }

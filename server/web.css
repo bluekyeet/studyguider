@@ -681,7 +681,7 @@ button.danger:disabled{opacity:.45}
 .choice-option.right{border-color:var(--ok);background:var(--ok-soft)}.choice-option.right .choice-letter{color:var(--ok)}
 .choice-option.wrong{border-color:var(--danger);background:var(--danger-soft)}.choice-option.wrong .choice-letter{color:var(--danger)}
 .choice-why{color:var(--muted);font-size:14px}
-.answer-box.has-choice .answer-add{display:none}
+.answer-box.has-choice .answer-adder{display:none}
 .lesson-choice{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:10px;margin:.8em 0}
 .import-status{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px}
 .import-status ul{margin:0;padding-left:18px;color:var(--warn);font-size:13px}
@@ -706,3 +706,11 @@ body.signed-out .report-button{display:none}
 .report-status.open{color:var(--warn,#f5b74f)}
 .report-status.fixed{color:var(--ok,#4ade80)}
 @media(max-width:800px){.report-button{bottom:calc(78px + env(safe-area-inset-bottom));right:12px;min-height:40px;padding:6px 14px;font-size:13px}}
+/* A row of labelled fields and buttons lines the buttons up with the inputs, not the labels. */
+.toolbar:has(>label.stack){align-items:flex-end}
+.answer-tools{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:8px}
+.answer-tools>button,.answer-tool-slot>button{min-height:34px;padding:4px 12px;font-size:14px}
+.answer-tools>.hint-button{margin-left:auto}
+.answer-tool-slot:empty{display:none}
+.submit-row{justify-content:space-between;align-items:flex-end;gap:16px}
+.submit-row .pill span{padding:6px 12px;min-height:38px}

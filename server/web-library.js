@@ -1,6 +1,6 @@
 // Library: subjects -> topics -> files, standards, notes and search for one topic.
 import { mathText, readable, session, library } from './web-common.js';
-import { paperAdder } from './web-plan.js';
+import { paperAdder, programmeAdder, joinNcea } from './web-plan.js';
 const el = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
   if (text !== '') node.textContent = text;
@@ -116,23 +116,49 @@ async function subjects(root, api) {
     }
     root.append(grid);
   }
-  const card = el('form', '', 'card stack');
-  const name = el('input'); name.maxLength = 200; name.required = true;
+  root.append(await adder(api));
+}
+
+// One place to add everything: an NCEA subject, a university paper, or a programme. Papers and programmes are your own, so the global library adds subjects only.
+async function adder(api) {
+  const card = el('section', '', 'card stack');
+  const body = el('div', '', 'stack');
+  card.append(el('h2', library.global() ? 'Add a global subject' : 'Add to your library'));
+  const kinds = [['subject', 'NCEA subject'], ['paper', 'University paper'], ['programme', 'Programme']];
+  let kind = 'subject';
+  const group = el('div', '', 'segmented'); group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'What to add');
+  const draw = async () => {
+    group.replaceChildren();
+    for (const [value, label] of kinds) {
+      const b = el('button', label); b.type = 'button'; b.setAttribute('aria-pressed', String(value === kind));
+      b.onclick = () => { kind = value; draw(); };
+      group.append(b);
+    }
+    body.replaceChildren(kind === 'paper' ? await paperAdder(api) : kind === 'programme' ? await programmeAdder(api) : subjectForm(api));
+  };
+  if (!library.global()) card.append(group);
+  card.append(body);
+  await draw();
+  return card;
+}
+
+function subjectForm(api) {
+  const form = el('form', '', 'stack');
+  const name = el('input'); name.maxLength = 200; name.required = true; name.placeholder = 'Physics';
   const level = el('select'); for (const n of [1, 2, 3]) level.add(new Option(`Level ${n}`, n, n === 2, n === 2));
   const fields = el('div', '', 'fields'); fields.append(field('Subject name', name), field('NCEA level', level));
   const submit = el('button', 'Add subject', 'primary'); const note = status();
   const bar = el('div', '', 'toolbar'); bar.append(submit, note);
-  card.append(el('h2', library.global() ? 'Add a global subject' : 'Add an NCEA subject'), fields, bar);
-  card.onsubmit = async event => {
+  form.append(fields, bar);
+  form.onsubmit = async event => {
     event.preventDefault();
     await guard(submit, note, async () => {
       const created = await api('/subjects', { method: 'POST', ...json({ name: name.value, level: Number(level.value) }) });
+      if (!library.global()) await joinNcea(api, created.id);
       location.hash = libraryUrl({ subject: created.id });
     });
   };
-  root.append(card);
-  // Papers are your own: the global library holds NCEA subjects only.
-  if (!library.global()) root.append(await paperAdder(api));
+  return form;
 }
 
 async function topics(root, api, subject) {

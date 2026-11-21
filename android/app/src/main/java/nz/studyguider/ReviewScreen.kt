@@ -15,6 +15,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -230,30 +232,35 @@ private fun ReviewCard(api: Api, base: String, token: String, question: JSONObje
         if (question.optInt("answer_count") > 0 || question.optInt("reps") > 0) EarlierAnswers(api, id)
         val current = result
         if (current == null) {
-            AnswerBox(box, enabled = !busy, onChange = { answer = it })
             // Working done on paper can be photographed and read into the box; not needed when the answer is picked from options.
-            if (!box.hasChoice) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = !busy, shape = RoundedCornerShape(50), onClick = {
-                    val folder = File(context.cacheDir, "review-photos").apply { mkdirs() }
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", File.createTempFile("review-$id-", ".jpg", folder))
-                    shot = uri; camera.launch(uri)
-                }) { Text("Take photo") }
-                OutlinedButton(enabled = !busy, shape = RoundedCornerShape(50), onClick = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Upload photos") }
+            AnswerBox(box, enabled = !busy, onChange = { answer = it }, tools = {
+                if (!box.hasChoice) {
+                    ToolButton("Photo", !busy) {
+                        val folder = File(context.cacheDir, "review-photos").apply { mkdirs() }
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", File.createTempFile("review-$id-", ".jpg", folder))
+                        shot = uri; camera.launch(uri)
+                    }
+                    ToolButton("Upload", !busy) { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                }
+                HintButton(base, token, "review", id.toString(), answer = { answer })
+            })
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("How confident are you?", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Text(if (confidence == 0) "1 = not, 5 = very" else CONFIDENCE[confidence - 1], style = MaterialTheme.typography.labelMedium,
+                    color = if (confidence == 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
             }
-            HintButton(base, token, "review", id.toString(), answer = { answer })
-            Text("How confident are you?", style = MaterialTheme.typography.labelLarge)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (level in 1..5) {
                     val chosen = level == confidence
                     Surface(onClick = { confidence = level }, enabled = !busy, shape = RoundedCornerShape(12.dp),
-                        color = if (chosen) MaterialTheme.colorScheme.primary else LocalStudyColours.current.containerHighest, modifier = Modifier.weight(1f)) {
-                        Column(Modifier.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        color = if (chosen) MaterialTheme.colorScheme.primary else LocalStudyColours.current.containerHighest,
+                        modifier = Modifier.weight(1f).semantics { contentDescription = "$level, ${CONFIDENCE[level - 1]}" }) {
+                        Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("$level", style = MaterialTheme.typography.titleMedium, color = if (chosen) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
             }
-            Text(if (confidence == 0) "1 is not confident, 5 is very confident." else CONFIDENCE[confidence - 1], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (notice.isNotEmpty()) Text(notice, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (error.isNotEmpty()) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             if (busy) LoadingBar(Modifier.fillMaxWidth())

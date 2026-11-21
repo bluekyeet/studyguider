@@ -103,7 +103,6 @@ fun PlanContent(base: String, token: String, onStartReviews: () -> Unit, onOpenR
     if (failure.isNotEmpty()) AlertDialog(onDismissRequest = { failure = "" }, title = { Text("Not saved") }, text = { Text(failure) },
         confirmButton = { TextButton(onClick = { failure = "" }) { Text("OK") } })
 
-    Text("Your programme, its assessment dates, and how reviews and lessons are planned around them.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (loading) DelayedLoading { LoadingBar(Modifier.fillMaxWidth()) }
     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); OutlinedButton(onClick = { reload++ }) { Text("Try again") } }
@@ -134,16 +133,9 @@ fun PlanContent(base: String, token: String, onStartReviews: () -> Unit, onOpenR
         Text("These still get lessons and reviews as before. Add them to a programme to plan around their assessment dates.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         loose.forEach { Text("• ${it.optString("name")}", style = MaterialTheme.typography.bodyMedium) }
     }
-    var another by rememberSaveable { mutableStateOf(false) }
-    StudyCard(tone = CardTone.Low) {
-        Row(Modifier.fillMaxWidth().clickable { another = !another }, verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Another programme", style = MaterialTheme.typography.titleMedium)
-                Text("For example, the university you start next year while you finish NCEA: its papers get a refresher before they begin.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(if (another) "Hide" else "Add", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp))
-        }
-        AnimatedVisibility(another) { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { ProgrammeForm(api, plan, first = false, enabled = !busy, act = { work -> act { work(); another = false } }) } }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Subjects, papers and programmes are added in Resources.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        TextButton(onClick = onOpenResources) { Text("Open Resources") }
     }
 }
 
@@ -215,11 +207,8 @@ private fun TodayCard(api: Api, plan: PlanData, busy: Boolean, act: (suspend () 
     val hours = plan.curriculum.doubleOrNull("hours_per_week")
     StudyCard(tone = CardTone.Container) {
         SectionLabel("Today", "REVIEW PLAN")
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("$items", "Reviews in today’s list", Modifier.weight(1f).fillMaxHeight())
-            StatTile("$leftOut", "Left for another day", Modifier.weight(1f).fillMaxHeight())
-            StatTile("${plan.plan.optInt("cap")}", "Daily review limit", Modifier.weight(1f).fillMaxHeight())
-        }
+        Text(if (items == 0) "No reviews due today." else "$items review${if (items == 1) "" else "s"} today" + (if (leftOut > 0) ", $leftOut kept for another day" else "") + " (limit ${plan.plan.optInt("cap")} a day).",
+            style = MaterialTheme.typography.bodyLarge)
         if (leftOut > 0) Text("More is due than fits today. The most important come first: questions for heavily weighted, close assessments that you are most likely to have forgotten.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -253,11 +242,13 @@ private fun ComingAssessments(plan: PlanData) {
     StudyCard(tone = CardTone.Container) {
         SectionLabel("Coming assessments", "WHAT IS NEXT")
         if (dated.isEmpty()) { Text("No dated assessments yet. Add their dates below and the planner will work back from them.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); return@StudyCard }
-        dated.forEachIndexed { index, (subject, a) ->
+        var all by rememberSaveable { mutableStateOf(false) }
+        (if (all) dated else dated.take(3)).forEachIndexed { index, (subject, a) ->
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             AssessmentReadiness(subject, a, ready[a.optLong("id")], daysUntil(a.optString("due_date"), today) ?: 0)
         }
-        Text("Predicted recall: the chance you would remember the reviewed questions on the day if you did no more reviews, from your review history. In the last three weeks lessons turn into mixed exam-style practice; in the last two, reviews aim higher.",
+        if (dated.size > 3 || all) TextButton(onClick = { all = !all }, contentPadding = PaddingValues(0.dp)) { Text(if (all) "Show fewer" else "Show all ${dated.size}") }
+        if (all) Text("Predicted recall: the chance you would remember the reviewed questions on the day if you did no more reviews, from your review history. In the last three weeks lessons turn into mixed exam-style practice; in the last two, reviews aim higher.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -309,13 +300,9 @@ private fun ProgrammeSection(api: Api, plan: PlanData, programme: JSONObject, es
                 }
             }
         }
-        if (subjects.isEmpty()) Text(if (ncea) "No subjects yet. Add one below." else "No papers yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (subjects.isEmpty()) Text(if (ncea) "No subjects yet. Add them in Resources." else "No papers yet. Add them in Resources.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         subjects.forEach { subject -> key(subject.optLong("subject_id")) { SubjectCard(api, subject, ncea, estimateOf[subject.optLong("subject_id")], plan.today, busy, act) } }
-        if (ncea) AddNceaSubject(api, plan, programme, busy, act, onOpenResources)
-        else {
-            Text("Add papers in Resources.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onOpenResources, shape = RoundedCornerShape(50)) { Text("Open Resources") }
-        }
+        if (ncea) AddNceaSubject(api, plan, programme, busy, act)
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Remove this programme?") },
         text = { Text("Its subjects, lessons and reviews stay; only the grouping goes.") },
@@ -404,10 +391,12 @@ private fun SubjectCard(api: Api, subject: JSONObject, ncea: Boolean, estimate: 
                     if (topics.isNotEmpty()) {
                         Text("Topics", style = MaterialTheme.typography.titleSmall)
                         topics.forEach { topic ->
+                            var notes by rememberSaveable(topic.optLong("id")) { mutableStateOf(false) }
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(topic.optString("name"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                     ToneChip(if (topic.optBoolean("active")) "Learning" else "Off", if (topic.optBoolean("active")) "ok" else "")
+                                    TextButton(onClick = { notes = !notes }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text(if (notes) "Notes ▴" else "Notes ▾") }
                                 }
                                 // Which outcomes the topic covers: this is how the planner knows which assessments its reviews are for.
                                 if (outcomes.isNotEmpty()) {
@@ -422,6 +411,7 @@ private fun SubjectCard(api: Api, subject: JSONObject, ncea: Boolean, estimate: 
                                         }
                                     }
                                 }
+                                AnimatedVisibility(notes) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { TopicNoteList(api.base, api.token, topic.getLong("id")) } }
                             }
                         }
                         Text("Upload slides and readings for each topic in Resources, and switch topics on in Settings to get a lesson each night.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -515,22 +505,27 @@ private fun StandardSheet(api: Api, subjectId: Long, onDismiss: () -> Unit, act:
 }
 
 @Composable
-private fun AddNceaSubject(api: Api, plan: PlanData, programme: JSONObject, busy: Boolean, act: (suspend () -> Unit) -> Unit, onOpenResources: () -> Unit) {
+private fun AddNceaSubject(api: Api, plan: PlanData, programme: JSONObject, busy: Boolean, act: (suspend () -> Unit) -> Unit) {
+    // New subjects are added in Resources; this only moves an NCEA subject that is not in a programme yet.
     val free = plan.subjects.filter { it.isNull("programme_id") && it.optString("grade_scale") == "ncea" }
-    var pick by remember(free.size) { mutableStateOf(free.firstOrNull()?.optLong("subject_id")?.toString().orEmpty()) }
+    if (free.isEmpty()) return
+    var pick by remember(free.size) { mutableStateOf(free.first().optLong("subject_id").toString()) }
     StudyCard(tone = CardTone.Low) {
-        Text("Add a subject", style = MaterialTheme.typography.titleMedium)
-        if (free.isEmpty()) {
-            Text("Every NCEA subject is in a programme. Add new subjects in Resources.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onOpenResources, shape = RoundedCornerShape(50)) { Text("Open Resources") }
-        } else {
-            PickField("Subject", free.map { it.optLong("subject_id").toString() to "${it.optString("name")} (Level ${it.optInt("level")})" }, pick, { pick = it }, Modifier.fillMaxWidth(), enabled = !busy)
-            Button(enabled = !busy && pick.isNotEmpty(), shape = RoundedCornerShape(50), onClick = {
-                val subject = free.first { it.optLong("subject_id").toString() == pick }
-                act { api.put("/subjects/$pick/details", details(subject) { put("programme_id", programme.getLong("id")); put("grade_scale", "ncea") }) }
-            }) { Text("Add to programme") }
-        }
+        Text("Move a subject into this programme", style = MaterialTheme.typography.titleMedium)
+        PickField("Subject", free.map { it.optLong("subject_id").toString() to "${it.optString("name")} (Level ${it.optInt("level")})" }, pick, { pick = it }, Modifier.fillMaxWidth(), enabled = !busy)
+        Button(enabled = !busy && pick.isNotEmpty(), shape = RoundedCornerShape(50), onClick = {
+            val subject = free.first { it.optLong("subject_id").toString() == pick }
+            act { api.put("/subjects/$pick/details", details(subject) { put("programme_id", programme.getLong("id")); put("grade_scale", "ncea") }) }
+        }) { Text("Move here") }
     }
+}
+
+/** Puts a subject just added in Resources into the NCEA programme, when there is one, so Plan picks it up without a step of its own. */
+suspend fun joinNcea(api: Api, subjectId: Long) {
+    val curriculum = api.getObject("/curriculum")
+    val ncea = curriculum.optJSONArray("programmes")?.objectList().orEmpty().firstOrNull { it.optString("kind") == "ncea" } ?: return
+    val subject = curriculum.optJSONArray("subjects")?.objectList().orEmpty().firstOrNull { it.optLong("subject_id") == subjectId } ?: return
+    if (subject.isNull("programme_id")) api.put("/subjects/$subjectId/details", details(subject) { put("programme_id", ncea.getLong("id")); put("grade_scale", "ncea") })
 }
 
 // ---- university: adding a paper -------------------------------------------------------------------------------------------------
