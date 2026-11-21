@@ -594,6 +594,7 @@ private fun StudyApp() {
                     subjectLevel = subjectLevel, onSubjectLevel = { subjectLevel = it },
                     topicName = topicName, onTopicName = { topicName = it },
                     showAddSubject = showAddSubject, onToggleAddSubject = { showAddSubject = !showAddSubject },
+                    onAddPaper = { showAddSubject = false; tab = 4 },
                     onOpenSubject = { id, title -> run { topics = JSONArray(request(base, "/subjects/$id/topics", token)); selected = id; subjectTitle = title; selectedTopic = 0; topicTitle = "" } },
                     onOpenTopic = { id, title -> run { resources = JSONArray(request(base, "/topics/$id/resources", token)); selectedTopic = id; topicTitle = title } },
                     onBack = {
@@ -1405,7 +1406,7 @@ private fun ResourceHub(
     selected: Long, selectedTopic: Long, subjectTitle: String, topicTitle: String, topicSourceId: String,
     refreshError: String, busy: Boolean,
     subjectName: String, onSubjectName: (String) -> Unit, subjectLevel: String, onSubjectLevel: (String) -> Unit,
-    topicName: String, onTopicName: (String) -> Unit, showAddSubject: Boolean, onToggleAddSubject: () -> Unit,
+    topicName: String, onTopicName: (String) -> Unit, showAddSubject: Boolean, onToggleAddSubject: () -> Unit, onAddPaper: () -> Unit,
     onOpenSubject: (Long, String) -> Unit, onOpenTopic: (Long, String) -> Unit, onBack: () -> Unit,
     onAddSubject: () -> Unit, onAddTopic: () -> Unit, onUpload: (String) -> Unit, uploadNotice: String, onRefresh: () -> Unit,
     onExtract: (String, Boolean) -> Unit, onOpenPdf: (String) -> Unit, onClosePdf: () -> Unit, onDelete: (List<JSONObject>) -> Unit,
@@ -1451,8 +1452,14 @@ private fun ResourceHub(
                         }
                     }
                 }
-                OutlinedButton(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), onClick = onToggleAddSubject) { Text(if (showAddSubject) "Cancel" else "+  Add my own subject") }
+                OutlinedButton(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), onClick = onToggleAddSubject) { Text(if (showAddSubject) "Cancel" else "+  Add a subject or paper") }
                 if (showAddSubject) StudyCard(tone = CardTone.Low) {
+                    // A university paper needs its programme, outcomes and assessments, which Plan reads from the descriptor or outline.
+                    Text("University paper", style = MaterialTheme.typography.titleSmall)
+                    Text("Papers are set up in Plan, which can fill them in from the paper's descriptor or course outline.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FilledTonalButton(enabled = !busy, onClick = onAddPaper, shape = RoundedCornerShape(50)) { Text("Set up a paper in Plan") }
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    Text("NCEA subject", style = MaterialTheme.typography.titleSmall)
                     OutlinedTextField(subjectName, onSubjectName, label = { Text("New subject") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(subjectLevel, onSubjectLevel, label = { Text("NCEA level (1–3)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Button(enabled = !busy && subjectName.isNotBlank(), onClick = onAddSubject, shape = RoundedCornerShape(50)) { Text("Add subject") }
