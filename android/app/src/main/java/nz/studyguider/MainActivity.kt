@@ -334,6 +334,7 @@ private fun StudyApp() {
     var subjectTitle by remember { mutableStateOf("") }
     var topicTitle by remember { mutableStateOf("") }
     var showAddSubject by remember { mutableStateOf(false) }
+    var addingPaper by remember { mutableStateOf(false) }
     var signOutConfirm by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     // Every topic across subjects, so the Lessons and Review tabs list them straight away.
@@ -440,6 +441,8 @@ private fun StudyApp() {
     fun run(block: suspend () -> Unit) {
         scope.launch { busy = true; error = ""; try { block() } catch (e: Exception) { error = e.message ?: "Request failed" } finally { busy = false } }
     }
+    if (addingPaper) AddPaper(base, token, onDismiss = { addingPaper = false },
+        onSaved = { addingPaper = false; run { subjects = JSONArray(request(base, "/subjects", token)) } })
     var uploadNotice by remember { mutableStateOf("") }
     var uploadCategory by remember { mutableStateOf("auto") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -594,7 +597,7 @@ private fun StudyApp() {
                     subjectLevel = subjectLevel, onSubjectLevel = { subjectLevel = it },
                     topicName = topicName, onTopicName = { topicName = it },
                     showAddSubject = showAddSubject, onToggleAddSubject = { showAddSubject = !showAddSubject },
-                    onAddPaper = { showAddSubject = false; tab = 4 },
+                    onAddPaper = { showAddSubject = false; addingPaper = true },
                     onOpenSubject = { id, title -> run { topics = JSONArray(request(base, "/subjects/$id/topics", token)); selected = id; subjectTitle = title; selectedTopic = 0; topicTitle = "" } },
                     onOpenTopic = { id, title -> run { resources = JSONArray(request(base, "/topics/$id/resources", token)); selectedTopic = id; topicTitle = title } },
                     onBack = {
@@ -603,7 +606,7 @@ private fun StudyApp() {
                         else selected = 0
                     },
                     onAddSubject = { run {
-                        val level = subjectLevel.toIntOrNull()?.takeIf { it in 1..3 } ?: throw IllegalArgumentException("Enter an NCEA level from 1 to 3. University papers are added in Plan.")
+                        val level = subjectLevel.toIntOrNull()?.takeIf { it in 1..3 } ?: throw IllegalArgumentException("Enter an NCEA level from 1 to 3. University papers use Add a paper above.")
                         request(base, "/subjects", token, JSONObject().put("name", subjectName).put("level", level))
                         subjectName = ""; subjects = JSONArray(request(base, "/subjects", token)); showAddSubject = false
                     } },
@@ -1454,10 +1457,10 @@ private fun ResourceHub(
                 }
                 OutlinedButton(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), onClick = onToggleAddSubject) { Text(if (showAddSubject) "Cancel" else "+  Add a subject or paper") }
                 if (showAddSubject) StudyCard(tone = CardTone.Low) {
-                    // A university paper needs its programme, outcomes and assessments, which Plan reads from the descriptor or outline.
+                    // A university paper is read from its descriptor or outline, then checked before it is saved.
                     Text("University paper", style = MaterialTheme.typography.titleSmall)
-                    Text("Papers are set up in Plan, which can fill them in from the paper's descriptor or course outline.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FilledTonalButton(enabled = !busy, onClick = onAddPaper, shape = RoundedCornerShape(50)) { Text("Set up a paper in Plan") }
+                    Text("Fill it in from the paper's descriptor or course outline, or type it in.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FilledTonalButton(enabled = !busy, onClick = onAddPaper, shape = RoundedCornerShape(50)) { Text("Add a paper") }
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
                     Text("NCEA subject", style = MaterialTheme.typography.titleSmall)
                     OutlinedTextField(subjectName, onSubjectName, label = { Text("New subject") }, singleLine = true, modifier = Modifier.fillMaxWidth())

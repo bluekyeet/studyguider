@@ -151,7 +151,7 @@ fun PlanContent(base: String, token: String, onStartReviews: () -> Unit, onOpenR
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ProgrammeForm(api: Api, plan: PlanData, first: Boolean, enabled: Boolean, act: (suspend () -> Unit) -> Unit) {
+private fun ProgrammeForm(api: Api, plan: PlanData, first: Boolean, enabled: Boolean, act: (suspend () -> Unit) -> Unit, university: Boolean = false) {
     var institution by rememberSaveable { mutableStateOf(if (first) "nzqa" else "aut") }
     var level by rememberSaveable { mutableStateOf("Level 2") }
     var year by rememberSaveable { mutableStateOf(java.time.LocalDate.now().year.toString()) }
@@ -160,7 +160,7 @@ private fun ProgrammeForm(api: Api, plan: PlanData, first: Boolean, enabled: Boo
     var hours by rememberSaveable { mutableStateOf(trimNumber(plan.curriculum.doubleOrNull("hours_per_week") ?: 10.0)) }
     if (first) Text("Where do you study?", style = MaterialTheme.typography.titleSmall)
     // Two by two, each choice the same size, so the four read as one set.
-    INSTITUTIONS.chunked(2).forEach { pair ->
+    (if (university) INSTITUTIONS.filter { it.first != "nzqa" } else INSTITUTIONS).chunked(2).forEach { pair ->
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             pair.forEach { (key, label) ->
                 val chosen = institution == key
@@ -295,7 +295,6 @@ private fun ProgrammeSection(api: Api, plan: PlanData, programme: JSONObject, es
     val place = if (ncea) "" else listOf(mapOf("aut" to "AUT", "uoa" to "University of Auckland")[programme.optString("institution")] ?: "Other", programme.optString("level")).filter { it.isNotBlank() }.joinToString(" · ")
     var menu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
-    var addPaper by remember { mutableStateOf(false) }
     val subjects = plan.subjects.filter { !it.isNull("programme_id") && it.optLong("programme_id") == programme.optLong("id") }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -310,16 +309,18 @@ private fun ProgrammeSection(api: Api, plan: PlanData, programme: JSONObject, es
                 }
             }
         }
-        if (subjects.isEmpty()) Text(if (ncea) "No subjects yet. Add one below." else "No papers yet. Add one below.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (subjects.isEmpty()) Text(if (ncea) "No subjects yet. Add one below." else "No papers yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         subjects.forEach { subject -> key(subject.optLong("subject_id")) { SubjectCard(api, subject, ncea, estimateOf[subject.optLong("subject_id")], plan.today, busy, act) } }
         if (ncea) AddNceaSubject(api, plan, programme, busy, act, onOpenResources)
-        else OutlinedButton(enabled = !busy, onClick = { addPaper = true }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("+  Add a paper") }
+        else {
+            Text("Add papers in Resources.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = onOpenResources, shape = RoundedCornerShape(50)) { Text("Open Resources") }
+        }
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Remove this programme?") },
         text = { Text("Its subjects, lessons and reviews stay; only the grouping goes.") },
         confirmButton = { TextButton(onClick = { confirm = false; act { api.delete("/programmes/${programme.getLong("id")}") } }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } })
-    if (addPaper) PaperDialog(api, programme, plan.calendars, onDismiss = { addPaper = false }, onSaved = { addPaper = false; act { } })
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -646,6 +647,48 @@ private fun PaperDialog(api: Api, programme: JSONObject, calendars: JSONObject, 
             }
         }
     }
+}
+
+/**
+ * Adding a paper from Resources: the paper goes in a university programme, so one is chosen, or set up first when there is none.
+ * [onSaved] runs once the paper is saved.
+ */
+@Composable
+fun AddPaper(base: String, token: String, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val api = remember(base, token) { Api(base, token) }
+    var data by remember { mutableStateOf<PlanData?>(null) }
+    var error by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
+    var chosen by remember { mutableStateOf<JSONObject?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(reload) {
+        error = ""
+        try { data = loadPlan(api) } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load your programmes" }
+    }
+    val act: (suspend () -> Unit) -> Unit = { work ->
+        scope.launch {
+            busy = true
+            try { work(); reload++ } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not save" }
+            finally { busy = false }
+        }
+    }
+    val universities = data?.programmes.orEmpty().filter { it.optString("kind") != "ncea" }
+    val programme = chosen ?: universities.singleOrNull()
+    val plan = data
+    if (programme != null && plan != null) { PaperDialog(api, programme, plan.calendars, onDismiss = onDismiss, onSaved = onSaved); return }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (universities.isEmpty()) "Where is this paper?" else "Which programme?") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (plan == null) { if (error.isEmpty()) LoadingBar(Modifier.fillMaxWidth()) }
+            else if (universities.isEmpty()) {
+                Text("A paper belongs to a university programme. Add yours first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ProgrammeForm(api, plan, first = false, enabled = !busy, act = act, university = true)
+            } else universities.forEach { option ->
+                OutlinedButton(onClick = { chosen = option }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth()) { Text(option.optString("name").ifBlank { "Programme" }) }
+            }
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }
 
 @Composable

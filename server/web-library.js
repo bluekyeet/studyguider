@@ -1,5 +1,6 @@
 // Library: subjects -> topics -> files, standards, notes and search for one topic.
 import { mathText, readable, session, library } from './web-common.js';
+import { paperAdder } from './web-plan.js';
 const el = (tag, text = '', className = '') => {
   const node = document.createElement(tag);
   if (text !== '') node.textContent = text;
@@ -101,7 +102,7 @@ async function subjects(root, api) {
   const { wrap } = head('Library', 'The global library, plus your own subjects, topics and study files.');
   root.append(wrap);
   if (!all.length) root.append(el('p', 'No subjects yet. Add your first one below.', 'empty'));
-  // NCEA subjects by level, then university papers (set up in Plan) together.
+  // NCEA subjects by level, then university papers together.
   const shelves = [...new Set(all.filter(s => s.kind !== 'paper').map(s => s.level))].map(level => [`NCEA Level ${level}`, s => s.kind !== 'paper' && s.level === level]);
   if (all.some(s => s.kind === 'paper')) shelves.push(['Papers', s => s.kind === 'paper']);
   for (const [heading, belongs] of shelves) {
@@ -121,7 +122,7 @@ async function subjects(root, api) {
   const fields = el('div', '', 'fields'); fields.append(field('Subject name', name), field('NCEA level', level));
   const submit = el('button', 'Add subject', 'primary'); const note = status();
   const bar = el('div', '', 'toolbar'); bar.append(submit, note);
-  card.append(el('h2', library.global() ? 'Add a global subject' : 'Add my own subject'), fields, bar);
+  card.append(el('h2', library.global() ? 'Add a global subject' : 'Add an NCEA subject'), fields, bar);
   card.onsubmit = async event => {
     event.preventDefault();
     await guard(submit, note, async () => {
@@ -130,6 +131,8 @@ async function subjects(root, api) {
     });
   };
   root.append(card);
+  // Papers are your own: the global library holds NCEA subjects only.
+  if (!library.global()) root.append(await paperAdder(api));
 }
 
 async function topics(root, api, subject) {

@@ -65,7 +65,7 @@ function setup(root, api, curriculum) {
   root.append(card);
 }
 
-function setupForm(card, api, curriculum, first) {
+function setupForm(card, api, curriculum, first, university = false) {
   let institution = first ? 'nzqa' : 'aut';
   const group = el('div', '', 'segmented'); group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Where you study');
   const fields = el('div', '', 'fields');
@@ -82,7 +82,7 @@ function setupForm(card, api, curriculum, first) {
   };
   const draw = () => {
     group.replaceChildren();
-    for (const [value, label] of INSTITUTIONS) {
+    for (const [value, label] of university ? INSTITUTIONS.filter(([value]) => value !== 'nzqa') : INSTITUTIONS) {
       const b = button(label); b.setAttribute('aria-pressed', String(value === institution));
       b.onclick = () => { institution = value; draw(); drawFields(); };
       group.append(b);
@@ -174,10 +174,10 @@ function programmeCard(api, programme, curriculum, calendars, estimateOf) {
   remove.onclick = async () => { if (confirm('Remove this programme? Its subjects, lessons and reviews stay; only the grouping goes.')) { await api(`/programmes/${programme.id}`, { method: 'DELETE' }); refresh(); } };
   h.append(remove); wrap.append(h);
   const subjects = curriculum.subjects.filter(s => s.programme_id === programme.id);
-  if (!subjects.length) wrap.append(el('p', programme.kind === 'ncea' ? 'No subjects yet. Add one below.' : 'No papers yet. Add one below.', 'empty'));
+  if (!subjects.length) wrap.append(el('p', programme.kind === 'ncea' ? 'No subjects yet. Add one below.' : 'No papers yet.', 'empty'));
   for (const subject of subjects) wrap.append(subjectCard(api, subject, programme, estimateOf.get(subject.subject_id)));
   if (programme.kind === 'ncea') wrap.append(addNceaSubject(api, programme, curriculum));
-  else wrap.append(addPaper(api, programme, calendars));
+  else { const p = el('p', '', 'muted'); p.append('Add papers in '); const a = el('a', 'Library'); a.href = '#library'; p.append(a, '.'); wrap.append(p); }
   return wrap;
 }
 
@@ -333,6 +333,25 @@ function addStandard(api, subject) {
 }
 
 // ---- university: adding a paper ---------------------------------------------------------------------------------------
+// Papers are added from the Library. A paper belongs to a university programme: one is chosen, or set up first when there is none.
+export async function paperAdder(api) {
+  const [curriculum, calendars] = await Promise.all([api('/curriculum'), api('/calendars')]);
+  const universities = curriculum.programmes.filter(p => p.kind !== 'ncea');
+  if (!universities.length) {
+    const card = el('section', '', 'card stack');
+    card.append(el('h2', 'Add a university paper'), el('p', 'A paper belongs to a university programme. Add yours first, then the paper.', 'muted'));
+    setupForm(card, api, curriculum, false, true);
+    return card;
+  }
+  const wrap = el('div', '', 'stack');
+  const show = programme => { wrap.replaceChildren(); if (universities.length > 1) wrap.append(chooser); const card = addPaper(api, programme, calendars); card.querySelector('h3').textContent = `Add a paper to ${programme.name || 'your programme'}`; wrap.append(card); };
+  const chooser = select(universities.map(p => [p.id, p.name || 'Programme']), universities[0].id);
+  chooser.setAttribute('aria-label', 'Programme');
+  chooser.onchange = () => show(universities.find(p => String(p.id) === chooser.value));
+  show(universities[0]);
+  return wrap;
+}
+
 function addPaper(api, programme, calendars) {
   const card = el('section', '', 'card stack');
   card.append(el('h3', 'Add a paper'));
