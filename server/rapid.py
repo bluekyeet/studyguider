@@ -9,6 +9,7 @@ import mathtext
 import json
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
@@ -30,6 +31,7 @@ log = logging.getLogger("uvicorn.error")
 BUFFER_TARGET = 6       # AI questions kept ready ahead of the learner
 REFILL_BELOW = 4        # start refilling when fewer than this are ready
 BATCH = 3               # questions per generation call
+FIRST_AI_WAIT = 50      # seconds a request waits for an AI question being written (the app gives up reading at 60)
 MARK_RETRIES = 3
 
 MARKERS = ThreadPoolExecutor(max_workers=3, thread_name_prefix="rapid-mark")
@@ -338,6 +340,20 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             _generating.add(exam_id)
         userspace.submit(GENERATORS, fill_buffer, exam_id)
 
+    def ai_question_ready(exam_id):
+        """Start writing AI questions and wait for the first, stopping early if the writer gives up. True once one is queued."""
+        ensure_buffer(exam_id)
+        deadline = time.monotonic() + FIRST_AI_WAIT
+        while True:
+            with connect() as db:
+                if db.execute("SELECT 1 FROM rapid_queue WHERE exam_id = %s AND NOT served", (exam_id,)).fetchone():
+                    return True
+            with _lock:
+                writing = exam_id in _generating
+            if not writing or time.monotonic() > deadline:
+                return False
+            time.sleep(1)
+
     # ---- locking an answer ---------------------------------------------------------------------
     def lock_current(db, exam_id, body, final=False):
         """Save and lock the question on screen. Returns (question_id, skipped) or None if there is nothing to lock."""
@@ -414,11 +430,24 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
                     if isinstance(first, int):
                         mathtext.process(connect, vision, ids=[first])     # the question on screen first; one page image, so a few seconds
                     mathtext.kick(connect, vision, body.topic_id)
+            writes_ai = body.source in ("ai", "mix") and model_reply is not None and search_resources is not None
             if isinstance(first, str):
-                if body.source != "revision" and body.source != "ai" and splitting.pending(db, body.topic_id, 1):
+                if body.source not in ("revision", "ai") and splitting.pending(db, body.topic_id, 1):
                     raise HTTPException(409, "Your past papers are being prepared for rapid practice. Try again in a minute.")
-                raise HTTPException(409, "There are no questions for this topic yet" if body.source != "revision" else "Nothing to revise for this topic")
-            question = _payload(db, exam_id, first)
+                if not writes_ai:
+                    raise HTTPException(409, "There are no questions for this topic yet" if body.source != "revision" else "Nothing to revise for this topic")
+            question = _payload(db, exam_id, first) if isinstance(first, int) else None
+        if question is None:
+            # Nothing was ready, so the first AI question is written now, while the session waits for it.
+            if ai_question_ready(exam_id):
+                with connect() as db:
+                    first = _advance(db, exam_id, body.topic_id, body.source, body.count)
+                    question = _payload(db, exam_id, first) if isinstance(first, int) else None
+            if question is None:
+                with connect() as db:
+                    db.execute("DELETE FROM exams WHERE id = %s", (exam_id,))
+                raise HTTPException(409, "No AI questions could be written for this topic. They are based on its notes and papers, "
+                                         "so add some in Resources and try again.")
         ensure_buffer(exam_id)
         return {"id": exam_id, "source": body.source, "target_count": body.count, "question": question}
 
@@ -450,6 +479,11 @@ def rapid_router(connect, authorised, model_reply=None, search_resources=None, m
             response = {nxt: True} if isinstance(nxt, str) else {"question": _payload(db, exam_id, nxt)}
         if locked and not locked[1]:
             queue_mark(exam_id, locked[0])
+        if nxt == "exhausted" and sess[1] in ("ai", "mix") and ai_question_ready(exam_id):
+            # The learner got ahead of the questions being written; the next one is served as soon as it is ready.
+            with connect() as db:
+                nxt = _advance(db, exam_id, sess[0], sess[1], sess[2])
+                response = {nxt: True} if isinstance(nxt, str) else {"question": _payload(db, exam_id, nxt)}
         ensure_buffer(exam_id)
         return response
 

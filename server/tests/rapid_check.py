@@ -232,6 +232,27 @@ async def main():
         end(s4["id"])
         print("PASS mix alternates past/AI; AI questions prepared ahead; the failed one was dropped before serving; labelled AI")
 
+        # 4b. An AI session on a topic with no papers and nothing written yet waits for its first question rather than refusing.
+        with isolated() as db:
+            fresh = db.execute("INSERT INTO topics(subject_id, name) SELECT subject_id, 'Energy' FROM topics WHERE id = %s RETURNING id", (topic,)).fetchone()[0]
+            db.execute("INSERT INTO topic_standards(topic_id, standard_number) VALUES (%s, 99901)", (fresh,))
+        s4b = start(RapidStart(topic_id=fresh, source="ai", count=None))
+        assert s4b["question"]["source"] == "ai", s4b
+        end(s4b["id"])
+        # With no notes to base questions on, it refuses with a reason and leaves no empty session behind.
+        unfed = endpoint(rapid_router(isolated, lambda: None, model, lambda topic_id, query: [], mark_answer), "/rapid", "POST")
+        with isolated() as db:
+            bare = db.execute("INSERT INTO topics(subject_id, name) SELECT subject_id, 'Waves' FROM topics WHERE id = %s RETURNING id", (topic,)).fetchone()[0]
+            db.execute("INSERT INTO topic_standards(topic_id, standard_number) VALUES (%s, 99901)", (bare,))
+        try:
+            unfed(RapidStart(topic_id=bare, source="ai", count=None))
+            raise AssertionError("an AI session with nothing to write from should be refused")
+        except HTTPException as error:
+            assert error.status_code == 409 and "Resources" in error.detail, error.detail
+        with isolated() as db:
+            assert db.execute("SELECT count(*) FROM rapid_sessions WHERE topic_id = %s", (bare,)).fetchone()[0] == 0
+        print("PASS an AI-only session waits for its first question; with nothing to write from it refuses and leaves nothing behind")
+
         # 5. Revision sessions serve only unresolved misses and resolve them when you get them right.
         with isolated() as db:
             outstanding = [r[0] for r in db.execute("SELECT question_id FROM exam_revision WHERE resolved_at IS NULL").fetchall()]
