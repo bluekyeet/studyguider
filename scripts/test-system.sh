@@ -50,7 +50,7 @@ case "${1:-}" in
   emulator)
     if [ -n "$(emulator_serial)" ]; then echo "Emulator already running: $(emulator_serial)"; exit 0; fi
     "$SDK/emulator/emulator" -avd "$AVD" >/dev/null 2>&1 &
-    "$ADB" wait-for-any-device >/dev/null; serial=""
+    serial=""     # poll rather than adb wait-for: that fails on a reset while booting and also returns for a plugged-in phone
     until [ -n "$serial" ] && [ "$("$ADB" -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '
 ')" = 1 ]; do sleep 3; serial=$(emulator_serial); done
     echo "Emulator $AVD running: $serial" ;;
