@@ -335,9 +335,11 @@ async function renderClassicExams(container, api) {
         if (q.paper_resource_id) sources.append(link(`Original paper · page ${q.paper_page}`, `/resources/${encodeURIComponent(q.paper_resource_id)}/download#page=${q.paper_page}`));
         if (q.schedule_resource_id) sources.append(link(q.guide_source ? 'Uploaded marking guide' : `Original schedule · page ${q.schedule_page}`, `/resources/${encodeURIComponent(q.schedule_resource_id)}/download#page=${q.schedule_page}`));
         if (q.figure_pages?.length) card.append(el('p', `Check original figure pages: ${q.figure_pages.join(', ')}`, 'muted'));
-        card.append(sources);
+        if (sources.childElementCount) card.append(sources);
+        // The rubric holds the worked answer, so it sits below the answer box rather than above the question.
+        let schedule = null;
         if (q.schedule_text) {
-          const schedule = el('details');
+          schedule = el('details');
           schedule.append(el('summary', q.guide_source === 'ai' ? 'Compare with the AI-written marking guide (not the examiner\u2019s)'
             : q.guide_source ? 'Compare with the marking guide' : q.schedule_resource_id ? 'Compare with schedule excerpt' : 'Compare with AI practice rubric (unofficial)'));
           if (q.guide_source) schedule.append(mathText(q.schedule_text));
@@ -345,7 +347,6 @@ async function renderClassicExams(container, api) {
             // PDF tables lose their columns when extracted, so show the text as-is and point to the original.
             schedule.append(el('p', 'Extracted text; table layout is lost. Use the original schedule page above to compare.', 'muted'), el('pre', q.schedule_text, 'schedule-text'));
           } else schedule.append(mathText(q.schedule_text));
-          card.append(schedule);
         }
         const raw = el('textarea'); raw.rows = 7; raw.maxLength = 100000; raw.value = q.answer || '';
         const rawField = mathField(handwritten ? 'Recognised answer (check it against your page)' : 'Answer text / JSON (preserved exactly unless edited)', raw);
@@ -569,7 +570,7 @@ async function renderClassicExams(container, api) {
           });
           scanBox.append(picker, preview, read);
         }
-        card.append(scanBox, rawField, controls, conflictBox, status, feedback); detail.append(card); cards.push(card);
+        card.append(scanBox, rawField, controls, conflictBox, status, feedback, ...(schedule ? [schedule] : [])); detail.append(card); cards.push(card);
         if (q.answer) navButton.classList.add('done');
       }
       detail.append(pager); showQuestion(0);
