@@ -11,14 +11,17 @@ unverified, and AI-written practice is kept separate from real past papers.
 
 ## What it does
 
-- **Library:** upload past papers, schedules, slides and notes per topic. Files are stored as-is, text is
-  extracted in the background (including OCR for scanned pages) and searched with PostgreSQL full text.
+- **Library (Resources in the app):** the one place where things are added: NCEA subjects, university papers (an AUT course
+  code fetches the public paper descriptor; any other outline is pasted or uploaded; every import is a draft to check),
+  programmes, and the files for each topic: past papers, schedules, slides and notes. Files are stored as-is, text is
+  extracted in the background (including OCR for scanned pages) and searched with PostgreSQL full text. Files open in a
+  viewer without leaving the app.
 - **Lessons:** one lesson per topic you are learning is prepared overnight (New Zealand time) from your own
   sources, reviewed by a second model and bounded rewrites. Practice sections save your answers and give
-  AI feedback. Explain answers questions about a section and can save the reply to topic notes.
-- **Plan:** an NCEA programme or university papers, with their learning outcomes or standards and dated, weighted
-  assessments. An AUT course code fetches the public paper descriptor; any other outline is pasted or uploaded; every
-  import is a draft to check. Lessons switch to mixed exam-style practice in the three weeks before an assessment and to a
+  AI feedback. Explain answers questions about a section and can save the reply to the topic's notes, which open under
+  each topic in Plan.
+- **Plan:** your NCEA programme or university papers, with their learning outcomes or standards, dated and weighted
+  assessments, and today's review load. Lessons switch to mixed exam-style practice in the three weeks before an assessment and to a
   weekly maintenance lesson after it.
 - **Review:** questions made from completed lessons and wrong exam answers come back on an FSRS-6 schedule driven by how
   well each was recalled, pulled in before an assessment and kept at a maintenance level after it. A daily limit from your
@@ -31,11 +34,14 @@ unverified, and AI-written practice is kept separate from real past papers.
 - **Rapid questions:** pick a topic and flash through exam questions (past-paper and AI-written, prepared ahead), with no
   feedback until you end the session. Answers are marked in the background and the results are a grade breakdown. Misses go to
   **Exam revision**, where you pick a topic and get a pack of re-teaching and questions built from your mistakes there. Both live under Exams.
-- **Home:** today's lessons, reviews due, coming assessments with predicted recall, recall per topic, grade estimates
-  (NCEA from full past papers against that paper's cut scores; university from the marks you enter), weak concepts and
-  recent exams. None of it is an official result.
+- **Home:** today's lessons and reviews and the next exam up front; folded underneath, predicted recall per topic, grade
+  estimates (NCEA from full past papers against that paper's cut scores; university from the marks you enter), weak concepts
+  and recent exams. None of it is an official result.
+- **Rewards:** points earned only from work already marked correct, spent on cosmetic collectables (a gacha and a shop), a
+  dressable character and opt-in leaderboards. Nothing here changes marking or teaching. On the phone it is the ★ Rewards
+  button in the top bar. See `docs/rewards.md`.
 
-Clients: the website at `/` (Home, Plan, Lessons, Review, Exams, Library, Settings), the Android app (same
+Clients: the website at `/` (Home, Plan, Lessons, Review, Exams, Library, Rewards, Settings), the Android app (same
 areas), and `/manage`, a developer-style "Advanced tools" page for diagram review, question parsing and
 checks, exam assembly and schedule runs.
 
@@ -62,6 +68,16 @@ The API is bound to `127.0.0.1` on purpose. Do not expose it to the internet wit
 request-body limit at the proxy, per-client login throttling and a security review. Back up the database
 and the uploads volume together (`deploy/BACKUP.md`).
 
+## Accounts
+
+The server supports several accounts. Each has its own subjects, files, lessons, reviews, exams, teaching style
+and AI usage, kept in its own PostgreSQL schema (`u1`, `u2`, ...) and its own upload folder, so one account cannot read
+another's data. Accounts are managed in the app or on the website under Account: everyone can change their own username,
+password and profile picture; only administrators can add or remove accounts, reset someone's username or password, and
+open the advanced tools (`/manage`, AI usage, question parsing). There is no self-sign-up. The first start after upgrading
+from the single-password version turns the existing installation into an administrator account named `admin` (same password)
+and moves all of its data into that account; rename it under Account. Removing an account permanently deletes everything it owns.
+
 ## Android app
 
 Open `android/` in Android Studio, or build from a terminal with JDK 17 or 21 (not 25) and Android SDK 36:
@@ -78,6 +94,11 @@ HTTP for local testing; do not use real passwords over HTTP, and use HTTPS for a
 Do not run the connected/instrumentation tests against a device that has the app you use: the test runner
 can remove it.
 
+**Getting the APK from GitHub:** the *Build Android APK* workflow (`.github/workflows/android-apk.yml`) builds the debug APK on
+every push to `main` that touches `android/`, and on demand from the Actions tab (Run workflow). Download it from the run's
+Artifacts (kept 30 days). Pushing a tag such as `v0.2` also attaches it to a GitHub release. It is signed with the shared debug
+key, so it is for your own devices, not a store release.
+
 ## Tests
 
 The server suite runs in a throwaway container and touches no running containers or data:
@@ -90,18 +111,9 @@ Without Docker, install `server/requirements.txt`, `pytest` and `httpx`, then
 `PYTHONPATH=server python -m pytest server/tests -q`. CI (`.github/workflows/ci.yml`) also builds the debug
 APK and runs integration checks against a disposable Compose stack.
 
-**Accounts.** The server supports several accounts. Each has its own subjects, files, lessons, reviews, exams, teaching style
-and AI usage, kept in its own PostgreSQL schema (`u1`, `u2`, ...) and its own upload folder, so one account cannot read
-another's data. Accounts are managed in the app or on the website under Account: everyone can change their own username,
-password and profile picture; only administrators can add or remove accounts, reset someone's username or password, and
-open the advanced tools (`/manage`, AI usage, question parsing). There is no self-sign-up. The first start after upgrading
-from the single-password version turns the existing installation into an administrator account named `admin` (same password)
-and moves all of its data into that account; rename it under Account. Removing an account permanently deletes everything it owns.
-
-**Getting the APK from GitHub:** the *Build Android APK* workflow (`.github/workflows/android-apk.yml`) builds the debug APK on
-every push to `main` that touches `android/`, and on demand from the Actions tab (Run workflow). Download it from the run's
-Artifacts (kept 30 days). Pushing a tag such as `v0.2` also attaches it to a GitHub release. It is signed with the shared debug
-key, so it is for your own devices, not a store release.
+**Test system.** `scripts/test-system.sh` starts a separate StudyGuider on port 8100 (`compose.test.yaml`) with sample data,
+and installs a test build of the app (`nz.studyguider.test`) on an emulator next to the real one. Both have a Report button;
+`scripts/test-system.sh reports` collects the reports. See `docs/test-system.md`.
 
 Scripts in `server/tests/` named `live_*` call the real model gateway and are opt-in (they cost model
 calls). `server/tests/integration.py` creates its own account and must only be pointed at a
@@ -112,9 +124,9 @@ disposable database.
 ```
 server/      FastAPI app, background worker, the website (web*.html/css/js) and its tests
 android/     Android app (Kotlin, Jetpack Compose)
-docs/        task list, progress log, job-recovery notes, website functional spec
+docs/        task list, progress log, ADRs (docs/adr), designs, feature writeups, website functional spec
 deploy/      backup and restore procedure
-scripts/     test runner and resource import helper
+scripts/     server test runner, test system, resource import helper
 tests/       small Node checks used by CI
 assets/      branding source images
 ```
@@ -124,6 +136,9 @@ The website has no build step: plain ES modules and one stylesheet, served by th
 
 ## More documentation
 
+- `GLOSSARY.md`: the names used for things across the app and code (Topic, Standard, Predicted recall, ...).
+- `docs/adr/`: architecture decisions, such as one PostgreSQL schema per account.
+- `docs/rewards.md` and `docs/exam-drill.md`: how Rewards and Rapid questions work.
 - `docs/task-list.md`: the working task list, with what is verified and what is still open.
 - `docs/progress.md`: dated log of checks and results, including what was not tested.
 - `docs/website-functions.md`: what each website screen must do.
