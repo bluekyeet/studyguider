@@ -69,3 +69,20 @@ def test_dockerfile_copies_every_server_module():
             copied.update(token for token in line.split()[1:-1])
     missing = [path.name for path in server.glob("*.py") if path.name not in copied]
     assert not missing, f"Add to the Dockerfile: {missing}"
+
+
+def test_every_named_import_between_website_modules_is_exported():
+    """One missing export stops the whole site loading: the browser rejects the module graph and the page stays blank."""
+    import re
+    from pathlib import Path
+
+    server = Path(__file__).resolve().parents[1]
+    sources = {path.name: path.read_text(encoding="utf-8") for path in server.glob("web*.js")}
+    exported = {
+        name: set(re.findall(r"^export\s+(?:async\s+)?(?:const|let|function\*?|class)\s+(\w+)", source, re.M))
+        for name, source in sources.items()
+    }
+    for name, source in sources.items():
+        for names, module in re.findall(r"^import\s*\{([^}]*)\}\s*from\s*'\./([\w-]+\.js)'", source, re.M):
+            for imported in (part.split(" as ")[0].strip() for part in names.split(",") if part.strip()):
+                assert imported in exported.get(module, set()), f"{name} imports {imported!r} but {module} does not export it"

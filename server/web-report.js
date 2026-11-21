@@ -1,7 +1,12 @@
 // "Report a problem", shown only on a test system (reports.py, docs/test-system.md). It sends what the tester wrote, the page they
 // were on, the browser and screen size, the last failed requests and script errors, and an optional screenshot (attached, pasted
 // or captured). Testers see their own reports here; administrators see everyone's and mark them fixed.
-import {el} from './web-common.js';
+const el = (tag, text = '', className = '') => {
+  const node = document.createElement(tag);
+  if (text !== '') node.textContent = text;
+  if (className) node.className = className;
+  return node;
+};
 
 const recent = [];
 function remember(entry) { recent.push({at: new Date().toISOString(), ...entry}); if (recent.length > 30) recent.shift(); }
