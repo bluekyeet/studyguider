@@ -43,7 +43,7 @@ class Database:
         if "INSERT INTO review_answers" in sql:
             self.answers.append(params)
             return Result((42, self.timestamp))
-        if "SELECT mastery, status FROM topics" in sql:
+        if "SELECT predicted_recall, status FROM topics" in sql:
             return Result((0.91, "secure"))
         if "UPDATE review_questions" in sql or "UPDATE topics" in sql:
             return Result()
@@ -223,7 +223,7 @@ class PlanDb:
 
 
 def due_row(id, topic, question, concept="", origin="", reps=0, stability=None, material="concept"):
-    # (id, topic, question, due, concept, standard, mastery, topic name, origin, stability, last review, reps, material, expected, subject)
+    # (id, topic, question, due, concept, standard, predicted recall, topic name, origin, stability, last review, reps, material, expected, subject)
     last = datetime(2026, 11, 1, tzinfo=timezone.utc) if reps else None
     return (id, topic, question, date(2026, 11, 2), concept, None, 0, "E", origin, stability, last, reps, material, "", "Chemistry")
 

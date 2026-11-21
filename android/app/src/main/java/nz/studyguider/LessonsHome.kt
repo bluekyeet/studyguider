@@ -64,7 +64,7 @@ private suspend fun generateLesson(base: String, token: String, topicId: Long, r
     } finally { connection.disconnect() }
 }
 
-private class LessonsSnapshot(val token: String, val courses: List<JSONObject>, val lessons: List<JSONObject>)
+private class LessonsSnapshot(val token: String, val learningTopics: List<JSONObject>, val lessons: List<JSONObject>)
 private var lessonsCache: LessonsSnapshot? = null
 
 /**
@@ -88,7 +88,7 @@ fun todaysLessons(lessons: List<JSONObject>): Pair<List<JSONObject>, List<JSONOb
 fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) -> Unit) {
     // The last list appears at once and is refreshed quietly, so switching back to Lessons never starts from empty.
     val cached = lessonsCache?.takeIf { it.token == token }
-    var courses by remember { mutableStateOf<List<JSONObject>>(cached?.courses ?: emptyList()) }
+    var learningTopics by remember { mutableStateOf<List<JSONObject>>(cached?.learningTopics ?: emptyList()) }
     var lessons by remember { mutableStateOf<List<JSONObject>>(cached?.lessons ?: emptyList()) }
     var loading by remember { mutableStateOf(cached == null) }
     var generating by remember { mutableStateOf(false) }
@@ -102,11 +102,11 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
         if (cached == null && lessons.isEmpty()) loading = true
         error = ""
         try {
-            val c = JSONArray(api(base, token, "/courses"))
+            val c = JSONArray(api(base, token, "/learning-topics"))
             val l = JSONArray(api(base, token, "/lessons"))
-            courses = (0 until c.length()).map { c.getJSONObject(it) }
+            learningTopics = (0 until c.length()).map { c.getJSONObject(it) }
             lessons = (0 until l.length()).map { l.getJSONObject(it) }
-            lessonsCache = LessonsSnapshot(token, courses, lessons)
+            lessonsCache = LessonsSnapshot(token, learningTopics, lessons)
         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not load lessons" }
         finally { loading = false }
     }
@@ -121,7 +121,7 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
             if (error.isNotEmpty()) { Text(error, color = MaterialTheme.colorScheme.error); OutlinedButton(onClick = { reload++ }) { Text("Try again") } }
             if (!loading && lessons.isEmpty() && error.isEmpty()) StudyCard(tone = CardTone.Low) {
                 Text("No lessons available yet.", style = MaterialTheme.typography.titleMedium)
-                Text(if (courses.isEmpty()) "Choose your topics in Settings to get started." else "Use New lesson to create one from your resources.")
+                Text(if (learningTopics.isEmpty()) "Choose your topics in Settings to get started." else "Use New lesson to create one from your resources.")
             }
             if (toDo.isNotEmpty()) {
                 Text("Today · ${toDo.size} to do", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -136,13 +136,13 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
                 if (showEarlier) earlier.forEach { item -> LessonRow(item, onOpenLesson, note = if (item.isNull("completed_at")) "Not finished" else "Completed") }
             }
         }
-        if (courses.isNotEmpty()) ExtendedFloatingActionButton(onClick = { picker = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp), text = { Text("New lesson") }, icon = { Text("+") })
+        if (learningTopics.isNotEmpty()) ExtendedFloatingActionButton(onClick = { picker = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp), text = { Text("New lesson") }, icon = { Text("+") })
     }
     if (picker) ModalBottomSheet(onDismissRequest = { if (!generating) picker = false }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Choose a topic", style = MaterialTheme.typography.headlineSmall)
-            courses.forEach { course ->
-                val id = course.getLong("topic_id")
+            learningTopics.forEach { learningTopic ->
+                val id = learningTopic.getLong("topic_id")
                 Button(enabled = !generating, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), onClick = {
                     picker = false
                     scope.launch {
@@ -151,11 +151,11 @@ fun LessonsHome(base: String, token: String, onOpenLesson: (Long, String, Long) 
                             val key = attemptKeys.getOrPut(id) { "android-" + java.util.UUID.randomUUID() }
                             val lesson = generateLesson(base, token, id, key) { stage = it }
                             attemptKeys.remove(id)
-                            onOpenLesson(id, course.optString("topic"), lesson.getLong("id"))
+                            onOpenLesson(id, learningTopic.optString("topic"), lesson.getLong("id"))
                         } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "Could not generate lesson" }
                         finally { generating = false }
                     }
-                }) { Text("${course.optString("subject")} · ${course.optString("topic")}") }
+                }) { Text("${learningTopic.optString("subject")} · ${learningTopic.optString("topic")}") }
             }
         }
     }

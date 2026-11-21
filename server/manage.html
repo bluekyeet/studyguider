@@ -127,8 +127,8 @@
     #topic-standards button { margin:0 0 0 auto; }
     #schedule-runs > li { font-size:.85rem; }
     .compact-warning { font-size:.8rem; opacity:.75; margin:8px 0 12px; }
-    .course-toggle { display:flex; align-items:center; gap:12px; padding:12px; margin:0; border-bottom:1px solid #8290aa33; font-weight:400; }
-    .course-toggle input { width:20px; height:20px; min-height:20px; margin:0; }
+    .learning-topic-toggle { display:flex; align-items:center; gap:12px; padding:12px; margin:0; border-bottom:1px solid #8290aa33; font-weight:400; }
+    .learning-topic-toggle input { width:20px; height:20px; min-height:20px; margin:0; }
     @media(max-width:650px) { .compact-fields { grid-template-columns:1fr; } }
     #diagrams { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr)); gap:16px; }
     #diagrams > li { margin:0; min-width:0; padding:14px; border-radius:12px; }
@@ -220,7 +220,7 @@
       <div class="manager-top"><p>Manage your study library</p><button id="logout" class="secondary" type="button">Sign out</button></div>
       <div class="manager-layout">
       <nav class="manager-nav" aria-label="Resource manager sections"><p>Resource manager</p><div>
-        <a href="#subjects-heading">Subjects</a><a href="#style-heading">Teaching style</a><a href="#topics-heading">Topics</a><a href="#standards-heading">NZQA standards</a><a href="#resources-heading">Resources</a><a href="#mastery-heading">Mastery</a><a href="#search-heading">Search resources</a><a href="#notes-heading">Topic notes</a><a href="#draft-heading">Lesson draft</a><a href="#question-heading">Register question</a><a href="#parse-heading">Question check</a><a href="#exam-heading">Exam assembly</a><a href="#marking-heading">Marking</a><a href="#diagram-heading">Diagrams</a><a href="#scheduler-heading">Scheduled lessons</a><a href="#saved-lessons-heading">Saved lessons</a><a href="#review-drafts-heading">Review drafts</a><a href="#usage-heading">AI usage</a>
+        <a href="#subjects-heading">Subjects</a><a href="#style-heading">Teaching style</a><a href="#topics-heading">Topics</a><a href="#standards-heading">NZQA standards</a><a href="#resources-heading">Resources</a><a href="#recall-heading">Predicted recall</a><a href="#search-heading">Search resources</a><a href="#notes-heading">Topic notes</a><a href="#draft-heading">Lesson draft</a><a href="#question-heading">Register question</a><a href="#parse-heading">Question check</a><a href="#exam-heading">Exam assembly</a><a href="#marking-heading">Marking</a><a href="#diagram-heading">Diagrams</a><a href="#scheduler-heading">Scheduled lessons</a><a href="#saved-lessons-heading">Saved lessons</a><a href="#review-drafts-heading">Review drafts</a><a href="#usage-heading">AI usage</a>
       </div></nav>
       <div class="grid">
         <section class="card" aria-labelledby="subjects-heading">
@@ -233,11 +233,11 @@
           </form>
           <div class="divider"><label for="subjects">Select subject</label><select id="subjects"></select></div>
         </section>
-        <section class="card" aria-labelledby="courses-heading">
-          <div class="section-toolbar"><h2 id="courses-heading">Topics you’re learning</h2><button id="refresh-courses" type="button" class="secondary">Refresh</button></div>
+        <section class="card" aria-labelledby="learning-topics-heading">
+          <div class="section-toolbar"><h2 id="learning-topics-heading">Topics you’re learning</h2><button id="refresh-learning-topics" type="button" class="secondary">Refresh</button></div>
           <p class="hint">Choose topics for daily lessons. Changes save immediately; removing a topic keeps its resources and history.</p>
-          <p id="courses-status" role="status" aria-live="polite"></p>
-          <div id="course-topics"></div>
+          <p id="learning-topics-status" role="status" aria-live="polite"></p>
+          <div id="learning-topic-list"></div>
         </section>
         <section class="card" aria-labelledby="style-heading">
           <div class="section-heading"><h2 id="style-heading">Teaching style</h2></div>
@@ -364,11 +364,11 @@
           <h3>Source excerpts</h3><ul id="review-sources"></ul>
           <h3>Drafts to approve</h3><ul id="review-drafts"></ul>
         </section>
-        <section class="card" aria-labelledby="mastery-heading">
-          <div class="section-heading"><span class="section-number">12</span><h2 id="mastery-heading">Topic mastery</h2></div>
-          <p class="hint">Mastery comes from your marked review answers. It is a study indicator, not an official grade.</p>
-          <button id="load-mastery" class="secondary" type="button">Load mastery for the selected topic</button>
-          <div id="mastery-view"></div>
+        <section class="card" aria-labelledby="recall-heading">
+          <div class="section-heading"><span class="section-number">12</span><h2 id="recall-heading">Predicted recall</h2></div>
+          <p class="hint">Predicted recall comes from your marked review answers. It is a study indicator, not an official grade.</p>
+          <button id="load-recall" class="secondary" type="button">Load predicted recall for the selected topic</button>
+          <div id="recall-view"></div>
         </section>
         <section class="card wide" aria-labelledby="parse-heading">
           <div class="section-heading"><span class="section-number">13</span><h2 id="parse-heading">Question check</h2></div>
@@ -427,7 +427,7 @@
       Library: ['resources-heading', 'search-heading'],
       Notes: ['notes-heading'],
       Lessons: ['saved-lessons-heading', 'draft-heading', 'scheduler-heading'],
-      Reviews: ['review-drafts-heading', 'mastery-heading'],
+      Reviews: ['review-drafts-heading', 'recall-heading'],
       Exams: ['exam-heading', 'marking-heading'],
       Learning: ['style-heading', 'standards-heading'],
       Tools: ['diagram-heading', 'usage-heading'],
@@ -475,7 +475,7 @@
     compactForm('generate-review');
     const reviewSourcesHeading = $('review-sources').previousElementSibling;
     foldControls('review-drafts-heading','Source evidence',[reviewSourcesHeading,$('review-sources')]);
-    $('mastery-heading').textContent = 'Progress'; $('load-mastery').textContent = 'Refresh progress'; sectionToolbar('mastery-heading','load-mastery');
+    $('recall-heading').textContent = 'Progress'; $('load-recall').textContent = 'Refresh progress'; sectionToolbar('recall-heading','load-recall');
     $('exam-heading').textContent = 'Exams';
     $('exam-heading').closest('section').querySelector('.hint').textContent = 'Build from registered questions. Check wording and marking against original papers.';
     foldControls('exam-heading','Choose questions manually',[$('assemble-exam')]);
@@ -541,11 +541,11 @@
     function showWorkspace(name, focus = false) {
       const section = currentRoute().params.get('section') || '';
       const global = name === 'Settings';
-      const sections = {notes:['notes-heading'],lessons:['saved-lessons-heading','scheduler-heading'],reviews:['review-drafts-heading','mastery-heading'],exams:['exam-heading','marking-heading'],standards:['standards-heading']};
+      const sections = {notes:['notes-heading'],lessons:['saved-lessons-heading','scheduler-heading'],reviews:['review-drafts-heading','recall-heading'],exams:['exam-heading','marking-heading'],standards:['standards-heading']};
       cards.forEach(card => {
         const topic = $('topics').value, folder = currentRoute().params.get('folder');
         let allowed = sections[section] || [];
-        if (global) allowed = ['courses-heading','style-heading','usage-heading'];
+        if (global) allowed = ['learning-topics-heading','style-heading','usage-heading'];
         if (section === 'resources') allowed = folder === 'diagrams' ? ['diagram-heading'] : folder ? ['resources-heading'] : ['search-heading'];
         card.hidden = (!global && !topic) || !allowed.some(id => card.contains($(id)));
       });
@@ -575,7 +575,7 @@
         history.replaceState(null,'',target); route = currentRoute();
       }
       if (route.page === 'Settings') {
-        await loadStyle(); await loadCourseTopics(); renderSidebar('', '', '', '');
+        await loadStyle(); await loadLearningTopics(); renderSidebar('', '', '', '');
         showWorkspace('Settings',true); return;
       }
       if (route.page === 'Library' || route.params.has('subject')) {
@@ -707,38 +707,38 @@
       $('style-content').value = savedStyle; $('style-content').disabled = false;
       $('style-status').textContent = '';
     }
-    async function loadCourseTopics() {
-      const list = $('course-topics'); list.replaceChildren(); $('courses-status').textContent = 'Loading…';
+    async function loadLearningTopics() {
+      const list = $('learning-topic-list'); list.replaceChildren(); $('learning-topics-status').textContent = 'Loading…';
       try {
-        const [subjects, courses] = await Promise.all([api('/subjects'), api('/courses')]);
-        const active = new Map(courses.map(course => [String(course.topic_id),course.id]));
+        const [subjects, learningTopics] = await Promise.all([api('/subjects'), api('/learning-topics')]);
+        const active = new Map(learningTopics.map(learningTopic => [String(learningTopic.topic_id),learningTopic.id]));
         for (const subject of subjects.sort((a,b) => a.level-b.level || a.name.localeCompare(b.name))) {
           const topics = await api(`/subjects/${subject.id}/topics`);
           if (!topics.length) continue;
           const heading = document.createElement('h3'); heading.textContent = `Level ${subject.level} · ${subject.name}`; list.append(heading);
           for (const topic of topics) {
-            const label = document.createElement('label'); label.className = 'course-toggle';
+            const label = document.createElement('label'); label.className = 'learning-topic-toggle';
             const check = document.createElement('input'); check.type = 'checkbox'; check.checked = active.has(String(topic.id));
             const name = document.createElement('span'); name.textContent = topic.name; label.append(check,name); list.append(label);
             check.onchange = async () => {
-              const enabled = check.checked; check.disabled = true; $('courses-status').textContent = 'Saving…';
+              const enabled = check.checked; check.disabled = true; $('learning-topics-status').textContent = 'Saving…';
               try {
                 if (enabled) {
-                  const course = await api('/courses', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic_id:topic.id})});
-                  active.set(String(topic.id),course.id);
+                  const learningTopic = await api('/learning-topics', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic_id:topic.id})});
+                  active.set(String(topic.id),learningTopic.id);
                 } else {
-                  await api(`/courses/${active.get(String(topic.id))}`,{method:'DELETE'}); active.delete(String(topic.id));
+                  await api(`/learning-topics/${active.get(String(topic.id))}`,{method:'DELETE'}); active.delete(String(topic.id));
                 }
-                $('courses-status').textContent = 'Saved';
-              } catch (error) { check.checked = !enabled; $('courses-status').textContent = error.message; }
+                $('learning-topics-status').textContent = 'Saved';
+              } catch (error) { check.checked = !enabled; $('learning-topics-status').textContent = error.message; }
               finally { check.disabled = false; }
             };
           }
         }
-        $('courses-status').textContent = list.children.length ? '' : 'Create a subject and topic in Library first.';
-      } catch (error) { $('courses-status').textContent = error.message; }
+        $('learning-topics-status').textContent = list.children.length ? '' : 'Create a subject and topic in Library first.';
+      } catch (error) { $('learning-topics-status').textContent = error.message; }
     }
-    $('refresh-courses').onclick = () => loadCourseTopics();
+    $('refresh-learning-topics').onclick = () => loadLearningTopics();
     async function loadSubjects() {
       options($('subjects'), await api('/subjects'), item => `${item.name} (Level ${item.level})`);
       $('subjects').insertBefore(new Option('Choose a subject', ''), $('subjects').firstChild);
@@ -1183,18 +1183,18 @@
       } finally { button.disabled = false; }
     });
 
-    $('load-mastery').onclick = run(async () => {
+    $('load-recall').onclick = run(async () => {
       const topic = $('topics').value;
       if (!topic) throw new Error('Select a topic first');
-      const data = await api(`/topics/${topic}/mastery`);
-      $('mastery-view').replaceChildren();
+      const data = await api(`/topics/${topic}/predicted-recall`);
+      $('recall-view').replaceChildren();
       const summary = document.createElement('p');
-      summary.textContent = `${data.name}: mastery ${Math.round(data.mastery * 100)}%, status ${data.status}, ${data.due} question(s) due, ${data.correct}/${data.answers} correct.`;
-      $('mastery-view').append(summary);
+      summary.textContent = `${data.name}: predicted recall ${Math.round(data.predicted_recall * 100)}%, status ${data.status}, ${data.due} question(s) due, ${data.correct}/${data.answers} correct.`;
+      $('recall-view').append(summary);
       if (data.weak_concepts.length) {
         const list = document.createElement('ul');
         for (const concept of data.weak_concepts) { const item = document.createElement('li'); item.textContent = concept; list.append(item); }
-        $('mastery-view').append(list);
+        $('recall-view').append(list);
       }
     });
 

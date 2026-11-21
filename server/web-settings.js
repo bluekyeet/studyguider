@@ -51,8 +51,8 @@ async function studyTopics(card, api) {
   card.append(el('h2', 'Topics you’re learning'),
     el('p', 'Each topic you switch on gets a new lesson prepared overnight (New Zealand time). Switching one off keeps its files and history.', 'muted'));
   const note = el('p', '', 'muted'); note.setAttribute('role', 'status'); note.setAttribute('aria-live', 'polite');
-  const [subjects, courses] = await Promise.all([api('/subjects'), api('/courses')]);
-  const active = new Map(courses.map(course => [String(course.topic_id), course.id]));
+  const [subjects, learningTopics] = await Promise.all([api('/subjects'), api('/learning-topics')]);
+  const active = new Map(learningTopics.map(learningTopic => [String(learningTopic.topic_id), learningTopic.id]));
   const groups = await Promise.all(subjects.sort((a, b) => (a.kind === 'paper') - (b.kind === 'paper') || a.level - b.level || a.name.localeCompare(b.name))
     .map(async subject => [subject, await api(`/subjects/${subject.id}/topics`)]));
   const topicsById = new Map();
@@ -106,7 +106,7 @@ async function studyTopics(card, api) {
       row.append(text, ...(topic.global ? [el('span', 'Global', 'chip')] : []), remove); list.append(row);
       remove.onclick = async () => {
         remove.disabled = true; say('Saving…');
-        try { await api(`/courses/${active.get(id)}`, { method: 'DELETE' }); active.delete(id); say('Saved'); draw(); }
+        try { await api(`/learning-topics/${active.get(id)}`, { method: 'DELETE' }); active.delete(id); say('Saved'); draw(); }
         catch (error) { say(error.message, true); remove.disabled = false; }
       };
     }
@@ -115,7 +115,7 @@ async function studyTopics(card, api) {
   add.onclick = async () => {
     const id = select.value; if (!id) return;
     add.disabled = select.disabled = true; say('Saving…');
-    try { active.set(id, (await api('/courses', { method: 'POST', ...json({ topic_id: Number(id) }) })).id); say('Saved'); }
+    try { active.set(id, (await api('/learning-topics', { method: 'POST', ...json({ topic_id: Number(id) }) })).id); say('Saved'); }
     catch (error) { say(error.message, true); }
     draw();
   };

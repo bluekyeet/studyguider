@@ -50,7 +50,7 @@ def seed():
         topics = [db.execute("INSERT INTO topics(subject_id, name) VALUES (%s, %s) RETURNING id", (subject, name)).fetchone()[0]
                   for name in ("Topic A", "Topic B")]
         for topic in topics:
-            db.execute("INSERT INTO courses(topic_id) VALUES (%s)", (topic,))
+            db.execute("INSERT INTO learning_topics(topic_id) VALUES (%s)", (topic,))
         resource = db.execute("""INSERT INTO resources(id, topic_id, filename, size, status)
             VALUES (gen_random_uuid(), %s, 'check.pdf', 1, 'extracted') RETURNING id""", (topics[0],)).fetchone()[0]
     return topics, str(resource)

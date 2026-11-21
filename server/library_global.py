@@ -119,7 +119,7 @@ def sync_active(connect):
         return
     with connect() as db:
         sync_catalog(db)
-        for (topic_id,) in db.execute("SELECT c.topic_id FROM courses c JOIN topics t ON t.id = c.topic_id WHERE c.active AND t.global_id IS NOT NULL").fetchall():
+        for (topic_id,) in db.execute("SELECT c.topic_id FROM learning_topics c JOIN topics t ON t.id = c.topic_id WHERE c.active AND t.global_id IS NOT NULL").fetchall():
             sync_topic(db, topic_id)
 
 

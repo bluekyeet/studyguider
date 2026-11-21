@@ -97,7 +97,7 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Nothing answered yet is no recall figure at all, not 0%.
                 val anyAnswered = topics.any { it.optInt("reviewed_questions") > 0 }
-                Stat((data.optDouble("overall_mastery") * 100).toFloat(), { if (anyAnswered) "${Math.round(it)}%" else "—" }, "Expected recall", Modifier.weight(1f).fillMaxHeight().staggeredEnter(0, data))
+                Stat((data.optDouble("overall_predicted_recall") * 100).toFloat(), { if (anyAnswered) "${Math.round(it)}%" else "—" }, "Predicted recall", Modifier.weight(1f).fillMaxHeight().staggeredEnter(0, data))
                 Stat((todayCount - todo.size).toFloat(), { "${Math.round(it)} / $todayCount" }, "Lessons done today", Modifier.weight(1f).fillMaxHeight().staggeredEnter(1, data))
             }
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -161,14 +161,14 @@ fun HomeScreen(base: String, token: String, onOpenLesson: (Long, String, Long) -
             }
             topics.forEachIndexed { index, topic ->
                 if (index > 0) HorizontalDivider()
-                val mastery = topic.optDouble("mastery")
+                val recall = topic.optDouble("predicted_recall")
                 // Recall counts only questions that have been answered: a topic not started is not 0% remembered.
                 val reviewed = topic.optInt("reviewed_questions")
-                val fill = animatedFill(if (reviewed > 0) mastery.toFloat().coerceIn(0f, 1f) else 0f)
+                val fill = animatedFill(if (reviewed > 0) recall.toFloat().coerceIn(0f, 1f) else 0f)
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${topic.optString("subject")} · ${topic.optString("topic")}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        Text(if (reviewed > 0) percent(mastery) else "—", style = MaterialTheme.typography.bodyMedium)
+                        Text(if (reviewed > 0) percent(recall) else "—", style = MaterialTheme.typography.bodyMedium)
                     }
                     LinearProgressIndicator(progress = { fill }, modifier = Modifier.fillMaxWidth())
                     Text("$reviewed of ${topic.optInt("questions")} question${if (topic.optInt("questions") == 1) "" else "s"} answered", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

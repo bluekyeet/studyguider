@@ -762,12 +762,12 @@ def curriculum_router(connect, authorised, model_reply=None, paper_grade=None, r
                 "SELECT id, kind, institution, name, level, year FROM programmes ORDER BY id").fetchall()]
             hours = db.execute("SELECT value FROM settings WHERE key = 'hours_per_week'").fetchone()
             subjects = subject_rows(db)
-            active = {r[0] for r in db.execute("SELECT t.subject_id FROM courses c JOIN topics t ON t.id = c.topic_id WHERE c.active").fetchall()}
+            active = {r[0] for r in db.execute("SELECT t.subject_id FROM learning_topics c JOIN topics t ON t.id = c.topic_id WHERE c.active").fetchall()}
             for subject in subjects:
                 subject["outcomes"] = outcomes_for(db, subject["subject_id"])
                 subject["assessments"] = assessments_for(db, subject["subject_id"])
                 subject["topics"] = [{"id": r[0], "name": r[1], "active": r[2], "outcome_ids": list(r[3])} for r in db.execute(
-                    """SELECT t.id, t.name, EXISTS (SELECT 1 FROM courses c WHERE c.topic_id = t.id AND c.active),
+                    """SELECT t.id, t.name, EXISTS (SELECT 1 FROM learning_topics c WHERE c.topic_id = t.id AND c.active),
                         COALESCE(array_agg(o.outcome_id) FILTER (WHERE o.outcome_id IS NOT NULL), '{}')
                     FROM topics t LEFT JOIN topic_outcomes o ON o.topic_id = t.id WHERE t.subject_id = %s
                     GROUP BY t.id ORDER BY t.position, t.id""", (subject["subject_id"],)).fetchall()]
@@ -905,6 +905,10 @@ def curriculum_router(connect, authorised, model_reply=None, paper_grade=None, r
             topic = db.execute("SELECT subject_id FROM topics WHERE id = %s", (topic_id,)).fetchone()
             if not topic:
                 raise HTTPException(404, "Topic not found")
+            standards = db.execute("SELECT count(*) FROM outcomes WHERE subject_id = %s AND id = ANY(%s) AND kind = 'standard'",
+                                   (topic[0], body.outcome_ids)).fetchone()[0]
+            if standards > 1:
+                raise HTTPException(409, "An NCEA topic is one standard: link one standard here and add a topic for each other.")
             db.execute("DELETE FROM topic_outcomes WHERE topic_id = %s", (topic_id,))
             db.execute("""INSERT INTO topic_outcomes (topic_id, outcome_id) SELECT %s, id FROM outcomes
                 WHERE subject_id = %s AND id = ANY(%s)""", (topic_id, topic[0], body.outcome_ids))

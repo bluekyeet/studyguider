@@ -85,7 +85,7 @@ export async function renderHome(container, api) {
   // Headline numbers
   const graded = estimates.filter(e => e.estimate);
   const strip = element('div', '', 'stat-row');
-  strip.append(stat(percent(summary.overall_mastery), 'Expected recall', { to: summary.overall_mastery * 100, format: n => `${Math.round(n)}%` }),
+  strip.append(stat(percent(summary.overall_predicted_recall), 'Predicted recall', { to: summary.overall_predicted_recall * 100, format: n => `${Math.round(n)}%` }),
     stat(`${todays.length - todo.length} / ${todays.length}`, 'Lessons done today', { to: todays.length - todo.length, format: n => `${Math.round(n)} / ${todays.length}` }),
     stat(reviews.due, 'Reviews due', { to: reviews.due, format: n => String(Math.round(n)) }),
     stat(`${graded.length} / ${estimates.length}`, 'Subjects with a grade estimate', { to: graded.length, format: n => `${Math.round(n)} / ${estimates.length}` }));
@@ -126,10 +126,10 @@ export async function renderHome(container, api) {
   container.append(element('h2', 'Topics'));
   if (topics.length) {
     container.append(table(['Topic', 'Recall', '', 'Answered'], topics.map(topic => {
-      const meter = element('div', '', 'bar'); const fill = element('i'); fill.style.setProperty('--v', String(Math.min(1, Math.max(0, topic.mastery)))); meter.append(fill);
-      meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-label', `${topic.topic} mastery`);
-      meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100'); meter.setAttribute('aria-valuenow', String(Math.round(topic.mastery * 100)));
-      return [`${topic.subject} · ${topic.topic}`, topic.reviewed_questions ? percent(topic.mastery) : '—', meter,
+      const meter = element('div', '', 'bar'); const fill = element('i'); fill.style.setProperty('--v', String(Math.min(1, Math.max(0, topic.predicted_recall)))); meter.append(fill);
+      meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-label', `${topic.topic} predicted recall`);
+      meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100'); meter.setAttribute('aria-valuenow', String(Math.round(topic.predicted_recall * 100)));
+      return [`${topic.subject} · ${topic.topic}`, topic.reviewed_questions ? percent(topic.predicted_recall) : '—', meter,
         element('span', `${topic.reviewed_questions ?? 0} of ${plural(topic.questions ?? 0, 'question')}`, 'muted')];
     }), 'Recall by topic'));
     container.append(element('p', summary.estimate_rule, 'muted'));

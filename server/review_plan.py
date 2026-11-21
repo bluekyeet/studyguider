@@ -31,7 +31,7 @@ DEFAULT_CAP = 40
 REVIEW_SHARE = 0.3           # share of daily study time given to reviews
 SECONDS_PER_REVIEW = 60
 
-SWITCHED_OFF = "NOT EXISTS (SELECT 1 FROM courses sw WHERE sw.topic_id = {topic} AND NOT sw.active)"
+SWITCHED_OFF = "NOT EXISTS (SELECT 1 FROM learning_topics sw WHERE sw.topic_id = {topic} AND NOT sw.active)"
 
 
 def create_schedule_columns(db):
@@ -160,7 +160,7 @@ def record_review(db, question_id, grade, now):
     due = plan_due(stability, now, target, exam, seed=f"{question_id}:{reps + 1}",
                    refresher=_refresher(goals(db).get(topic_id), next_starts(db, today), today))
     db.execute("""UPDATE review_questions SET stability = %s, difficulty = %s, last_review = %s, reps = reps + 1,
-            lapses = lapses + %s, last_grade = %s, due_date = %s, interval_days = %s, mastery = %s WHERE id = %s""",
+            lapses = lapses + %s, last_grade = %s, due_date = %s, interval_days = %s, predicted_recall = %s WHERE id = %s""",
                (stability, difficulty, now, int(grade == fsrs.AGAIN and reps > 0), grade, due, (due - today).days,
                 fsrs.retrievability((due - today).days, stability), question_id))
     refresh_topics(db, [topic_id], now)
@@ -191,7 +191,7 @@ def replan(db, today=None, subject_id=None):
 
 
 def refresh_topics(db, topic_ids=None, now=None):
-    """Topic mastery is the average predicted recall now over questions that have been reviewed. Questions never answered are
+    """A Topic's Predicted recall is the average predicted recall now over questions that have been reviewed. Questions never answered are
     not counted as zero: they are coverage, reported separately."""
     now = now or clock.now()
     rows = db.execute("""SELECT t.id, q.stability, q.last_review FROM topics t LEFT JOIN review_questions q
@@ -203,10 +203,10 @@ def refresh_topics(db, topic_ids=None, now=None):
         if stability is not None:
             recall[topic_id].append(fsrs.retrievability((now - last).total_seconds() / 86400, stability))
     for topic_id, values in recall.items():
-        mastery = sum(values) / len(values) if values else 0.0
-        status = "not_started" if not values else "secure" if mastery >= 0.9 else "review" if mastery >= 0.75 else "learning"
-        db.execute("UPDATE topics SET mastery = %s, status = %s WHERE id = %s AND (mastery, status) IS DISTINCT FROM (%s, %s)",
-                   (mastery, status, topic_id, mastery, status))
+        average = sum(values) / len(values) if values else 0.0
+        status = "not_started" if not values else "secure" if average >= 0.9 else "review" if average >= 0.75 else "learning"
+        db.execute("""UPDATE topics SET predicted_recall = %s, status = %s
+            WHERE id = %s AND (predicted_recall, status) IS DISTINCT FROM (%s, %s)""", (average, status, topic_id, average, status))
 
 
 def seconds_per_review(db, now):
@@ -231,7 +231,7 @@ def daily_plan(db, today=None, now=None, is_admin_question=None, repeats=None):
     """Today's review list and what was left out. Returns (rows, info); each row is a dict."""
     today = today or clock.today()
     now = now or clock.now()
-    rows = db.execute("""SELECT q.id, q.topic_id, q.question, q.due_date, q.concept, q.standard_number, q.mastery, t.name,
+    rows = db.execute("""SELECT q.id, q.topic_id, q.question, q.due_date, q.concept, q.standard_number, q.predicted_recall, t.name,
             q.exam_origin, q.stability, q.last_review, q.reps, q.material, q.expected_answer, s.name
         FROM review_questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
         WHERE q.due_date <= %s AND """ + SWITCHED_OFF.format(topic="q.topic_id") + """
@@ -247,7 +247,7 @@ def daily_plan(db, today=None, now=None, is_admin_question=None, repeats=None):
         if is_admin_question and is_admin_question(r[2], r[4]):
             continue
         item = {"id": r[0], "topic_id": r[1], "question": r[2], "due_date": r[3], "concept": r[4], "standard_number": r[5],
-                "mastery": r[6], "topic": r[7], "subject": r[14], "material": r[12] or material_of(r[2], r[13]), "reps": r[11]}
+                "predicted_recall": r[6], "topic": r[7], "subject": r[14], "material": r[12] or material_of(r[2], r[13]), "reps": r[11]}
         target, exam, phase = context_for(covered.get(r[1], []), goal.get(r[1], "long_term"), today)
         closeness = 1 / (1 + (exam["due_date"] - today).days / 14) if exam else 0.2 if phase == "maintain" else 0.3
         weight = exam["weight"] if exam else 0.5

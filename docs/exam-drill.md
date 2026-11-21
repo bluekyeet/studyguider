@@ -153,7 +153,7 @@ The topic list shows how many mistakes each topic has; a topic with none cannot 
   questions are due far in the future until answered, so they do not appear in the daily review early.
 - **Honesty:** every pack is labelled AI-written and unofficial, shows what it was built from, and is checked by a second model that can miss errors.
 - The old list of missed questions and its Redo button were removed; `/exam-revision` and `source: "revision"` remain on the server but no screen uses them.
-- Known side effect: unanswered pack questions count in the topic mastery average until they are answered (it is the mean of all review questions in the topic).
+- Known side effect: unanswered pack questions count in the topic's Predicted recall average until they are answered (it is the mean of all review questions in the topic).
 - Lesson answers are not a source: they have no right/wrong mark, so there is nothing reliable to learn from.
 
 ## 9. How it fits the existing system

@@ -68,9 +68,9 @@ try:
         waves = db.execute("INSERT INTO topics (subject_id, name) VALUES (%s, 'Waves') RETURNING id", (physics,)).fetchone()[0]
         db.execute("INSERT INTO standards VALUES (91171, 'Demonstrate understanding of mechanics', '')")
         db.execute("INSERT INTO topic_standards VALUES (%s, 91171)", (mechanics,))
-        db.execute("INSERT INTO courses (topic_id) VALUES (%s), (%s)", (mechanics, waves))
-        db.execute("UPDATE courses SET active = false WHERE topic_id = %s", (waves,))
-        answered = db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, mastery)
+        db.execute("INSERT INTO learning_topics (topic_id) VALUES (%s), (%s)", (mechanics, waves))
+        db.execute("UPDATE learning_topics SET active = false WHERE topic_id = %s", (waves,))
+        answered = db.execute("""INSERT INTO review_questions (topic_id, question, due_date, expected_answer, predicted_recall)
             VALUES (%s, 'State Newton''s second law.', current_date - 20, 'F = ma', 0.4) RETURNING id""", (mechanics,)).fetchone()[0]
         for days, correct, confidence in ((60, True, 4), (52, True, 4)):
             db.execute("""INSERT INTO review_answers (question_id, answer, confidence, correct, outcome, answered_at)
@@ -104,7 +104,7 @@ try:
         check("Home counts the same list", summary["reviews"]["due"] == len(ids))
         mechanics_row = next(t for t in summary["topics"] if t["topic_id"] == mechanics)
         check("topic recall counts only reviewed questions (the unanswered one is not a zero)",
-              mechanics_row["reviewed_questions"] == 1 and mechanics_row["questions"] == 2 and 0.5 < mechanics_row["mastery"] <= 1, mechanics_row)
+              mechanics_row["reviewed_questions"] == 1 and mechanics_row["questions"] == 2 and 0.5 < mechanics_row["predicted_recall"] <= 1, mechanics_row)
         check("NCEA estimate waits for a marked past paper", next(e for e in client.get("/grade-estimates", headers=me).json()
                                                                   if e["subject_id"] == physics)["estimate"] is None)
 
@@ -127,7 +127,7 @@ try:
         check("assessments keep weights and outcomes", [(a["title"], a["weight_pct"], a["outcome_codes"]) for a in saved["assessments"]]
               == [("Practical test", 40.0, ["LO1"]), ("Final exam", 60.0, ["LO1", "LO2"])], saved["assessments"])
         topic = saved["topics"][0]["id"]
-        client.post("/courses", headers=me, json={"topic_id": topic})
+        client.post("/learning-topics", headers=me, json={"topic_id": topic})
         question = client.post(f"/topics/{topic}/review-questions", headers=me, json={"question": "What does a compiler do?", "due_date": str(today)}).json()["id"]
 
         def answer(confidence):

@@ -36,8 +36,8 @@ def seed(uid, correct, wrong, lessons):
     with userspace.as_user(uid), study.connect() as db:
         subject = db.execute("INSERT INTO subjects (name, level) VALUES ('Chem', 2) RETURNING id").fetchone()[0]
         topic = db.execute("INSERT INTO topics (subject_id, name) VALUES (%s, 'Acids') RETURNING id", (subject,)).fetchone()[0]
-        db.execute("INSERT INTO courses (topic_id) VALUES (%s)", (topic,))
-        db.execute("UPDATE topics SET mastery = %s WHERE id = %s", (0.7, topic))
+        db.execute("INSERT INTO learning_topics (topic_id) VALUES (%s)", (topic,))
+        db.execute("UPDATE topics SET predicted_recall = %s WHERE id = %s", (0.7, topic))
         for n in range(correct + wrong):
             q = db.execute("""INSERT INTO review_questions (topic_id, question, due_date) VALUES (%s, %s, current_date) RETURNING id""", (topic, f"q{n}")).fetchone()[0]
             db.execute("INSERT INTO review_answers (question_id, answer, confidence, correct) VALUES (%s, 'a', 3, %s)", (q, n < correct))

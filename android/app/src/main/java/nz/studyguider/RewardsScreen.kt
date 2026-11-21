@@ -55,8 +55,8 @@ import java.net.URL
 private val RARITY = listOf("Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic")
 private val RARITY_COLOURS = listOf(Color(0xFFA1A7B5), Color(0xFF3DDC97), Color(0xFF5AA9FF), Color(0xFFB77CFF), Color(0xFFFFC23D), Color(0xFFFF5FB7))
 private val GOLD = Color(0xFFFFCF4A)
-private val BOARDS = listOf("networth" to "Net worth", "questions" to "Questions", "lessons" to "Lessons", "papers" to "Papers",
-    "grade" to "Est. grade", "gpa" to "Est. GPA", "collection" to "Collection")
+private val BOARDS = listOf("networth" to "Net worth", "questions" to "Questions", "lessons" to "Lessons", "papers" to "Complete exams",
+    "grade" to "Grade estimate", "gpa" to "Est. GPA", "collection" to "Collection")
 
 /** Send a change to the server: path, method, body, and what else to do with the reply (null if it failed). */
 private typealias Act = (String, String, JSONObject, ((JSONObject?) -> Unit)?) -> Unit
@@ -416,7 +416,7 @@ private fun CharacterTab(base: String, me: JSONObject, act: Act) {
         }
         Text(me.optString("notice"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         me.optJSONObject("estimate")?.let { estimate ->
-            Text("Estimated grade ${estimate.optString("grade")} · GPA ${estimate.optDouble("gpa")} / 9, from ${estimate.optInt("topics")} topic(s) with enough review answers. Unofficial.",
+            Text("Grade estimate ${estimate.optString("grade")} · GPA ${estimate.optDouble("gpa")} / 9, from ${estimate.optInt("topics")} topic(s) with enough review answers. Unofficial.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -610,7 +610,7 @@ private fun PlayerCard(base: String, p: JSONObject, onDismiss: () -> Unit) {
                 Text(if (p.optBoolean("you")) "${p.optString("username")} (you)" else p.optString("username"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 val estimate = p.optJSONObject("estimate")
                 val facts = listOf(p.optInt("networth").grouped() to "Net worth", p.optInt("questions").grouped() to "Questions", p.optInt("lessons").grouped() to "Lessons",
-                    p.optInt("papers").grouped() to "Papers", (estimate?.optString("grade") ?: "—") to "Est. grade", (estimate?.optDouble("gpa")?.toString() ?: "—") to "Est. GPA / 9")
+                    p.optInt("papers").grouped() to "Complete exams", (estimate?.optString("grade") ?: "—") to "Grade estimate", (estimate?.optDouble("gpa")?.toString() ?: "—") to "Est. GPA / 9")
                 Grid(facts, columns = 3) { (value, label), modifier ->
                     Surface(modifier, shape = RoundedCornerShape(12.dp), color = colours.containerHigh) {
                         Column(Modifier.padding(8.dp)) {

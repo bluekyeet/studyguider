@@ -8,11 +8,11 @@ cosmetic collectables. Nothing here changes marking, teaching, grades or what th
 - **Earn by learning, correctly.** No points for opening the app, for wrong answers, for skipped questions, or for attempts the
   marker called uncertain.
 - **Derived, not granted.** Earnings are computed from the account's own records (review answers, marked exam questions,
-  completed lessons, marked papers) every time they are read. There is no "award points" call to forge or double-fire, and
+  completed lessons, Complete exams) every time they are read. There is no "award points" call to forge or double-fire, and
   re-marking the same question never pays twice. Spending is the only thing stored.
 - **Cosmetic only.** Items never affect marking, schedules, difficulty or the grade estimate.
-- **Honest numbers.** Estimated grade and GPA are the existing rough estimates (review mastery, and marked-paper marks against the
-  app's A/M/E bands). They are labelled unofficial everywhere; AI practice counts for points but is never shown as a real paper.
+- **Honest numbers.** The Grade estimate and GPA are the existing rough estimates (Predicted recall from reviews, and Complete exam marks against
+  the app's A/M/E bands). They are labelled unofficial everywhere; AI practice counts for points but is never shown as a real paper.
 - **Private by default for data, social by choice.** Leaderboards show username, picture, the character and counts. An account can
   hide itself from them in the Rewards page. Nothing else about a learner (answers, topics, resources) is ever shown.
 
@@ -23,12 +23,12 @@ cosmetic collectables. Nothing here changes marking, teaching, grades or what th
 | Review question answered correctly | 5 | question per day (re-answering on a later day pays again; spaced repetition is real practice) |
 | Exam or rapid question marked Achieved / Merit / Excellence | 4 / 6 / 8 | question in an exam |
 | Lesson completed | 25 | lesson |
-| Full paper marked, grade Achieved / Merit / Excellence | 60 / 100 / 160 | paper (rapid sessions excluded) |
+| Complete exam marked, grade Achieved / Merit / Excellence | 60 / 100 / 160 | Complete exam (Rapid sessions excluded) |
 | Day with at least one correct answer | 10 | day |
 | Welcome gift | 200 | account |
 
-A "paper" counts when it has at least three questions, every one answered and marked, then graded with the app's own bands (50% Achieved, 70% Merit,
-85% Excellence of marks available). Not achieved earns nothing for the paper (the question points still count).
+An Exam is a Complete exam when it has at least three questions, every one answered and marked; it is then graded with the app's own bands (50% Achieved,
+70% Merit, 85% Excellence of marks available). Not achieved earns nothing for the Complete exam (the question points still count).
 
 `balance = earned + sum(ledger)` where the ledger holds spending (negative) and refunds from recycling (positive).
 
@@ -82,12 +82,12 @@ All use only counts from correct, recorded work.
 | Net worth | points balance + value of every item owned |
 | Questions | correct review answers + marked-correct exam and rapid questions |
 | Lessons | lessons completed |
-| Papers | complete papers marked at Achieved or better |
-| Estimated grade | mean of per-topic estimates (needs a topic with 5+ review answers) |
+| Complete exams | Complete exams marked at Achieved or better |
+| Grade estimate | mean of per-topic estimates (needs a topic with 5+ review answers) |
 | Estimated GPA | the same estimate on a 0-9 scale |
 | Collection | distinct items owned |
 
-GPA scale from topic mastery: 0 -> 0, 0.4 -> 3, 0.6 -> 5, 0.8 -> 7, 1.0 -> 9 (linear between). Unofficial.
+GPA scale from topic Predicted recall: 0 -> 0, 0.4 -> 3, 0.6 -> 5, 0.8 -> 7, 1.0 -> 9 (linear between). Unofficial.
 
 ## Where it lives
 

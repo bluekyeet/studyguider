@@ -71,9 +71,9 @@ was chosen, and why. Lessons can hold a ```` ```choice ```` block, checked on th
 ## Home (`#home`, the default page)
 
 A dense dashboard, not cards. Numbers come from `GET /study-summary` and `GET /lessons`.
-- **Headline strip:** overall mastery % (average of the topics being learned), lessons done today, reviews due, topics with a grade estimate.
+- **Headline strip:** overall Predicted recall % (average of the topics being learned), lessons done today, reviews due, topics with a grade estimate.
 - **Lessons to do:** a table of today's unfinished lessons (topic, lesson, To do / In progress, Start or Continue). Each opens the lesson directly (`#lessons?lesson=ID`). Below it: Start N reviews, and Resume exam when an exam has some but not all answers.
-- **Topics:** mastery % with a bar and an **estimated grade** per topic. The estimate is a rough band from review mastery (under 40% not achieved, 40-59% achieved, 60-79% merit, 80%+ excellence), only shown with 5+ review answers on the topic, and labelled as not an NZQA grade. The rule is printed under the table.
+- **Topics:** Predicted recall % with a bar and an **estimated grade** per topic. The estimate is a rough band from Predicted recall (under 40% not achieved, 40-59% achieved, 60-79% merit, 80%+ excellence), only shown with 5+ review answers on the topic, and labelled as not an NZQA grade. The rule is printed under the table.
 - **Weak concepts** and **Reviews** (30-day correct/incorrect, due/upcoming/total) side by side; **Recent exams** as a table, marks labelled unofficial AI marks.
 - No streaks, no predicted exam scores.
 
@@ -117,10 +117,10 @@ Short spaced-repetition questions made from completed lessons and wrong exam ans
 - **Due now**: questions one at a time. Each shows topic, due date, the concept, the question
   (with maths), an answer box with the maths toolbar, and a **confidence 1-5** choice (required).
   Submitting returns an AI judgement (correct / incorrect / not independently marked), feedback,
-  the next due date and a topic mastery estimate. Then Next question, or Finish.
+  the next due date and the topic's Predicted recall. Then Next question, or Finish.
 - **All questions**: every saved question, due or not, with filters (topic, status: any/due/
   coming up/never answered, text search). Each row shows concept, snippet, topic, due date, times
-  answered, mastery, and Answer or Practise now. Answering early works the same way.
+  answered, Predicted recall, and Answer or Practise now. Answering early works the same way.
 - **How sure vs how right** (calibration): for each confidence rating, how often the marked answer was right, by topic, and
   recent confident misses with Try it again.
 - A returning procedure question can show as a fresh version with new numbers ("A new version of this question...").
@@ -231,7 +231,7 @@ Where files and course structure live. Three levels.
 
 Developer-style screens kept apart: question parsing and approval, marking check, diagram
 generation and review, manual exam assembly, saved-lesson history, scheduled-lesson settings and
-run history, review-draft generation, mastery view. Its look is independent.
+run history, review-draft generation, Predicted recall view. Its look is independent.
 
 ## Rules that must survive a redesign
 
@@ -267,5 +267,5 @@ Lessons `/lessons`, `/lessons/{id}`, `/lessons/{id}/answers`, `/lessons/{id}/pro
 `/lessons/{id}/explain`; reviews `/review-questions`, `/review-questions/due`; exams `/exams`,
 `/exams/start`, `/exams/{id}`, `/exams/{id}/answers/{q}`, `/exams/{id}/answers/{q}/feedback`;
 library `/subjects`, `/subjects/{id}/topics`, `/topics/{id}/resources`, `/topics/{id}/standards`,
-`/topics/{id}/notes`, `/topics/{id}/search`; settings `/courses`, `/style-profile`, `/usage`.
+`/topics/{id}/notes`, `/topics/{id}/search`; settings `/learning-topics` (old name `/courses` still answers), `/style-profile`, `/usage`.
 Session via `/login`, `/logout`, `/session`.

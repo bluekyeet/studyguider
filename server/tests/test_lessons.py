@@ -49,7 +49,7 @@ class Database:
         if "COALESCE(tp.content" in sql:
             # Subject style plus topic override; this fixture uses a subject style only.
             self.result = ("Use worked examples", "") if params[0] == 1 else None
-        elif "FROM courses c" in sql:
+        elif "FROM learning_topics c" in sql:
             self.result = (7, 0, 0) if params[0] == 1 else None
         elif "UPDATE lessons SET completed_at" in sql:
             self.result = ("2026-11-01T00:00:00Z",) if any(r[0] == params[0] for r in self.rows) else None
@@ -112,10 +112,10 @@ class Database:
             self.result = None
         elif "INSERT INTO lessons" in sql:
             (topic, query, lesson, review, status, sources, standards,
-             review_focus, verdict, course_id, stage) = params
+             review_focus, verdict, learning_topic_id, stage) = params
             self.rows.append((len(self.rows) + 1, topic, query, lesson, review, status,
                               json.loads(sources), json.loads(standards),
-                              json.loads(review_focus), verdict, 1, "2026-01-01", course_id, stage))
+                              json.loads(review_focus), verdict, 1, "2026-01-01", learning_topic_id, stage))
             self.result = self.rows[-1]
         elif "SELECT 1 FROM topics" in sql:
             self.result = (1,) if params[0] == 1 else None

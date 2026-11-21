@@ -109,7 +109,7 @@ try:
               and client.delete(f"/subjects/{subjects[0]['id']}/topics/{mine}", headers=one).status_code == 403
               and client.put(f"/subjects/{subjects[0]['id']}/topics/{mine}", headers=one, json={"name": "Renamed"}).status_code == 403
               and client.delete(f"/topics/{mine}/standards/91171", headers=one).status_code == 403)
-        check("a user can switch a global topic on as a learning topic", client.post("/courses", headers=one, json={"topic_id": mine}).status_code == 201)
+        check("a user can switch a global topic on as a learning topic", client.post("/learning-topics", headers=one, json={"topic_id": mine}).status_code == 201)
 
         own = client.post(f"/topics/{mine}/resources", headers=one, files={"file": ("my-own-notes.txt", b"my private notes about thermodynamics")})
         check("a user can add their own file under a global topic", own.status_code == 201, own.text)

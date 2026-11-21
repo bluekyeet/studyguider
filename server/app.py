@@ -86,9 +86,48 @@ def all_user_ids():
         return [r[0] for r in db.execute("SELECT id FROM users ORDER BY id").fetchall()]
 
 
+def rename_to_glossary(db):
+    """Old table and column names become the glossary's (GLOSSARY.md): a course is a Learning topic, mastery is Predicted recall.
+    Runs before any table is created, so an upgraded account keeps its rows under the new names."""
+    if db.execute("SELECT to_regclass('courses') IS NOT NULL AND to_regclass('learning_topics') IS NULL").fetchone()[0]:
+        db.execute("ALTER TABLE courses RENAME TO learning_topics")
+    for table, old, new in (("lessons", "course_id", "learning_topic_id"), ("topics", "mastery", "predicted_recall"),
+                            ("review_questions", "mastery", "predicted_recall")):
+        names = {r[0] for r in db.execute("""SELECT column_name FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = %s""", (table,)).fetchall()}
+        if old in names and new not in names:
+            db.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+    db.execute("ALTER INDEX IF EXISTS lessons_course_idx RENAME TO lessons_learning_topic_idx")
+
+
+def one_standard_per_topic(db):
+    """An NCEA Topic is one Standard. A Topic that held several keeps its lowest; each other Standard moves to a new Topic of the
+    same name plus the Standard's number, and is studied as a Learning topic when the original was. Lessons, Resources and Reviews
+    stay with the original Topic. A read-only copy of a global-library Topic only drops its extra Standards: the library splits its
+    own Topic and the new Topics arrive through the library sync."""
+    crowded = db.execute("""SELECT t.id, t.subject_id, t.name, t.position, t.global_id IS NOT NULL,
+            array_agg(ts.standard_number ORDER BY ts.standard_number)
+        FROM topics t JOIN topic_standards ts ON ts.topic_id = t.id GROUP BY t.id HAVING count(*) > 1""").fetchall()
+    for topic_id, subject_id, name, position, is_copy, numbers in crowded:
+        for number in numbers[1:]:
+            if is_copy:
+                db.execute("DELETE FROM topic_standards WHERE topic_id = %s AND standard_number = %s", (topic_id, number))
+            else:
+                new_id = db.execute("INSERT INTO topics (subject_id, name, position) VALUES (%s, %s, %s) RETURNING id",
+                                    (subject_id, f"{name} ({number})", position)).fetchone()[0]
+                db.execute("UPDATE topic_standards SET topic_id = %s WHERE topic_id = %s AND standard_number = %s", (new_id, topic_id, number))
+                db.execute("""INSERT INTO learning_topics (topic_id, goal, active)
+                    SELECT %s, goal, active FROM learning_topics WHERE topic_id = %s""", (new_id, topic_id))
+            if db.execute("SELECT to_regclass('topic_outcomes') IS NOT NULL").fetchone()[0]:
+                db.execute("""DELETE FROM topic_outcomes x USING outcomes o
+                    WHERE x.outcome_id = o.id AND x.topic_id = %s AND o.standard_number = %s""", (topic_id, number))
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS topic_standards_one_per_topic ON topic_standards(topic_id)")
+
+
 def init_schema(db):
     """Create or upgrade every study table in the schema this connection points at."""
     db.execute("SET client_encoding = 'UTF8'")
+    rename_to_glossary(db)
     db.execute("CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS subjects (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name text NOT NULL, level integer NOT NULL CHECK (level BETWEEN 1 AND 3))")
     db.execute("CREATE TABLE IF NOT EXISTS topics (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, subject_id bigint NOT NULL REFERENCES subjects(id) ON DELETE CASCADE, name text NOT NULL)")
@@ -109,7 +148,7 @@ def init_schema(db):
     db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS retry_at timestamptz")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS resources_topic_sha_idx ON resources(topic_id, sha256) WHERE sha256 IS NOT NULL")
     db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0")
-    db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS mastery real NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS predicted_recall real NOT NULL DEFAULT 0")
     db.execute("ALTER TABLE topics ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'not_started'")
     db.execute("""CREATE TABLE IF NOT EXISTS resource_chunks (
         id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -145,6 +184,7 @@ def init_schema(db):
         db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS global_id bigint")
         db.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {table}_global_idx ON {table}(global_id) WHERE global_id IS NOT NULL")
     db.execute("ALTER TABLE resources ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT false")
+    one_standard_per_topic(db)
     create_curriculum_tables(db)        # programmes, paper details, outcomes and assessments; maps NCEA standards onto them
 
 
@@ -456,6 +496,9 @@ def put_standard(number: int, body: Standard):
 def link_standard(topic_id: int, number: int):
     with connect() as db:
         library_global.refuse_if_global(db, "topics", topic_id, "topic")
+        held = db.execute("SELECT standard_number FROM topic_standards WHERE topic_id = %s", (topic_id,)).fetchone()
+        if held and held[0] != number:
+            raise HTTPException(409, f"This topic is already standard {held[0]}. An NCEA topic is one standard: add a new topic for {number}.")
         row = db.execute("INSERT INTO topic_standards SELECT t.id, s.number FROM topics t CROSS JOIN standards s WHERE t.id = %s AND s.number = %s ON CONFLICT DO NOTHING RETURNING topic_id", (topic_id, number)).fetchone()
         if row is None and not db.execute("SELECT 1 FROM topic_standards WHERE topic_id = %s AND standard_number = %s", (topic_id, number)).fetchone():
             raise HTTPException(404, "Topic or standard not found")
@@ -549,8 +592,8 @@ def topics(subject_id: int):
     with connect() as db:
         if not db.execute("SELECT 1 FROM subjects WHERE id = %s", (subject_id,)).fetchone():
             raise HTTPException(404, "Subject not found")
-        rows = db.execute("SELECT id, name, mastery, status, global_id IS NOT NULL FROM topics WHERE subject_id = %s ORDER BY position, id", (subject_id,)).fetchall()
-    return [{"id": row[0], "name": row[1], "mastery": row[2], "status": row[3], "global": row[4]} for row in rows]
+        rows = db.execute("SELECT id, name, predicted_recall, status, global_id IS NOT NULL FROM topics WHERE subject_id = %s ORDER BY position, id", (subject_id,)).fetchall()
+    return [{"id": row[0], "name": row[1], "predicted_recall": row[2], "status": row[3], "global": row[4]} for row in rows]
 
 
 @app.post("/subjects/{subject_id}/topics", status_code=201, dependencies=[Depends(authorised)])
@@ -1346,10 +1389,10 @@ def get_page_image(resource_id: uuid.UUID, page: int):
     raise HTTPException(422, "Page images are available for PDFs and images only")
 
 
-@app.get("/topics/{topic_id}/mastery", dependencies=[Depends(authorised)])
-def topic_mastery(topic_id: int):
+@app.get("/topics/{topic_id}/predicted-recall", dependencies=[Depends(authorised)])
+def topic_predicted_recall(topic_id: int):
     with connect() as db:
-        row = db.execute("SELECT id, name, mastery, status FROM topics WHERE id = %s", (topic_id,)).fetchone()
+        row = db.execute("SELECT id, name, predicted_recall, status FROM topics WHERE id = %s", (topic_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Topic not found")
         answers = db.execute("""SELECT COUNT(*), COUNT(*) FILTER (WHERE correct), COUNT(*) FILTER (WHERE NOT correct)
@@ -1360,9 +1403,16 @@ def topic_mastery(topic_id: int):
             WHERE topic_id = %s AND concept IS NOT NULL AND concept != '' AND id IN
             (SELECT question_id FROM review_answers WHERE NOT correct ORDER BY id DESC LIMIT 20) LIMIT 10""", (topic_id,)).fetchall()
     total, correct, wrong = answers
-    return {"topic_id": row[0], "name": row[1], "mastery": row[2], "status": row[3],
+    return {"topic_id": row[0], "name": row[1], "predicted_recall": row[2], "status": row[3],
             "answers": total, "correct": correct, "wrong": wrong, "due": due[0],
             "weak_concepts": [item[0] for item in weak]}
+
+
+@app.get("/topics/{topic_id}/mastery", dependencies=[Depends(authorised)], include_in_schema=False)
+def topic_mastery(topic_id: int):
+    """The old name of /predicted-recall, answering with the old key too, for apps built before the rename."""
+    result = topic_predicted_recall(topic_id)
+    return {**result, "mastery": result["predicted_recall"]}
 
 
 @app.get("/learner/summary", dependencies=[Depends(authorised)])

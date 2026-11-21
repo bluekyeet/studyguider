@@ -116,7 +116,7 @@ try:
 
     review = endpoint(review_router(transaction_connection, lambda: None, model), '/review-questions/{question_id}/answers')
     review(reviews[0][0], ReviewAnswer(answer='55 Hz', confidence=5))
-    scheduled = db.execute("SELECT interval_days,mastery FROM review_questions WHERE id=%s", (reviews[0][0],)).fetchone()
+    scheduled = db.execute("SELECT interval_days,predicted_recall FROM review_questions WHERE id=%s", (reviews[0][0],)).fetchone()
     assert scheduled[0] == 1
     router = lesson_router(transaction_connection, lambda: None, model,
         lambda *args: [{"resource_id": str(resource), "filename": 'synthetic.txt', "page": 1, "content": rubric}],
@@ -184,7 +184,7 @@ try:
     print('PASS: Physics/Chemistry lesson prompts and saved review focus remain isolated, including standards, evidence and learner-answer history')
     # Shadow scheduling tables for this connection only. Never disable or claim
     # existing users' schedules, even transiently inside the rollback transaction.
-    for table in ('lesson_schedules', 'lesson_schedule_runs', 'courses'):
+    for table in ('lesson_schedules', 'lesson_schedule_runs', 'learning_topics'):
         db.execute(f'CREATE TEMP TABLE {table} (LIKE u{ACCOUNT}.{table} INCLUDING ALL) ON COMMIT DROP')
     db.execute("""INSERT INTO lesson_schedules(topic_id,query,hour_utc,enabled,timezone)
         VALUES (%s,'Frequency',2,true,'Pacific/Auckland'),

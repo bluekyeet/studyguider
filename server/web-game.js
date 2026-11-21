@@ -5,7 +5,7 @@ import { countUp } from './web-common.js';
 
 const RARITY = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic'];
 const SUBS = [['', 'Character'], ['gacha', 'Gacha'], ['shop', 'Shop'], ['boards', 'Leaderboards']];
-const BOARDS = [['networth', 'Net worth'], ['questions', 'Questions'], ['lessons', 'Lessons'], ['papers', 'Papers'], ['grade', 'Est. grade'], ['gpa', 'Est. GPA'], ['collection', 'Collection']];
+const BOARDS = [['networth', 'Net worth'], ['questions', 'Questions'], ['lessons', 'Lessons'], ['papers', 'Complete exams'], ['grade', 'Grade estimate'], ['gpa', 'Est. GPA'], ['collection', 'Collection']];
 const num = n => Number(n).toLocaleString('en-NZ');
 const plural = (n, word) => `${num(n)} ${word}${n === 1 ? '' : 's'}`;
 
@@ -195,7 +195,7 @@ export async function renderGame(container, api, params) {
       lines.append(li);
     }
     earn.append(lines, el('p', me.notice, 'muted fine'));
-    if (me.estimate) earn.append(el('p', `Estimated grade ${me.estimate.grade} · GPA ${me.estimate.gpa} / 9, from ${plural(me.estimate.topics, 'topic')} with enough review answers. Unofficial.`, 'muted fine'));
+    if (me.estimate) earn.append(el('p', `Grade estimate ${me.estimate.grade} · GPA ${me.estimate.gpa} / 9, from ${plural(me.estimate.topics, 'topic')} with enough review answers. Unofficial.`, 'muted fine'));
 
     page.append(stage, wardrobe, shelf, earn);
     return page;
@@ -350,8 +350,8 @@ export async function renderGame(container, api, params) {
       const facts = el('div', '', 'player-facts');
       facts.append(el('p', 'Player card', 'eyebrow'), el('h2', p.you ? `${p.username} (you)` : p.username));
       const grid = el('div', '', 'fact-grid');
-      for (const [value, label] of [[num(p.networth), 'Net worth'], [num(p.questions), 'Questions'], [num(p.lessons), 'Lessons'], [num(p.papers), 'Papers'],
-        [p.estimate ? p.estimate.grade : '—', 'Est. grade'], [p.estimate ? `${p.estimate.gpa}` : '—', 'Est. GPA / 9']]) {
+      for (const [value, label] of [[num(p.networth), 'Net worth'], [num(p.questions), 'Questions'], [num(p.lessons), 'Lessons'], [num(p.papers), 'Complete exams'],
+        [p.estimate ? p.estimate.grade : '—', 'Grade estimate'], [p.estimate ? `${p.estimate.gpa}` : '—', 'Est. GPA / 9']]) {
         const cell = el('div'); cell.append(el('b', value), el('span', label)); grid.append(cell);
       }
       facts.append(grid, el('span', `Collection ${num(p.collection.owned)} / ${num(p.collection.total)} · ${p.collection.percent}%`, 'muted'), bar(p.collection.owned, p.collection.total));

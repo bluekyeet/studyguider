@@ -190,13 +190,13 @@ def run_due(connect, generate, now=None, phase_of=None):
         raise ValueError("now must be timezone-aware")
     now = now.astimezone(timezone.utc)
     with connect() as db:
-        # Enrolled courses own their daily schedule; no second opt-in or search text.
+        # Learning topics own their daily schedule; no second opt-in or search text.
         db.execute("""INSERT INTO lesson_schedules (topic_id, query, hour_utc, enabled, timezone)
             SELECT c.topic_id, left(t.name,200), 2, true, 'Pacific/Auckland'
-            FROM courses c JOIN topics t ON t.id=c.topic_id WHERE c.active
+            FROM learning_topics c JOIN topics t ON t.id=c.topic_id WHERE c.active
             ON CONFLICT (topic_id) DO NOTHING""")
         schedules = db.execute("""SELECT topic_id, timezone FROM lesson_schedules
-            WHERE enabled AND NOT EXISTS (SELECT 1 FROM courses c
+            WHERE enabled AND NOT EXISTS (SELECT 1 FROM learning_topics c
                 WHERE c.topic_id=lesson_schedules.topic_id AND NOT c.active)
             ORDER BY topic_id""").fetchall()
     for topic_id, zone in schedules:

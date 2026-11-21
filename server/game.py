@@ -23,8 +23,8 @@ POINTS = {"review": 5, "achieved": 4, "merit": 6, "excellence": 8, "lesson": 25,
 PAPER_BANDS = (("excellence", 0.85), ("merit", 0.70), ("achieved", 0.50))      # the same bands as marking.grade_for
 BOARDS = {   # board -> (column, label, unit)
     "networth": ("networth", "Net worth", "points"), "questions": ("questions", "Questions correct", "questions"),
-    "lessons": ("lessons", "Lessons completed", "lessons"), "papers": ("papers", "Papers passed", "papers"),
-    "grade": ("est_mastery", "Estimated grade", ""), "gpa": ("est_gpa", "Estimated GPA", "/ 9"),
+    "lessons": ("lessons", "Lessons completed", "lessons"), "papers": ("papers", "Complete exams passed", "complete exams"),
+    "grade": ("est_recall", "Grade estimate", ""), "gpa": ("est_gpa", "Estimated GPA", "/ 9"),
     "collection": ("distinct_items", "Collection", "items"),
 }
 
@@ -36,18 +36,18 @@ def paper_grade(awarded, available):
     return next((name for name, bound in PAPER_BANDS if ratio >= bound), "not_achieved")
 
 
-def gpa_from(mastery):
-    """Mastery 0..1 on the 0..9 scale: 0 -> 0, 0.4 -> 3, 0.6 -> 5, 0.8 -> 7, 1 -> 9, straight lines between. Unofficial."""
+def gpa_from(recall):
+    """Predicted recall 0..1 on the 0..9 scale: 0 -> 0, 0.4 -> 3, 0.6 -> 5, 0.8 -> 7, 1 -> 9, straight lines between. Unofficial."""
     knots = [(0, 0), (0.4, 3), (0.6, 5), (0.8, 7), (1, 9)]
-    mastery = max(0.0, min(1.0, mastery))
+    recall = max(0.0, min(1.0, recall))
     for (x0, y0), (x1, y1) in zip(knots, knots[1:]):
-        if mastery <= x1:
-            return round(y0 + (y1 - y0) * (mastery - x0) / (x1 - x0), 2)
+        if recall <= x1:
+            return round(y0 + (y1 - y0) * (recall - x0) / (x1 - x0), 2)
     return 9.0
 
 
-def grade_name(mastery):
-    return "Not achieved" if mastery < 0.4 else "Achieved" if mastery < 0.6 else "Merit" if mastery < 0.8 else "Excellence"
+def grade_name(recall):
+    return "Not achieved" if recall < 0.4 else "Achieved" if recall < 0.6 else "Merit" if recall < 0.8 else "Excellence"
 
 
 def earnings(stats):
@@ -58,9 +58,9 @@ def earnings(stats):
         ("Exam questions marked Merit", stats["merit"], POINTS["merit"]),
         ("Exam questions marked Excellence", stats["excellence"], POINTS["excellence"]),
         ("Lessons completed", stats["lessons"], POINTS["lesson"]),
-        ("Papers passed at Achieved", stats["papers_achieved"], POINTS["paper_achieved"]),
-        ("Papers passed at Merit", stats["papers_merit"], POINTS["paper_merit"]),
-        ("Papers passed at Excellence", stats["papers_excellence"], POINTS["paper_excellence"]),
+        ("Complete exams at Achieved", stats["papers_achieved"], POINTS["paper_achieved"]),
+        ("Complete exams at Merit", stats["papers_merit"], POINTS["paper_merit"]),
+        ("Complete exams at Excellence", stats["papers_excellence"], POINTS["paper_excellence"]),
         ("Days with a correct answer", stats["days"], POINTS["day"]),
     ]
     breakdown = [{"label": label, "count": count, "each": each, "points": count * each} for label, count, each in lines]
@@ -105,11 +105,15 @@ def create_game_tables(db):
 
 
 def create_public_game_tables(db):
+    # The leaderboard's recall was called est_mastery before the glossary (GLOSSARY.md: Predicted recall).
+    if db.execute("""SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+            AND table_name = 'game_profiles' AND column_name = 'est_mastery'""").fetchone():
+        db.execute("ALTER TABLE game_profiles RENAME COLUMN est_mastery TO est_recall")
     db.execute("""CREATE TABLE IF NOT EXISTS game_profiles (
         user_id bigint PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         networth integer NOT NULL DEFAULT 0, balance integer NOT NULL DEFAULT 0,
         questions integer NOT NULL DEFAULT 0, lessons integer NOT NULL DEFAULT 0, papers integer NOT NULL DEFAULT 0,
-        est_mastery double precision, est_gpa double precision, distinct_items integer NOT NULL DEFAULT 0, total_items integer NOT NULL DEFAULT 0,
+        est_recall double precision, est_gpa double precision, distinct_items integer NOT NULL DEFAULT 0, total_items integer NOT NULL DEFAULT 0,
         rarest text, outfit jsonb NOT NULL DEFAULT '{}'::jsonb, showcase jsonb NOT NULL DEFAULT '[]'::jsonb,
         skin text NOT NULL DEFAULT 'sand', visible boolean NOT NULL DEFAULT true, updated_at timestamptz NOT NULL DEFAULT now())""")
     db.execute("ALTER TABLE game_profiles ADD COLUMN IF NOT EXISTS build text NOT NULL DEFAULT 'masculine'")
@@ -145,15 +149,15 @@ def read_stats(db, min_answers):
             SELECT {NZ_DAY % 'answered_at'} d FROM review_answers WHERE correct
             UNION SELECT {NZ_DAY % 'created_at'} FROM markings WHERE kind = 'first' AND result->>'outcome' IN ('achieved', 'merit', 'excellence')
             UNION SELECT {NZ_DAY % 'completed_at'} FROM lessons WHERE completed_at IS NOT NULL) x""").fetchone()[0]
-    topics = db.execute("""SELECT t.mastery, (SELECT count(*) FROM review_answers a JOIN review_questions q ON q.id = a.question_id WHERE q.topic_id = t.id)
-        FROM topics t JOIN courses c ON c.topic_id = t.id AND c.active""").fetchall()
+    topics = db.execute("""SELECT t.predicted_recall, (SELECT count(*) FROM review_answers a JOIN review_questions q ON q.id = a.question_id WHERE q.topic_id = t.id)
+        FROM topics t JOIN learning_topics c ON c.topic_id = t.id AND c.active""").fetchall()
     graded = [m or 0 for m, n in topics if n >= min_answers]
-    mastery = sum(graded) / len(graded) if graded else None
+    recall = sum(graded) / len(graded) if graded else None
     achieved, merit, excellence = (marked.get(k, 0) for k in ("achieved", "merit", "excellence"))
     return {"review_correct": review_correct, "achieved": achieved, "merit": merit, "excellence": excellence, "lessons": lessons,
             "papers_achieved": papers["achieved"], "papers_merit": papers["merit"], "papers_excellence": papers["excellence"],
             "days": days, "questions": review_correct + achieved + merit + excellence, "papers": sum(papers.values()),
-            "mastery": mastery, "graded_topics": len(graded)}
+            "recall": recall, "graded_topics": len(graded)}
 
 
 def ensure_state(db):
@@ -195,17 +199,17 @@ def publish_profile(connect_account, user_id, snap):
     owned = snap["owned"]
     rarest = max(owned, key=lambda i: (items.CATALOG[i]["rarity"], items.CATALOG[i]["value"]), default=None)
     stats = snap["stats"]
-    mastery = stats["mastery"]
+    recall = stats["recall"]
     with connect_account() as db:
-        db.execute("""INSERT INTO game_profiles (user_id, networth, balance, questions, lessons, papers, est_mastery, est_gpa, distinct_items, total_items,
+        db.execute("""INSERT INTO game_profiles (user_id, networth, balance, questions, lessons, papers, est_recall, est_gpa, distinct_items, total_items,
                 rarest, outfit, showcase, skin, visible, build, updated_at)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s, now())
             ON CONFLICT (user_id) DO UPDATE SET networth=EXCLUDED.networth, balance=EXCLUDED.balance, questions=EXCLUDED.questions,
-                lessons=EXCLUDED.lessons, papers=EXCLUDED.papers, est_mastery=EXCLUDED.est_mastery, est_gpa=EXCLUDED.est_gpa,
+                lessons=EXCLUDED.lessons, papers=EXCLUDED.papers, est_recall=EXCLUDED.est_recall, est_gpa=EXCLUDED.est_gpa,
                 distinct_items=EXCLUDED.distinct_items, total_items=EXCLUDED.total_items, rarest=EXCLUDED.rarest, outfit=EXCLUDED.outfit,
                 showcase=EXCLUDED.showcase, skin=EXCLUDED.skin, visible=EXCLUDED.visible, build=EXCLUDED.build, updated_at=now()""",
-                   (user_id, snap["networth"], snap["balance"], stats["questions"], stats["lessons"], stats["papers"], mastery,
-                    gpa_from(mastery) if mastery is not None else None, len(owned), len(items.CATALOG), rarest,
+                   (user_id, snap["networth"], snap["balance"], stats["questions"], stats["lessons"], stats["papers"], recall,
+                    gpa_from(recall) if recall is not None else None, len(owned), len(items.CATALOG), rarest,
                     json.dumps(snap["outfit"]), json.dumps(snap["showcase"]), snap["state"]["skin"], snap["state"]["visible"], snap["state"]["build"]))
 
 
@@ -258,9 +262,9 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
         return {
             "balance": snap["balance"], "earned": snap["earned"], "networth": snap["networth"], "breakdown": snap["breakdown"],
             "stats": {k: snap["stats"][k] for k in ("questions", "lessons", "papers", "days")},
-            "estimate": None if snap["stats"]["mastery"] is None else {
-                "grade": grade_name(snap["stats"]["mastery"]), "mastery": round(snap["stats"]["mastery"], 3),
-                "gpa": gpa_from(snap["stats"]["mastery"]), "topics": snap["stats"]["graded_topics"]},
+            "estimate": None if snap["stats"]["recall"] is None else {
+                "grade": grade_name(snap["stats"]["recall"]), "predicted_recall": round(snap["stats"]["recall"], 3),
+                "gpa": gpa_from(snap["stats"]["recall"]), "topics": snap["stats"]["graded_topics"]},
             "owned": sorted((full(i, n) for i, n in owned.items()), key=lambda x: (-x["rarity"], x["slot"], x["name"])),
             "outfit": snap["outfit"], "showcase": snap["showcase"], "skin": snap["state"]["skin"], "build": snap["state"]["build"], "visible": snap["state"]["visible"],
             "pity": {"pulls": snap["state"]["pulls"], "rare_in": RARE_PITY - snap["state"]["since_rare"], "epic_in": EPIC_PITY - snap["state"]["since_epic"]},
@@ -270,7 +274,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
                         "skins": [{"id": k, "name": v[0], "colour": v[1]} for k, v in items.SKINS.items()],
                         "builds": [{"id": k, "name": v} for k, v in items.BUILDS.items()]},
             "odds": dict(zip(items.RARITIES, items.ODDS)),
-            "notice": "Points come from work recorded as correct. Estimated grade and GPA are unofficial estimates, not NZQA results.",
+            "notice": "Points come from work recorded as correct. The Grade estimate and GPA are unofficial, not NZQA results.",
         }
 
     def current():
@@ -400,7 +404,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
     def board_rows(db, board, limit, viewer):
         column, label, unit = BOARDS[board]
         extra = f"AND p.{column} IS NOT NULL" if board in ("grade", "gpa") else f"AND p.{column} > 0"
-        ranked = f"""SELECT p.user_id, u.username, p.{column}, p.outfit, p.skin, p.visible, p.networth, p.est_mastery, p.est_gpa,
+        ranked = f"""SELECT p.user_id, u.username, p.{column}, p.outfit, p.skin, p.visible, p.networth, p.est_recall, p.est_gpa,
                 RANK() OVER (ORDER BY p.{column} DESC) AS place, p.build FROM game_profiles p JOIN users u ON u.id = p.user_id
                 WHERE (p.visible OR p.user_id = %s) {extra}"""
         rows = db.execute(f"SELECT * FROM ({ranked}) r ORDER BY place, username LIMIT %s", (viewer, limit)).fetchall()
@@ -424,7 +428,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
         def row_json(r):
             return {"rank": r[9], "user_id": r[0], "username": r[1], "outfit": r[3], "skin": r[4], "build": r[10], "hidden": not r[5], **value(r)}
         return {"board": board, "label": label, "unit": unit, "you": viewer,
-                "note": "Estimated grade and GPA come from review answers and are unofficial." if board in ("grade", "gpa") else "",
+                "note": "The Grade estimate and GPA come from review answers and are unofficial." if board in ("grade", "gpa") else "",
                 "rows": [row_json(r) for r in rows], "mine": row_json(mine) if mine else None}
 
     @router.get("/game/players/{user_id}", dependencies=[Depends(authorised)])
@@ -433,7 +437,7 @@ def game_router(connect, connect_account, authorised, min_answers=5, rng=None):
         if user_id == viewer:
             current()
         with connect_account() as db:
-            row = db.execute("""SELECT u.username, p.networth, p.questions, p.lessons, p.papers, p.est_mastery, p.est_gpa, p.distinct_items, p.total_items,
+            row = db.execute("""SELECT u.username, p.networth, p.questions, p.lessons, p.papers, p.est_recall, p.est_gpa, p.distinct_items, p.total_items,
                     p.rarest, p.outfit, p.showcase, p.skin, p.visible, p.build FROM game_profiles p JOIN users u ON u.id = p.user_id WHERE p.user_id = %s""", (user_id,)).fetchone()
         if not row or (not row[13] and user_id != viewer):
             raise HTTPException(404, "No such player, or they keep their rewards private")

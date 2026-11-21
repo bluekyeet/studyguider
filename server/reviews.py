@@ -49,7 +49,7 @@ def create_review_tables(db):
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS source jsonb NOT NULL DEFAULT '[]'::jsonb")
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS standard_number integer REFERENCES standards(number) ON DELETE SET NULL")
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS concept text NOT NULL DEFAULT ''")
-    db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS mastery real NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS predicted_recall real NOT NULL DEFAULT 0")
     db.execute("ALTER TABLE review_questions ADD COLUMN IF NOT EXISTS exam_origin text")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS review_questions_exam_origin_idx ON review_questions(exam_origin)")
     db.execute("ALTER TABLE review_answers ADD COLUMN IF NOT EXISTS correct boolean")
@@ -77,7 +77,7 @@ SIMILAR = 0.85      # questions this alike (ignoring maths and punctuation) coun
 
 
 # A topic the learner switched off in Settings keeps its history but leaves every daily list.
-SWITCHED_OFF = "NOT EXISTS (SELECT 1 FROM courses sw WHERE sw.topic_id = {topic} AND NOT sw.active)"
+SWITCHED_OFF = "NOT EXISTS (SELECT 1 FROM learning_topics sw WHERE sw.topic_id = {topic} AND NOT sw.active)"
 
 # Lessons are built from the standard's own document, so the model sometimes quizzes the paperwork (credits, grades, how the
 # standard is assessed) instead of the subject. Those are not review questions.
@@ -120,7 +120,7 @@ def due_list(db, as_of, now=None):
 
 
 def _due_item(row):
-    return {key: row.get(key) for key in ("id", "topic_id", "question", "due_date", "concept", "standard_number", "mastery", "topic",
+    return {key: row.get(key) for key in ("id", "topic_id", "question", "due_date", "concept", "standard_number", "predicted_recall", "topic",
                                          "subject", "material", "reps", "recall", "assessment")}
 
 
@@ -283,15 +283,15 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
             reviews = (len(plan), reviews[1], reviews[2])
             answers = dict(db.execute("""SELECT outcome, count(*) FROM review_answers
                 WHERE answered_at > now() - interval '30 days' GROUP BY outcome""").fetchall())
-            topics = db.execute("""SELECT t.id, s.name, t.name, t.mastery, t.status,
+            topics = db.execute("""SELECT t.id, s.name, t.name, t.predicted_recall, t.status,
                     (SELECT count(*) FROM review_answers a JOIN review_questions q ON q.id = a.question_id WHERE q.topic_id = t.id),
                     (SELECT count(*) FILTER (WHERE q.reps > 0) FROM review_questions q WHERE q.topic_id = t.id),
                     (SELECT count(*) FROM review_questions q WHERE q.topic_id = t.id)
                 FROM topics t
-                JOIN subjects s ON s.id = t.subject_id JOIN courses c ON c.topic_id = t.id AND c.active
+                JOIN subjects s ON s.id = t.subject_id JOIN learning_topics c ON c.topic_id = t.id AND c.active
                 ORDER BY s.name, t.name""").fetchall()
             # Weak: the last answer was wrong, or it has been forgotten more than once.
-            weak = [r for r in db.execute("""SELECT q.concept, t.name, q.mastery, q.question FROM review_questions q JOIN topics t ON t.id = q.topic_id
+            weak = [r for r in db.execute("""SELECT q.concept, t.name, q.predicted_recall, q.question FROM review_questions q JOIN topics t ON t.id = q.topic_id
                 WHERE q.reps > 0 AND (q.last_grade = 1 OR q.lapses >= 2) AND q.concept <> ''
                   AND """ + SWITCHED_OFF.format(topic="q.topic_id") + """
                 ORDER BY q.last_review DESC, q.id LIMIT 60""").fetchall() if not is_admin_question(r[3], r[0])][:6]
@@ -304,18 +304,21 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
                     FROM (SELECT DISTINCT ON (question_id) result FROM markings WHERE exam_id = e.id AND kind = 'first'
                           ORDER BY question_id, created_at DESC) r) m ON true
                 ORDER BY e.created_at DESC LIMIT 5""").fetchall()
+        overall = round(sum(r[3] or 0 for r in topics if r[6]) / len([r for r in topics if r[6]]), 3) if any(r[6] for r in topics) else 0
         return {
             "today": today,
             "lessons": {"today": lessons[0], "completed_today": lessons[1], "completed_on_day": lessons[2], "completed_last_7_days": lessons[3]},
             "reviews": {"due": reviews[0], "upcoming": reviews[1], "total": reviews[2], "answers_last_30_days": answers,
                         "left_out": info["left_out"], "cap": info["cap"]},
             # Averaged only over topics with reviewed questions: a topic not started is not 0% remembered.
-            "overall_mastery": round(sum(r[3] or 0 for r in topics if r[6]) / len([r for r in topics if r[6]]), 3) if any(r[6] for r in topics) else 0,
+            "overall_predicted_recall": overall,
+            "overall_mastery": overall,     # the old name, for apps built before the rename
             "estimate_rule": "Recall is the predicted chance you would remember each reviewed question today, from your review history. "
                              "It counts only questions you have answered; grade estimates come from marked past papers and assessments (Plan).",
-            "topics": [{"topic_id": r[0], "subject": r[1], "topic": r[2], "mastery": round(r[3] or 0, 3), "status": r[4],
+            "topics": [{"topic_id": r[0], "subject": r[1], "topic": r[2], "predicted_recall": round(r[3] or 0, 3),
+                        "mastery": round(r[3] or 0, 3), "status": r[4],     # "mastery" is the old name, for apps built before the rename
                         "review_answers": r[5], "reviewed_questions": r[6], "questions": r[7], "estimated_grade": None} for r in topics],
-            "weak_concepts": [{"concept": r[0], "topic": r[1], "mastery": round(r[2], 3)} for r in weak],
+            "weak_concepts": [{"concept": r[0], "topic": r[1], "predicted_recall": round(r[2], 3)} for r in weak],
             "exams": [{"id": r[0], "created_at": r[1], "kind": r[2], "total_marks": r[3], "questions": r[4], "answered": r[5],
                        "marks_awarded": float(r[6]) if r[8] else None, "marks_available": float(r[7]) if r[8] else None,
                        "marked_questions": r[8], "unfinished": r[5] < r[4]} for r in exams],
@@ -327,13 +330,13 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
         """Every saved question, due or not, so learners can practise ahead or revisit."""
         with connect() as db:
             rows = db.execute("""SELECT q.id, q.topic_id, q.question, q.due_date, q.concept, q.standard_number,
-                    q.mastery, q.interval_days,
+                    q.predicted_recall, q.interval_days,
                     (SELECT count(*) FROM review_answers a WHERE a.question_id = q.id),
                     (SELECT max(a.answered_at) FROM review_answers a WHERE a.question_id = q.id), q.reps, q.material
                 FROM review_questions q WHERE (%s::bigint IS NULL OR q.topic_id = %s)
                   AND """ + SWITCHED_OFF.format(topic="q.topic_id") + """
                 ORDER BY q.due_date, q.id LIMIT %s OFFSET %s""", (topic_id, topic_id, limit, offset)).fetchall()
-            keys = ("id", "topic_id", "question", "due_date", "concept", "standard_number", "mastery",
+            keys = ("id", "topic_id", "question", "due_date", "concept", "standard_number", "predicted_recall",
                     "interval_days", "answer_count", "last_answered_at", "reps", "material")
             return variants.overlay(db, with_forms(db, [dict(zip(keys, row)) for row in rows if not is_admin_question(row[2], row[4])]))
 
@@ -404,11 +407,11 @@ def review_router(connect, authorised, model_reply, model_reply_vision=None):
             if variant:
                 db.execute("UPDATE review_variants SET answered_at = %s WHERE id = %s", (now, variant[0]))
             db.execute("UPDATE review_questions SET concept = COALESCE(NULLIF(%s, ''), concept) WHERE id = %s", (concept, question_id))
-            mastery, status = db.execute("SELECT mastery, status FROM topics WHERE id = %s", (topic_id,)).fetchone()
+            recall, status = db.execute("SELECT predicted_recall, status FROM topics WHERE id = %s", (topic_id,)).fetchone()
         return {"id": row[0], "question_id": question_id, "answer": body.answer.strip(),
                 "confidence": body.confidence, "correct": correct, "feedback": feedback,
                 "outcome": outcome, "next_due": next_due, "interval_days": interval,
-                "mastery": round(mastery or 0, 3), "topic_status": status, "answered_at": row[1],
+                "predicted_recall": round(recall or 0, 3), "topic_status": status, "answered_at": row[1],
                 # A wrong answer comes back later in this session until it is right once (successive relearning).
                 "grade": grade, "relearn": schedule["relearn"],
                 "confident_miss": correct is False and body.confidence >= 4,

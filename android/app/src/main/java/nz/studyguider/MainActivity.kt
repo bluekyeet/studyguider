@@ -645,7 +645,7 @@ private fun StudyApp() {
                     onOpenRewards = { showRewards = true },
                     onChooseTopics = { showTopicPicker = true },
                 )
-                4 -> LearningScreen(base, token, topicsReload, onManageCourses = { showTopicPicker = true }, onStartReviews = { tab = 2 }, onOpenResources = { tab = 0 }, onOpenLesson = { topic, title, lesson ->
+                4 -> LearningScreen(base, token, topicsReload, onManageLearningTopics = { showTopicPicker = true }, onStartReviews = { tab = 2 }, onOpenResources = { tab = 0 }, onOpenLesson = { topic, title, lesson ->
                     selectedLesson = lesson; openTopic(topic, title); subjectTitle = findSubject(topic); tab = 1
                 })
                 else -> Column(Modifier.fillMaxSize()) {
@@ -736,7 +736,7 @@ private fun StudyApp() {
 }
 
 /**
- * Chooses which topics to learn. Selected topics become courses, so their
+ * Chooses which topics to learn. Selected topics become learning topics, so their
  * lessons appear on the Lessons home. Opened from the floating button, the
  * empty state, or Settings.
  */
@@ -755,13 +755,13 @@ private fun TopicPickerSheet(
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val colours = LocalStudyColours.current
-    suspend fun loadCourses(): Set<Long> = withContext(Dispatchers.IO) {
-        val list = JSONArray(request(base, "/courses", token))
+    suspend fun loadLearningTopics(): Set<Long> = withContext(Dispatchers.IO) {
+        val list = JSONArray(request(base, "/learning-topics", token))
         (0 until list.length()).map { list.getJSONObject(it).getLong("topic_id") }.toSet()
     }
     LaunchedEffect(base, token) {
-        try { enrolledTopicIds = loadCourses() } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { error = "Could not load your courses: ${e.message ?: "request failed"}" }
+        try { enrolledTopicIds = loadLearningTopics() } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = "Could not load your learning topics: ${e.message ?: "request failed"}" }
     }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -776,17 +776,17 @@ private fun TopicPickerSheet(
                 busyTopic = id; error = ""
                 try {
                     if (on) {
-                        // Removing a course stops it appearing; lessons stay saved on the server.
-                        val list2 = JSONArray(request(base, "/courses", token))
+                        // Removing a learning topic stops it appearing; lessons stay saved on the server.
+                        val list2 = JSONArray(request(base, "/learning-topics", token))
                         for (i in 0 until list2.length()) {
                             val c = list2.getJSONObject(i)
                             if (c.getLong("topic_id") == id) {
-                                request(base, "/courses/${c.getLong("id")}", token, JSONObject(), "DELETE")
+                                request(base, "/learning-topics/${c.getLong("id")}", token, JSONObject(), "DELETE")
                                 break
                             }
                         }
-                    } else request(base, "/courses", token, JSONObject().put("topic_id", id))
-                    enrolledTopicIds = loadCourses()
+                    } else request(base, "/learning-topics", token, JSONObject().put("topic_id", id))
+                    enrolledTopicIds = loadLearningTopics()
                     onChanged()
                 } catch (e: CancellationException) { throw e } catch (e: Exception) {
                     error = "Could not save: ${e.message ?: "request failed"}"
@@ -912,8 +912,8 @@ private fun TopicBrowser(
  * learned: nightly runs, the lesson manager, lesson history and topic notes.
  */
 @Composable
-private fun LearningScreen(base: String, token: String, revision: Int, onManageCourses: () -> Unit, onStartReviews: () -> Unit, onOpenResources: () -> Unit, onOpenLesson: (Long, String, Long) -> Unit) {
-    var courses by remember(base, token) { mutableStateOf<List<JSONObject>>(emptyList()) }
+private fun LearningScreen(base: String, token: String, revision: Int, onManageLearningTopics: () -> Unit, onStartReviews: () -> Unit, onOpenResources: () -> Unit, onOpenLesson: (Long, String, Long) -> Unit) {
+    var learningTopics by remember(base, token) { mutableStateOf<List<JSONObject>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var retry by remember { mutableIntStateOf(0) }
@@ -931,8 +931,8 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
     LaunchedEffect(base, token, revision, retry) {
         loading = true; error = ""
         try {
-            val list = JSONArray(request(base, "/courses", token))
-            courses = (0 until list.length()).map { list.getJSONObject(it) }
+            val list = JSONArray(request(base, "/learning-topics", token))
+            learningTopics = (0 until list.length()).map { list.getJSONObject(it) }
             val saved = JSONArray(request(base, "/lessons", token))
             lessons = (0 until saved.length()).map { saved.getJSONObject(it) }
         } catch (e: CancellationException) { throw e }
@@ -949,22 +949,22 @@ private fun LearningScreen(base: String, token: String, revision: Int, onManageC
         PlanContent(base, token, onStartReviews = onStartReviews, onOpenResources = onOpenResources)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Topics I'm learning", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-            TextButton(onClick = onManageCourses) { Text("Edit topics") }
+            TextButton(onClick = onManageLearningTopics) { Text("Edit topics") }
         }
         if (loading) LoadingBar(Modifier.fillMaxWidth())
         if (error.isNotEmpty()) {
             Text(error, color = MaterialTheme.colorScheme.error)
             TextButton(onClick = { retry++ }) { Text("Try again") }
         }
-        if (!loading && error.isEmpty() && courses.isEmpty()) Text("Choose topics to include in your lessons.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (courses.isNotEmpty()) Text("Tap a topic to see its last seven nightly lesson runs.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (courses.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
+        if (!loading && error.isEmpty() && learningTopics.isEmpty()) Text("Choose topics to include in your lessons.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (learningTopics.isNotEmpty()) Text("Tap a topic to see its last seven nightly lesson runs.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (learningTopics.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = LocalStudyColours.current.container) {
             Column {
-                courses.forEachIndexed { index, course ->
+                learningTopics.forEachIndexed { index, learningTopic ->
                     if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                     // The whole row opens that topic's nightly status, so the rows need no button of their own.
-                    ListItem(modifier = Modifier.clickable(onClickLabel = "Nightly status for ${course.optString("topic")}") { scheduleTopic = course },
-                        headlineContent = { Text(course.optString("topic")) }, supportingContent = { Text(course.optString("subject")) }, trailingContent = {
+                    ListItem(modifier = Modifier.clickable(onClickLabel = "Nightly status for ${learningTopic.optString("topic")}") { scheduleTopic = learningTopic },
+                        headlineContent = { Text(learningTopic.optString("topic")) }, supportingContent = { Text(learningTopic.optString("subject")) }, trailingContent = {
                         Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 }
