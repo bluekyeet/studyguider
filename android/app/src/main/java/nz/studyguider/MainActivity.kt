@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         scheduleReminder(this)
+        TestReports.watchForCrashes(this)
         // Transparent system bars with icons that follow the theme, so the status bar never shows as a white strip.
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
@@ -84,7 +85,7 @@ class MainActivity : ComponentActivity() {
             val dark = Appearance.dark()
             // The bar icons follow the theme chosen in the app, which can differ from the phone's own setting.
             SideEffect { androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply { isAppearanceLightStatusBars = !dark; isAppearanceLightNavigationBars = !dark } }
-            StudyTheme(dark) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { StudyApp() } }
+            StudyTheme(dark) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { TestSystemOverlay { StudyApp() } } }
         }
     }
 }
@@ -103,7 +104,10 @@ private suspend fun request(base: String, path: String, token: String = "", body
         }
         val status = connection.responseCode
         val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (status !in 200..299) throw IllegalStateException("Request failed ($status): $text")
+        if (status !in 200..299) {
+            TestReports.recordError(connection.requestMethod, path, status, text)
+            throw IllegalStateException("Request failed ($status): $text")
+        }
         text
     } finally { connection.disconnect() }
 }
@@ -296,7 +300,7 @@ private fun StudyApp() {
     val prefs = remember { context.getSharedPreferences("session", android.content.Context.MODE_PRIVATE) }
     val activity = androidx.activity.compose.LocalActivity.current as? android.app.Activity
     val leaveApp: () -> Unit = { activity?.finish() }
-    var base by remember { mutableStateOf("https://") }
+    var base by remember { mutableStateOf(BuildConfig.TEST_SERVER.ifEmpty { "https://" }) }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
@@ -343,6 +347,15 @@ private fun StudyApp() {
     // True until the saved session has been checked, so the sign-in form never flashes.
     var restoring by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
+    // What a test-build problem report says about where the tester was (TestReports.kt); does nothing in the normal app.
+    if (BuildConfig.TEST_SYSTEM) SideEffect {
+        TestReports.base = base; TestReports.token = token
+        TestReports.screen = when {
+            showSettings -> "Settings"; showRewards -> "Rewards"; showTopicPicker -> "Choose topics"
+            else -> when (tab) { 1 -> "Lessons"; 2 -> "Review"; 3 -> listOf("Exam papers", "Rapid questions", "Exam revision").getOrElse(examSection) { "Exam" }; 4 -> "Plan"; 5 -> "Home"; else -> "Resources" } +
+                (if (selectedLesson > 0) " · lesson $selectedLesson" else "") + (if (selectedTopic != 0L) " · topic $topicTitle" else "") + (if (examId.isNotEmpty()) " · exam $examId" else "")
+        }
+    }
     val openTopic = { id: Long, title: String ->
         if (examDirty) { confirmExamExit = true } else scope.launch {
             // The files arrive first, so the screen opens already filled instead of showing an empty list that then fills in.

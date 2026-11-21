@@ -1,3 +1,4 @@
+import {startTestSystem} from './web-report.js';
 import {renderHome} from './web-home.js';
 import {renderLessons} from './web-lessons.js';
 import {renderReviews} from './web-reviews.js';
@@ -120,5 +121,6 @@ window.addEventListener('hashchange',route);
 window.addEventListener('beforeunload', event => {
   if ($('view').querySelector('[data-dirty="true"], [data-busy="true"]')) { event.preventDefault(); event.returnValue=''; }
 });
+startTestSystem(() => session.user);
 try { session.set((await api('/session')).user); ready=true; $('study').hidden=false; $('logout').hidden=false; document.body.classList.remove('signed-out'); await route(); }
 catch { $('login').hidden=false; }

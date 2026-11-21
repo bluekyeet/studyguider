@@ -7,9 +7,25 @@ plugins {
 android {
     namespace = "nz.studyguider"
     compileSdk = 36
-    defaultConfig { applicationId = "nz.studyguider"; minSdk = 26; targetSdk = 36; versionCode = 111; versionName = "1.1.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
-    buildFeatures { compose = true }
+    defaultConfig {
+        applicationId = "nz.studyguider"; minSdk = 26; targetSdk = 36; versionCode = 111; versionName = "1.1.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "TEST_SYSTEM", "false")
+        buildConfigField("String", "TEST_SERVER", "\"\"")
+        manifestPlaceholders["appLabel"] = "StudyGuider"
+    }
+    buildFeatures { compose = true; buildConfig = true }
     buildTypes {
+        // The test system's app (docs/test-system.md): installs beside the real one, talks plain HTTP to the test server on this PC
+        // (scripts/test-system.sh apk passes -PtestServer=http://<this PC>:8100) and shows Report a problem.
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".test"
+            versionNameSuffix = "-test"
+            buildConfigField("boolean", "TEST_SYSTEM", "true")
+            buildConfigField("String", "TEST_SERVER", "\"" + (project.findProperty("testServer") ?: "") + "\"")
+            manifestPlaceholders["appLabel"] = "StudyGuider Test"
+            matchingFallbacks += "debug"
+        }
         create("benchmark") {
             initWith(getByName("debug"))
             isDebuggable = false

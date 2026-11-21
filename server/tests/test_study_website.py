@@ -33,6 +33,8 @@ def test_every_website_request_with_a_json_body_declares_json():
             context = source[max(0, line_start - 200):source.find(chr(10), match.end()) + 1]
             if "localStorage" in context or "documentAnswer" in context:
                 continue
+            if re.search(r"\.append\('\w+', $", source[line_start:match.start()]):     # one field of a multipart form, not a JSON body
+                continue
             assert "Content-Type" in context, f"{path.name}: JSON body without Content-Type near {context.strip()[:80]!r}"
 
 

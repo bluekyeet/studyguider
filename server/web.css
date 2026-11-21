@@ -689,3 +689,20 @@ button.danger:disabled{opacity:.45}
 .calibration-meter{position:relative;height:8px;border-radius:999px;background:var(--surface-3);margin-top:4px;min-width:120px}
 .calibration-meter span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--accent))}
 .calibration-meter i{position:absolute;top:-3px;width:2px;height:14px;background:var(--text);opacity:.6}
+
+/* Test system only (web-report.js): a banner saying so, and a Report a problem button kept clear of the phone tab bar */
+.test-banner{background:var(--warn-soft,rgba(217,119,6,.14));color:var(--warn,#f5b74f);text-align:center;font-size:13px;padding:6px 12px;border-bottom:1px solid var(--line)}
+.report-button{position:fixed;right:18px;bottom:18px;z-index:30;background:var(--surface-2);box-shadow:var(--shadow);border-radius:999px}
+body.signed-out .report-button{display:none}
+.report-dialog{border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);padding:22px;width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 48px)}
+.report-dialog::backdrop{background:rgba(5,6,12,.55)}
+.report-dialog h3{margin-top:0}
+.report-dialog label{display:flex;flex-direction:column;gap:6px}
+.report-dialog textarea{width:100%}
+.report-shot img{max-width:100%;max-height:220px;border:1px solid var(--line);border-radius:8px;display:block;margin:8px 0}
+.report-row{border-top:1px solid var(--line);padding:12px 0;display:flex;flex-direction:column;gap:4px}
+.report-row p{margin:0;white-space:pre-wrap}
+.report-status{font-size:13px;color:var(--muted)}
+.report-status.open{color:var(--warn,#f5b74f)}
+.report-status.fixed{color:var(--ok,#4ade80)}
+@media(max-width:800px){.report-button{bottom:calc(78px + env(safe-area-inset-bottom));right:12px;min-height:40px;padding:6px 14px;font-size:13px}}

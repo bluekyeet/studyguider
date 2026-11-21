@@ -36,7 +36,7 @@ COPY game.py game_items.py transcribe.py hints.py ./
 COPY fsrs_model.py clock.py curriculum.py review_plan.py ./
 COPY answer_forms.py answer_media.py ./
 COPY choice.py exam_import.py variants.py mathcheck.py ./
-COPY set_password.py .
+COPY set_password.py reports.py ./
 COPY manage.html .
 COPY web.html web.css web*.js ./
 COPY branding/ ./branding/

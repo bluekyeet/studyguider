@@ -55,6 +55,7 @@ import userspace
 import library_global
 import transcribe
 from accounts import accounts_router, create_account_tables, make_auth, migrate_legacy, move_legacy_files
+from reports import create_report_tables, report_router
 
 
 log = logging.getLogger("uvicorn.error")
@@ -213,6 +214,7 @@ async def lifespan(app):
         create_account_tables(db)
         migrate_legacy(db, hasher)
         create_public_game_tables(db)       # after the migration, which moves every other table in `public` into the first account
+        create_report_tables(db)
         usage.create_server_settings(db)    # server-wide settings an administrator changes (the background model-call limit)
     try:
         move_legacy_files(userspace.upload_base())
@@ -453,6 +455,7 @@ def model_reply_vision(model, prompt, image_bytes, mime="image/png", task="visio
 accounts_db = lambda: connect_account()      # looked up on each call, so tests can replace connect_account
 authorised, admin_only = make_auth(accounts_db)
 app.include_router(accounts_router(accounts_db, authorised, admin_only, hasher, provision_account, deprovision_account))
+app.include_router(report_router(accounts_db, authorised, admin_only))
 
 
 app.include_router(review_router(connect, authorised, model_reply, model_reply_vision))
@@ -540,7 +543,7 @@ def study_styles():
 
 @app.get('/{module_name}.js', include_in_schema=False)
 def study_module(module_name: str):
-    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings', 'web-game', 'web-plan', 'web-answer'}:
+    if module_name not in {'web', 'web-common', 'web-home', 'web-lessons', 'web-reviews', 'web-exams', 'web-exam-shared', 'web-rapid', 'web-revision', 'web-account', 'web-library', 'web-settings', 'web-game', 'web-plan', 'web-answer', 'web-report'}:
         raise HTTPException(404, 'Module not found')
     # no-cache: the browser re-checks on each load, so a new version shows without a hard refresh
     return FileResponse(Path(__file__).with_name(module_name + '.js'), media_type='text/javascript', headers={'Cache-Control': 'no-cache'})

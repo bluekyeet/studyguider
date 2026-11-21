@@ -69,7 +69,10 @@ class Api(val base: String, val token: String) {
     private fun read(connection: HttpURLConnection): String {
         val status = connection.responseCode
         val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (status !in 200..299) throw ApiError(status, errorDetail(text) ?: "Request failed ($status)")
+        if (status !in 200..299) {
+            TestReports.recordError(connection.requestMethod, connection.url.path, status, text)
+            throw ApiError(status, errorDetail(text) ?: "Request failed ($status)")
+        }
         return text
     }
 

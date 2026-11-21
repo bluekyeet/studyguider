@@ -24,3 +24,4 @@ android/**/build/
 .idea/
 stitch_*.zip
 .claude/worktrees/
+test-reports/

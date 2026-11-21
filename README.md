@@ -128,6 +128,7 @@ The website has no build step: plain ES modules and one stylesheet, served by th
 - `docs/progress.md`: dated log of checks and results, including what was not tested.
 - `docs/website-functions.md`: what each website screen must do.
 - `docs/job-recovery.md`: how interrupted lesson jobs are handled.
+- `docs/test-system.md`: a separate test StudyGuider (website and phone app) with sample data and Report a problem.
 - `DESIGN.md` and the top of `docs/task-list.md`: scope and rules (no automatic monthly exams, no Google
   Drive import, one app-wide teaching method, and so on).
 

@@ -65,6 +65,8 @@ jobs:
         run: docker compose -f compose.yaml exec -T api python - < server/tests/glossary_upgrade_check.py
       - name: Check Learning topic, Standard and Predicted recall routes
         run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/glossary_api_check.py
+      - name: Check test-system problem reports
+        run: docker compose -f compose.yaml exec -T -e DISPOSABLE_TEST_DATABASE=yes api python - < server/tests/reports_check.py
       - name: Check exam-to-lesson learning cycle
         run: docker compose exec -T api python - < server/tests/learning_cycle_check.py
       - name: Check collated question selection
