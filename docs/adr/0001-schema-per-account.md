@@ -1,0 +1,3 @@
+# Each Account's data lives in its own PostgreSQL schema
+
+Every Account gets its own schema (`u1`, `u2`, ...) holding all of its study data, plus its own upload folder; only the accounts themselves and leaderboard snapshots live in `public`. A connection's `search_path` is set to the active Account's schema, so no query can read another Account's rows even if it forgets to filter. We chose this over shared tables with an account column because isolation then holds by construction, and the existing single-learner tables and queries could move into an Account unchanged. The cost is that schema changes run once per Account, and any cross-Account view (leaderboards) must be an explicit copy into `public`.

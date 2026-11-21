@@ -1,0 +1,3 @@
+# Points are derived from study records, not stored
+
+An Account's earned Points are recomputed from its own records (Review answers, Marked exam questions, completed Lessons, Complete exams) every time they are read; only spending and recycling refunds are stored, in a ledger. We chose this over storing an awarded balance so there is no "award points" call to forge or double-fire, and re-marking the same question can never pay twice. The consequence is that changing earning rules re-prices past work retroactively, and the leaderboard has to read a refreshed snapshot rather than the live balance.
