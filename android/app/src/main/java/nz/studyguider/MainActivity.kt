@@ -523,6 +523,13 @@ private fun StudyApp() {
                         }
                         if (error.isNotEmpty()) Text("!", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(end = 8.dp))
                         if (token.isNotEmpty()) {
+                            // Rewards is one tap from every screen, not only from the bottom of Home.
+                            Box(
+                                Modifier.padding(end = 6.dp).clip(RoundedCornerShape(50))
+                                    .background(if (showRewards) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .clickable(role = androidx.compose.ui.semantics.Role.Button) { showRewards = true }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                            ) { Text("★ Rewards", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface) }
                             Box(Modifier.padding(end = 6.dp).clip(RoundedCornerShape(50)).clickable(role = androidx.compose.ui.semantics.Role.Button) { showSettings = true }) {
                                 AvatarView(base, token, CurrentUser.json, 30.dp)
                             }
