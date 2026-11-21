@@ -23,3 +23,4 @@ android/local.properties
 android/**/build/
 .idea/
 stitch_*.zip
+.claude/worktrees/
