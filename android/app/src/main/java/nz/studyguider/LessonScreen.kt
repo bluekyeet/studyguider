@@ -162,9 +162,19 @@ fun lessonChunks(lesson: String): List<LessonChunk> {
     val spans = mutableListOf<ChoiceSpan>()
     var fence: MutableList<String>? = null      // the lines of an open ```choice block
     var fenceStart = 0
+    var display: StringBuilder? = null          // the lines of a $$ ... $$ block written over several lines
     fun flush() { if (current.isNotEmpty()) { chunks.add(LessonChunk(title, current.toList(), spans.toList())); current.clear() }; spans.clear(); fence = null }
     lesson.lineSequence().forEach { line ->
         val trim = line.trim()
+        display?.let { maths ->
+            maths.append('\n').append(trim)
+            if (trim.contains("$$")) { current.add("text" to maths.toString()); display = null }
+            return@forEach
+        }
+        if (fence == null && trim.startsWith("$$") && Regex("\\$\\$").findAll(trim).count() % 2 == 1) {
+            display = StringBuilder(trim)
+            return@forEach
+        }
         val open = fence
         if (open == null && trim.startsWith("```choice")) { fence = mutableListOf(); fenceStart = current.size }
         else if (open != null && trim == "```") {

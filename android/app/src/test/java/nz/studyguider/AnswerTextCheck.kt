@@ -71,4 +71,10 @@ fun main() {
     val tabled = lessonChunks("### Your Turn 2\nComplete the table.\n| Molecule | Shape |\n| --- | --- |\n| CO2 | |\nThen explain.").single()
     check(tabled.tableRunAt(1) == 1..3 && tabled.tableRunAt(3) == 1..3 && tabled.tableRunAt(0) == null)
     check(tabled.wording == "Complete the table.\n\n| Molecule | Shape |\n| --- | --- |\n| CO2 | |\n\nThen explain.") { tabled.wording }
+    // Display maths written over several lines is one block, so KaTeX sees the whole array rather than a line at a time.
+    val array = "$d$d\n\\begin{array}{c|c}\nx & y \\\\\n\\hline\n0 & 1\n\\end{array}\n$d$d"
+    val worked = lessonChunks("### Worked Example\nConsider this table:\n$array\n1. Find the differences.").single()
+    check(worked.blocks == listOf("text" to "Consider this table:", "text" to array, "number" to "1. Find the differences.")) { worked.blocks.toString() }
+    val opened = lessonChunks("### Worked Example\n$d${d}x = 1 \\\\\ny = 2$d$d").single()
+    check(opened.blocks == listOf("text" to "$d${d}x = 1 \\\\\ny = 2$d$d")) { opened.blocks.toString() }
 }
