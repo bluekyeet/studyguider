@@ -345,7 +345,7 @@ async function renderClassicExams(container, api) {
           if (q.guide_source) schedule.append(mathText(q.schedule_text));
           else if (q.schedule_resource_id) {
             // PDF tables lose their columns when extracted, so show the text as-is and point to the original.
-            schedule.append(el('p', 'Extracted text; table layout is lost. Use the original schedule page above to compare.', 'muted'), el('pre', q.schedule_text, 'schedule-text'));
+            schedule.append(el('p', 'Extracted text; table layout is lost. Use the original schedule link at the top of this question to compare.', 'muted'), el('pre', q.schedule_text, 'schedule-text'));
           } else schedule.append(mathText(q.schedule_text));
         }
         const raw = el('textarea'); raw.rows = 7; raw.maxLength = 100000; raw.value = q.answer || '';
